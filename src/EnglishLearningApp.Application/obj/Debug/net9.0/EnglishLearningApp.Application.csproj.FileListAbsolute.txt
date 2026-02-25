@@ -1,0 +1,16 @@
+C:\Users\Hande\OneDrive\Documents\English4skills\src\EnglishLearningApp.Application\bin\Debug\net9.0\EnglishLearningApp.Application.deps.json
+C:\Users\Hande\OneDrive\Documents\English4skills\src\EnglishLearningApp.Application\bin\Debug\net9.0\EnglishLearningApp.Application.dll
+C:\Users\Hande\OneDrive\Documents\English4skills\src\EnglishLearningApp.Application\bin\Debug\net9.0\EnglishLearningApp.Application.pdb
+C:\Users\Hande\OneDrive\Documents\English4skills\src\EnglishLearningApp.Application\bin\Debug\net9.0\EnglishLearningApp.Domain.dll
+C:\Users\Hande\OneDrive\Documents\English4skills\src\EnglishLearningApp.Application\bin\Debug\net9.0\EnglishLearningApp.Domain.pdb
+C:\Users\Hande\OneDrive\Documents\English4skills\src\EnglishLearningApp.Application\obj\Debug\net9.0\EnglishLearningApp.Application.csproj.AssemblyReference.cache
+C:\Users\Hande\OneDrive\Documents\English4skills\src\EnglishLearningApp.Application\obj\Debug\net9.0\EnglishLearningApp.Application.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\Hande\OneDrive\Documents\English4skills\src\EnglishLearningApp.Application\obj\Debug\net9.0\EnglishLearningApp.Application.AssemblyInfoInputs.cache
+C:\Users\Hande\OneDrive\Documents\English4skills\src\EnglishLearningApp.Application\obj\Debug\net9.0\EnglishLearningApp.Application.AssemblyInfo.cs
+C:\Users\Hande\OneDrive\Documents\English4skills\src\EnglishLearningApp.Application\obj\Debug\net9.0\EnglishLearningApp.Application.csproj.CoreCompileInputs.cache
+C:\Users\Hande\OneDrive\Documents\English4skills\src\EnglishLearningApp.Application\obj\Debug\net9.0\EnglishLearningApp.Application.sourcelink.json
+C:\Users\Hande\OneDrive\Documents\English4skills\src\EnglishLearningApp.Application\obj\Debug\net9.0\EnglishL.DD31E0E1.Up2Date
+C:\Users\Hande\OneDrive\Documents\English4skills\src\EnglishLearningApp.Application\obj\Debug\net9.0\EnglishLearningApp.Application.dll
+C:\Users\Hande\OneDrive\Documents\English4skills\src\EnglishLearningApp.Application\obj\Debug\net9.0\refint\EnglishLearningApp.Application.dll
+C:\Users\Hande\OneDrive\Documents\English4skills\src\EnglishLearningApp.Application\obj\Debug\net9.0\EnglishLearningApp.Application.pdb
+C:\Users\Hande\OneDrive\Documents\English4skills\src\EnglishLearningApp.Application\obj\Debug\net9.0\ref\EnglishLearningApp.Application.dll
