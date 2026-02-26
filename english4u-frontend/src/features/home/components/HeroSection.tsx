@@ -80,7 +80,11 @@ function AITutorIllustration() {
             <AudioWaveRings />
             <FloatingCard style={{ top: '8%', right: '2%' }} icon="🎯" title="Điểm AI" value="Band 7.5" color="var(--color-primary)" />
             <FloatingCard style={{ bottom: '10%', left: '2%' }} icon="🔥" title="Chuỗi" value="14 Ngày" color="var(--color-accent-dark)" accent />
+
             <FloatingCard style={{ top: '45%', right: '-5%' }} icon="💡" title="Bài học" value="Reading" color="#7c3aed" small />
+            <FloatingCard style={{ top: '35%', left: '-5%' }} icon="🎧" title="Bài học" value="Listening" color="#0ea5e9" small />
+            <FloatingCard style={{ bottom: '20%', right: '8%' }} icon="🎤" title="Bài học" value="Speaking" color="#10b981" small />
+            <FloatingCard style={{ top: '-2%', left: '25%' }} icon="✍️" title="Bài học" value="Writing" color="#f59e0b" small />
         </div>
     )
 }

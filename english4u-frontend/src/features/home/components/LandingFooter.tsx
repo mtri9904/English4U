@@ -18,8 +18,8 @@ export function LandingFooter() {
                             <img
                                 src="logo/Logo.png"
                                 style={{
-                                    width: 80,
-                                    height: 80,
+                                    width: 45,
+                                    height: 45,
                                     objectFit: 'cover'
                                 }}
                             />

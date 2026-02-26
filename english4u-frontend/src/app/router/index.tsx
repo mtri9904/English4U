@@ -2,6 +2,8 @@ import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { PublicLayout } from '@/layouts/PublicLayout';
 import { MainLayout } from '@/layouts/MainLayout';
 import { HomePage } from '@/features/home/pages/HomePage';
+import { AboutPage } from '@/features/home/pages/AboutPage';
+import { ContactPage } from '@/features/home/pages/ContactPage';
 import { LoginPage } from '@/features/auth/pages/LoginPage';
 
 export const appRouter = createBrowserRouter([
@@ -12,6 +14,14 @@ export const appRouter = createBrowserRouter([
             {
                 index: true,
                 element: <HomePage />,
+            },
+            {
+                path: 'about',
+                element: <AboutPage />,
+            },
+            {
+                path: 'contact',
+                element: <ContactPage />,
             },
         ],
     },
