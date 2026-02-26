@@ -177,3 +177,5 @@ C:\Users\Hande\OneDrive\Documents\English4skills\src\EnglishLearningApp.API\obj\
 C:\Users\Hande\OneDrive\Documents\English4skills\src\EnglishLearningApp.API\obj\Debug\net9.0\EnglishLearningApp.API.pdb
 C:\Users\Hande\OneDrive\Documents\English4skills\src\EnglishLearningApp.API\obj\Debug\net9.0\EnglishLearningApp.API.genruntimeconfig.cache
 C:\Users\Hande\OneDrive\Documents\English4skills\src\EnglishLearningApp.API\obj\Debug\net9.0\ref\EnglishLearningApp.API.dll
+C:\Users\Hande\OneDrive\Documents\English4skills\src\EnglishLearningApp.API\bin\Debug\net9.0\CloudinaryDotNet.dll
+C:\Users\Hande\OneDrive\Documents\English4skills\src\EnglishLearningApp.API\bin\Debug\net9.0\Newtonsoft.Json.dll
