@@ -9,9 +9,8 @@ interface Plan {
 }
 
 const PLANS: Plan[] = [
-    { id: 'basic', name: 'Basic', price: { monthly: 0, yearly: 0 }, description: 'Perfect for beginners exploring AI-powered English learning.', features: ['5 AI lessons / month', 'Basic listening exercises', 'Reading comprehension tests', 'Progress tracking', 'Community forum access'], cta: 'Start Free', color: '#5a6a7e', gradientFrom: 'rgba(90,106,126,0.06)' },
-    { id: 'pro', name: 'Pro', price: { monthly: 12, yearly: 9 }, description: 'The ultimate IELTS prep toolkit with unlimited AI practice.', features: ['Unlimited AI lessons', 'AI Speaking with scoring', 'AI Writing band scorer', 'Mock IELTS exams', 'Flashcard AI generator', 'Priority support', 'Offline downloads'], popular: true, highlight: 'Most Popular', cta: 'Get Pro Now', color: '#137dc5', gradientFrom: 'rgba(19,125,197,0.08)' },
-    { id: 'premium', name: 'Premium', price: { monthly: 28, yearly: 22 }, description: 'For serious learners who want 1-on-1 human tutor sessions.', features: ['Everything in Pro', '4 live tutor sessions / month', 'Personalised study plan', 'IELTS exam guarantee', 'Certificate of completion', 'Dedicated success coach', 'Early access to new features'], cta: 'Go Premium', color: '#7c3aed', gradientFrom: 'rgba(124,58,237,0.06)' },
+    { id: 'basic', name: 'Free Forever', price: { monthly: 0, yearly: 0 }, description: 'Khám phá kho tàng kiến thức được biên soạn sẵn.', features: ['Học toàn bộ các khóa học từ Admin (Listening, Speaking, Reading, Writing)', 'Làm các đề thi thử (Mock Exams) có sẵn trên hệ thống', 'Học từ vựng qua các bộ Flashcards', 'Lưu trữ lịch sử và theo dõi tiến độ học tập', 'Điểm danh nhận quà với Daily Streaks'], cta: 'Bắt đầu miễn phí', color: '#5a6a7e', gradientFrom: 'rgba(90,106,126,0.06)' },
+    { id: 'pro', name: 'Pro Learner', price: { monthly: 12, yearly: 9 }, description: 'Cá nhân hóa lộ trình học với sức mạnh AI không giới hạn.', features: ['Tất cả tính năng của gói Free', 'AI Exam Generator: Tự tạo đề thi từ tài liệu (PDF/Docx)', 'Cá nhân hóa Flashcards không giới hạn', 'AI Speaking & Writing Coach (Chấm điểm & Sửa lỗi)', 'Phân tích Spaced Repetition cho Flashcards', 'Hỗ trợ ưu tiên & Không quảng cáo'], popular: true, highlight: 'Nổi bật nhất', cta: 'Đăng ký Pro ngay', color: '#137dc5', gradientFrom: 'rgba(19,125,197,0.08)' }
 ]
 
 export function PricingSection() {
@@ -22,16 +21,16 @@ export function PricingSection() {
             <div className="container-app">
                 <FadeIn>
                     <div style={{ textAlign: 'center', marginBottom: 56 }}>
-                        <p className="text-label" style={{ marginBottom: 12 }}>Transparent Pricing</p>
+
                         <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: 'clamp(2rem, 3.5vw, 2.75rem)', fontWeight: 700, letterSpacing: '-0.025em', marginBottom: 16, color: 'var(--color-text-primary)' }}>
-                            Choose your path to<span style={{ color: 'var(--color-primary)' }}> fluency</span>
+                            Chọn lộ trình của bạn đến sự<span style={{ color: 'var(--color-primary)' }}> trôi chảy</span>
                         </h2>
-                        <p style={{ fontSize: '1.0625rem', color: 'var(--color-text-secondary)', maxWidth: 460, margin: '0 auto 28px', lineHeight: 1.7 }}>Start free, upgrade when you're ready. Cancel anytime.</p>
+                        <p style={{ fontSize: '1.0625rem', color: 'var(--color-text-secondary)', maxWidth: 460, margin: '0 auto 28px', lineHeight: 1.7 }}>Bắt đầu miễn phí, nâng cấp khi bạn đã sẵn sàng. Hủy bất kỳ lúc nào.</p>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'rgba(255,255,255,0.8)', border: '1.5px solid var(--color-border)', borderRadius: 'var(--radius-full)', padding: 4 }}>
                             {(['monthly', 'yearly'] as const).map((cycle) => (
                                 <button key={cycle} onClick={() => setBilling(cycle)}
                                     style={{ padding: '7px 20px', borderRadius: 'var(--radius-full)', border: 'none', cursor: 'pointer', fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: '0.875rem', transition: 'all 0.2s', background: billing === cycle ? 'var(--color-primary)' : 'transparent', color: billing === cycle ? '#fff' : 'var(--color-text-secondary)' }}>
-                                    {cycle === 'monthly' ? 'Monthly' : <>Yearly <span style={{ fontSize: '0.6875rem', background: 'rgba(250,207,57,0.9)', color: '#7a4800', padding: '1px 6px', borderRadius: 99, fontWeight: 700 }}>−25%</span></>}
+                                    {cycle === 'monthly' ? 'Theo tháng' : <>Theo năm <span style={{ fontSize: '0.6875rem', background: 'rgba(250,207,57,0.9)', color: '#7a4800', padding: '1px 6px', borderRadius: 99, fontWeight: 700 }}>−25%</span></>}
                                 </button>
                             ))}
                         </div>
@@ -42,9 +41,9 @@ export function PricingSection() {
                 </div>
                 <FadeIn delay={400}>
                     <div style={{ marginTop: 48, textAlign: 'center', color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>
-                        <span>✅ No credit card required for Basic</span><span style={{ margin: '0 16px' }}>·</span>
-                        <span>✅ SSL Secure Checkout</span><span style={{ margin: '0 16px' }}>·</span>
-                        <span>✅ Cancel anytime</span>
+                        <span>✅ Không cần thẻ tín dụng cho gói Free</span><span style={{ margin: '0 16px' }}>·</span>
+                        <span>✅ Thanh toán bảo mật SSL</span><span style={{ margin: '0 16px' }}>·</span>
+                        <span>✅ Hủy bất cứ lúc nào</span>
                     </div>
                 </FadeIn>
             </div>
@@ -73,10 +72,10 @@ function PlanCard({ plan, billing }: { plan: Plan; billing: BillingCycle }) {
                 </div>
                 <div style={{ marginBottom: 16 }}>
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-                        <span style={{ fontSize: '2.5rem', fontWeight: 800, color: isPopular ? plan.color : 'var(--color-text-primary)', fontFamily: 'var(--font-sans)', lineHeight: 1 }}>{price === 0 ? 'Free' : `$${price}`}</span>
-                        {price > 0 && <span style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)', fontWeight: 500 }}>/ mo</span>}
+                        <span style={{ fontSize: '2.5rem', fontWeight: 800, color: isPopular ? plan.color : 'var(--color-text-primary)', fontFamily: 'var(--font-sans)', lineHeight: 1 }}>{price === 0 ? 'Miễn phí' : `$${price}`}</span>
+                        {price > 0 && <span style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)', fontWeight: 500 }}>/ tháng</span>}
                     </div>
-                    {billing === 'yearly' && price > 0 && <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', marginTop: 4 }}>Billed ${price * 12}/year</div>}
+                    {billing === 'yearly' && price > 0 && <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', marginTop: 4 }}>Thanh toán ${price * 12}/năm</div>}
                 </div>
                 <p style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)', lineHeight: 1.6, marginBottom: 24, minHeight: 48 }}>{plan.description}</p>
                 <hr style={{ border: 'none', borderTop: '1px solid var(--color-border)', marginBottom: 20 }} />

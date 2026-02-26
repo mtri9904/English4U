@@ -1,6 +1,4 @@
 import { useEffect, useState } from 'react'
-import { Button } from '@/shared/ui/Button'
-import { Badge } from '@/shared/ui/Badge'
 
 export function HeroSection() {
     const [offsetY, setOffsetY] = useState(0)
@@ -20,14 +18,10 @@ export function HeroSection() {
 
             <div className="container-app" style={{ position: 'relative', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 48, alignItems: 'center', padding: '80px 24px' }}>
                 <div className="animate-fade-up">
-                    <div style={{ display: 'flex', gap: 8, marginBottom: 24 }}>
-                        <Badge variant="primary" dot>AI-Powered Tutor</Badge>
-                        <Badge variant="accent">IELTS / TOEFL Ready</Badge>
-                    </div>
 
                     <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: 'clamp(2.5rem, 4.5vw, 4rem)', fontWeight: 700, lineHeight: 1.12, letterSpacing: '-0.03em', color: 'var(--color-text-primary)', marginBottom: 24 }}>
-                        Master English
-                        <br />with{' '}
+                        Làm chủ tiếng Anh
+                        <br />cùng{' '}
                         <span style={{ color: 'var(--color-primary)', position: 'relative', display: 'inline-block' }}>
                             AI Tutor
                             <svg viewBox="0 0 200 16" style={{ position: 'absolute', bottom: -6, left: 0, width: '100%', height: 10 }}>
@@ -37,16 +31,15 @@ export function HeroSection() {
                     </h1>
 
                     <p style={{ fontSize: '1.125rem', color: 'var(--color-text-secondary)', lineHeight: 1.75, marginBottom: 36, maxWidth: 480 }}>
-                        Personalized AI-driven lessons that adapt to your level. Practice Listening, Speaking, Reading & Writing — get instant scoring and actionable feedback.
+                        Lộ trình học cá nhân hóa với AI thích ứng theo trình độ của bạn. Luyện tập Nghe, Nói, Đọc & Viết — nhận điểm tức thì và phản hồi chi tiết.
                     </p>
 
                     <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 48 }}>
-                        <Button variant="primary" size="lg" icon={<span>🚀</span>}>Start Free — No Card</Button>
-                        <Button variant="ghost" size="lg" icon={<PlayIcon />}>Watch Demo</Button>
+                        <RocketButton />
                     </div>
 
                     <div style={{ display: 'flex', gap: 24, paddingTop: 32, borderTop: '1px solid var(--color-border)' }}>
-                        {[{ value: '50K+', label: 'Active Learners', icon: '👥' }, { value: '95%', label: 'Pass Rate', icon: '🎯' }, { value: '4.9★', label: 'App Rating', icon: '⭐' }].map((s) => (
+                        {[{ value: '50K+', label: 'Học viên', icon: '👥' }, { value: '95%', label: 'Tỷ lệ đỗ', icon: '🎯' }, { value: '4.9★', label: 'Đánh giá', icon: '⭐' }].map((s) => (
                             <div key={s.label}>
                                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, fontSize: '1.625rem', fontWeight: 800, color: 'var(--color-text-primary)', lineHeight: 1, fontFamily: 'var(--font-sans)' }}>
                                     <span style={{ fontSize: '1.1rem' }}>{s.icon}</span>{s.value}
@@ -60,12 +53,6 @@ export function HeroSection() {
                 <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'relative' }}>
                     <AITutorIllustration />
                 </div>
-            </div>
-
-            <div style={{ position: 'absolute', bottom: 32, left: '50%', transform: 'translateX(-50%)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, color: 'var(--color-text-muted)', fontSize: '0.75rem', fontWeight: 500, animation: 'pulseSlow 2.5s ease-in-out infinite', cursor: 'pointer' }}
-                onClick={() => document.querySelector('#features')?.scrollIntoView({ behavior: 'smooth' })}>
-                <span>Scroll to explore</span>
-                <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 4v12M4 10l6 6 6-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
             </div>
         </section>
     )
@@ -91,9 +78,9 @@ function AITutorIllustration() {
                 </svg>
             </div>
             <AudioWaveRings />
-            <FloatingCard style={{ top: '8%', right: '2%' }} icon="🎯" title="AI Score" value="Band 7.5" color="var(--color-primary)" />
-            <FloatingCard style={{ bottom: '10%', left: '2%' }} icon="🔥" title="Streak" value="14 Days" color="var(--color-accent-dark)" accent />
-            <FloatingCard style={{ top: '45%', right: '-5%' }} icon="💡" title="Lesson" value="Reading" color="#7c3aed" small />
+            <FloatingCard style={{ top: '8%', right: '2%' }} icon="🎯" title="Điểm AI" value="Band 7.5" color="var(--color-primary)" />
+            <FloatingCard style={{ bottom: '10%', left: '2%' }} icon="🔥" title="Chuỗi" value="14 Ngày" color="var(--color-accent-dark)" accent />
+            <FloatingCard style={{ top: '45%', right: '-5%' }} icon="💡" title="Bài học" value="Reading" color="#7c3aed" small />
         </div>
     )
 }
@@ -132,3 +119,90 @@ function FloatingCard({ style, icon, title, value, color, accent, small }: Float
         </div>
     )
 }
+
+function RocketButton() {
+    const [isAnimating, setIsAnimating] = useState(false)
+
+    const handleClick = () => {
+        if (isAnimating) return;
+        setIsAnimating(true);
+        setTimeout(() => setIsAnimating(false), 1500);
+    }
+
+    return (
+        <button
+            onClick={handleClick}
+            style={{
+                position: 'relative',
+                padding: '16px 36px',
+                background: 'linear-gradient(135deg, var(--color-primary) 0%, #0c5a92 100%)',
+                color: 'white',
+                fontWeight: 700,
+                fontSize: '1.0625rem',
+                borderRadius: '12px',
+                border: 'none',
+                cursor: 'pointer',
+                fontFamily: 'var(--font-sans)',
+                boxShadow: '0 8px 24px rgba(19,125,197,0.3)',
+                overflow: 'hidden',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '12px',
+                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+            }}
+            onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-3px)';
+                e.currentTarget.style.boxShadow = '0 12px 32px rgba(19,125,197,0.4)';
+            }}
+            onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 8px 24px rgba(19,125,197,0.3)';
+            }}
+        >
+            <span style={{ position: 'relative', zIndex: 1, letterSpacing: '0.01em' }}>Bắt đầu học ngay</span>
+            <span style={{ fontSize: '1.25rem', position: 'relative', zIndex: 1 }}>✨</span>
+
+            {isAnimating && (
+                <>
+                    <div style={{
+                        position: 'absolute',
+                        bottom: 0,
+                        left: 0,
+                        height: '3px',
+                        background: 'linear-gradient(90deg, transparent, #fbbf24, #fff)',
+                        animation: 'trailGrow 1.5s cubic-bezier(0.5, 0, 0.2, 1) forwards',
+                        zIndex: 2,
+                        borderRadius: '0 2px 2px 0'
+                    }} />
+
+                    <div style={{
+                        position: 'absolute',
+                        bottom: '-12px',
+                        marginLeft: '-15px',
+                        fontSize: '24px',
+                        animation: 'rocketMove 1.5s cubic-bezier(0.5, 0, 0.2, 1) forwards',
+                        zIndex: 3,
+                        filter: 'drop-shadow(0px 0px 8px rgba(251, 191, 36, 0.8))'
+                    }}>
+                        🚀
+                    </div>
+                </>
+            )}
+
+            <style>{`
+                @keyframes rocketMove {
+                    0% { left: 0%; transform: rotate(45deg) scale(0); opacity: 0; }
+                    10% { left: 5%; transform: rotate(45deg) scale(1.1); opacity: 1; }
+                    80% { left: 95%; transform: rotate(45deg) scale(1); opacity: 1; }
+                    100% { left: 110%; transform: rotate(45deg) scale(0) translateY(-20px) translateX(20px); opacity: 0; }
+                }
+                @keyframes trailGrow {
+                    0% { width: 0; opacity: 1; }
+                    80% { width: 100%; opacity: 1; }
+                    100% { width: 100%; opacity: 0; }
+                }
+            `}</style>
+        </button>
+    )
+}
+

@@ -1,9 +1,9 @@
 import { Button } from '@/shared/ui/Button'
 
 const FOOTER_LINKS = {
-    Product: ['Courses', 'Mock Exams', 'Flashcards', 'AI Speaking', 'Leaderboard'],
-    Resources: ['Blog', 'IELTS Guide', 'TOEFL Tips', 'Vocabulary Lists', 'Grammar Handbook'],
-    Company: ['About Us', 'Careers', 'Press', 'Privacy Policy', 'Terms of Service'],
+    'Sản phẩm': ['Khóa học', 'Thi thử', 'Flashcards', 'Luyện Nói AI', 'Bảng xếp hạng'],
+    'Tài nguyên': ['Blog', 'Hướng dẫn IELTS', 'Mẹo TOEFL', 'Danh sách Từ vựng', 'Sổ tay Ngữ pháp'],
+    'Công ty': ['Về chúng tôi', 'Tuyển dụng', 'Báo chí', 'Chính sách Bảo mật', 'Điều khoản Dịch vụ'],
 }
 
 export function LandingFooter() {
@@ -15,10 +15,17 @@ export function LandingFooter() {
                 <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: 48, marginBottom: 48 }}>
                     <div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-                            <div style={{ width: 36, height: 36, borderRadius: 10, background: 'linear-gradient(135deg, #137dc5 0%, #0c5a92 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: 20, fontFamily: 'var(--font-serif)' }}>E</div>
+                            <img
+                                src="logo/Logo.png"
+                                style={{
+                                    width: 80,
+                                    height: 80,
+                                    objectFit: 'cover'
+                                }}
+                            />
                             <span style={{ fontFamily: 'var(--font-serif)', fontSize: '1.25rem', fontWeight: 700, color: '#fff' }}>English4U</span>
                         </div>
-                        <p style={{ fontSize: '0.9rem', lineHeight: 1.7, maxWidth: 300, marginBottom: 24, color: 'rgba(255,255,255,0.5)' }}>AI-powered English learning that adapts to you. Prepare for IELTS, TOEFL and beyond with personalized practice.</p>
+                        <p style={{ fontSize: '0.9rem', lineHeight: 1.7, maxWidth: 300, marginBottom: 24, color: 'rgba(255,255,255,0.5)' }}>Học tiếng Anh với sức mạnh AI. Chuẩn bị cho IELTS, TOEFL với lộ trình luyện tập cá nhân hóa.</p>
                         <div style={{ display: 'flex', gap: 10 }}>
                             {['𝕏', 'in', 'f', '▶'].map((icon, i) => (
                                 <button key={i} style={{ width: 36, height: 36, borderRadius: 8, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 600, transition: 'all 0.2s', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-sans)' }}
@@ -40,11 +47,11 @@ export function LandingFooter() {
                 </div>
                 <div style={{ padding: '32px 0 0', borderTop: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 24 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 16, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: '12px 20px', flex: 1, maxWidth: 380 }}>
-                        <span style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.5)', whiteSpace: 'nowrap' }}>Get weekly tips</span>
-                        <input type="email" placeholder="your@email.com" style={{ flex: 1, background: 'none', border: 'none', outline: 'none', fontSize: '0.875rem', color: '#fff', fontFamily: 'var(--font-sans)' }} />
-                        <Button variant="primary" size="sm">Subscribe</Button>
+                        <span style={{ fontSize: '0.875rem', color: 'rgba(245, 238, 238, 1)', whiteSpace: 'nowrap' }}>Nhận tin hàng tuần</span>
+                        <input type="email" placeholder="email@gmail.com" style={{ flex: 1, background: 'none', border: 'none', outline: 'none', fontSize: '0.875rem', color: '#fff', fontFamily: 'var(--font-sans)' }} />
+                        <Button variant="primary" size="sm" style={{ whiteSpace: 'nowrap' }}>Đăng ký</Button>
                     </div>
-                    <p style={{ fontSize: '0.8125rem', color: 'rgba(255,255,255,0.3)' }}>© 2026 English4U. All rights reserved.</p>
+                    <p style={{ fontSize: '0.8125rem', color: 'rgba(255,255,255,0.3)' }}>© 2026 English4U. Tất cả quyền được bảo lưu.</p>
                 </div>
             </div>
         </footer>

@@ -7,10 +7,10 @@ interface Skill {
 }
 
 const SKILLS: Skill[] = [
-    { id: 'listening', icon: '🎧', title: 'Listening', description: 'Train your ear with authentic IELTS recordings, podcasts and real-world audio. AI detects comprehension gaps in real-time.', color: '#137dc5', bg: 'rgba(19,125,197,0.08)', progress: 78, tag: 'IELTS Band 7+', features: ['Authentic recordings', 'Speed control', 'Gap-fill exercises'] },
-    { id: 'speaking', icon: '🎙️', title: 'Speaking', description: 'Speak directly to the AI and get instant pronunciation scoring. Real-time waveform analysis pinpoints accent improvements.', color: '#7c3aed', bg: 'rgba(124,58,237,0.08)', progress: 65, tag: 'AI Pronunciation', features: ['Real-time scoring', 'Waveform feedback', 'Accent coaching'], animated: true },
-    { id: 'reading', icon: '📖', title: 'Reading', description: 'Adaptive reading passages from C1 to IELTS Academic. AI tracks reading speed and comprehension accuracy over time.', color: '#0891b2', bg: 'rgba(8,145,178,0.08)', progress: 82, tag: 'Adaptive Level', features: ['IELTS passages', 'Speed tracking', 'Vocabulary builder'] },
-    { id: 'writing', icon: '✏️', title: 'Writing', description: 'Submit essays and get IELTS-style band scores with detailed grammar, coherence and task achievement feedback within seconds.', color: '#c2410c', bg: 'rgba(194,65,12,0.08)', progress: 71, tag: 'Instant Feedback', features: ['AI band scoring', 'Grammar check', 'Essay templates'] },
+    { id: 'listening', icon: '🎧', title: 'Listening', description: 'Luyện nghe với các bản thu IELTS, podcast và audio đời thực. AI tự động phát hiện các lỗ hổng nghe hiểu của bạn.', color: '#137dc5', bg: 'rgba(19,125,197,0.08)', progress: 78, tag: 'IELTS Band 7+', features: ['Bản thu thực tế', 'Kiểm soát tốc độ', 'Bài tập điền từ'] },
+    { id: 'speaking', icon: '🎙️', title: 'Speaking', description: 'Giao tiếp trực tiếp với AI và nhận điểm phát âm lập tức. Phân tích sóng âm giúp bạn hoàn thiện ngữ điệu chuẩn xác.', color: '#7c3aed', bg: 'rgba(124,58,237,0.08)', progress: 65, tag: 'Phát âm AI', features: ['Chấm điểm thời gian thực', 'Phản hồi qua sóng âm', 'Luyện tập ngữ điệu'], animated: true },
+    { id: 'reading', icon: '📖', title: 'Reading', description: 'Bài đọc thích ứng từ trình độ C1 đến IELTS Academic. Hệ thống tự động đo lường tốc độ đọc hiểu qua từng cấp độ.', color: '#0891b2', bg: 'rgba(8,145,178,0.08)', progress: 82, tag: 'Cấp độ thích ứng', features: ['Bài đọc chuẩn IELTS', 'Đo tốc độ đọc', 'Kho từ vựng'] },
+    { id: 'writing', icon: '✏️', title: 'Writing', description: 'Nộp bài luận và nhận điểm chuẩn IELTS kèm nhận xét chi tiết về ngữ pháp, từ vựng và tính mạch lạc chỉ trong vài giây.', color: '#c2410c', bg: 'rgba(194,65,12,0.08)', progress: 71, tag: 'Phản hồi tức thì', features: ['Chấm điểm bằng AI', 'Sửa lỗi ngữ pháp', 'Cấu trúc bài luận'] },
 ]
 
 export function FeaturesSection() {
@@ -20,12 +20,12 @@ export function FeaturesSection() {
             <div className="container-app">
                 <FadeIn>
                     <div style={{ textAlign: 'center', marginBottom: 64 }}>
-                        <p className="text-label" style={{ marginBottom: 12 }}>Four Core Skills</p>
+                        <p className="text-label" style={{ marginBottom: 12 }}>Bốn Kỹ Năng Cốt Lõi</p>
                         <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: 'clamp(2rem, 3.5vw, 2.75rem)', fontWeight: 700, letterSpacing: '-0.025em', marginBottom: 16, color: 'var(--color-text-primary)' }}>
-                            Everything you need to score<span style={{ color: 'var(--color-primary)' }}> Band 7+</span>
+                            Mọi thứ bạn cần để đạt<span style={{ color: 'var(--color-primary)' }}> Band 7+</span>
                         </h2>
                         <p style={{ fontSize: '1.0625rem', color: 'var(--color-text-secondary)', maxWidth: 520, margin: '0 auto', lineHeight: 1.7 }}>
-                            AI-powered modules cover every section of IELTS & TOEFL, with adaptive difficulty that grows with you.
+                            Các mô-đun tích hợp sức mạnh AI bao quát mọi cấu phần của bài thi IELTS & TOEFL, phân bổ độ khó theo đúng trình độ hiện tại của bạn.
                         </p>
                     </div>
                 </FadeIn>
@@ -55,7 +55,7 @@ function SkillCard({ skill }: { skill: Skill }) {
                 {skill.animated ? <SpeakingWave color={skill.color} active={hovered} /> : (
                     <div style={{ marginBottom: 20 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, fontSize: '0.75rem', color: 'var(--color-text-muted)', fontWeight: 500 }}>
-                            <span>Avg. Improvement</span><span style={{ color: skill.color, fontWeight: 700 }}>+{skill.progress}%</span>
+                            <span>Cải thiện trung bình</span><span style={{ color: skill.color, fontWeight: 700 }}>+{skill.progress}%</span>
                         </div>
                         <ProgressBar value={skill.progress} variant="primary" size="sm" />
                     </div>
