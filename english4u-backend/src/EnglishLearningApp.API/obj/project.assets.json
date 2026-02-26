@@ -8092,11 +8092,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\src\\EnglishLearningApp.API\\EnglishLearningApp.API.csproj",
+      "projectUniqueName": "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\english4u-backend\\src\\EnglishLearningApp.API\\EnglishLearningApp.API.csproj",
       "projectName": "EnglishLearningApp.API",
-      "projectPath": "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\src\\EnglishLearningApp.API\\EnglishLearningApp.API.csproj",
+      "projectPath": "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\english4u-backend\\src\\EnglishLearningApp.API\\EnglishLearningApp.API.csproj",
       "packagesPath": "C:\\Users\\Hande\\.nuget\\packages\\",
-      "outputPath": "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\src\\EnglishLearningApp.API\\obj\\",
+      "outputPath": "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\english4u-backend\\src\\EnglishLearningApp.API\\obj\\",
       "projectStyle": "PackageReference",
       "configFilePaths": [
         "C:\\Users\\Hande\\AppData\\Roaming\\NuGet\\NuGet.Config",
@@ -8113,11 +8113,11 @@
         "net9.0": {
           "targetAlias": "net9.0",
           "projectReferences": {
-            "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\src\\EnglishLearningApp.Application\\EnglishLearningApp.Application.csproj": {
-              "projectPath": "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\src\\EnglishLearningApp.Application\\EnglishLearningApp.Application.csproj"
+            "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\english4u-backend\\src\\EnglishLearningApp.Application\\EnglishLearningApp.Application.csproj": {
+              "projectPath": "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\english4u-backend\\src\\EnglishLearningApp.Application\\EnglishLearningApp.Application.csproj"
             },
-            "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\src\\EnglishLearningApp.Infrastructure\\EnglishLearningApp.Infrastructure.csproj": {
-              "projectPath": "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\src\\EnglishLearningApp.Infrastructure\\EnglishLearningApp.Infrastructure.csproj"
+            "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\english4u-backend\\src\\EnglishLearningApp.Infrastructure\\EnglishLearningApp.Infrastructure.csproj": {
+              "projectPath": "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\english4u-backend\\src\\EnglishLearningApp.Infrastructure\\EnglishLearningApp.Infrastructure.csproj"
             }
           }
         }

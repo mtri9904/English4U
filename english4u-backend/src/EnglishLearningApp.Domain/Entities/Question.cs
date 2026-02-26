@@ -11,6 +11,7 @@ public class Question
     public string? ImageUrl { get; set; }
     public string? CorrectAnswer { get; set; }
     public string? Options { get; set; }
+    public string? Explanation { get; set; }
     public int Points { get; set; } = 1;
     public int? OrderIndex { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\src\\EnglishLearningApp.API\\EnglishLearningApp.API.csproj": {}
+    "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\english4u-backend\\src\\EnglishLearningApp.API\\EnglishLearningApp.API.csproj": {}
   },
   "projects": {
-    "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\src\\EnglishLearningApp.API\\EnglishLearningApp.API.csproj": {
+    "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\english4u-backend\\src\\EnglishLearningApp.API\\EnglishLearningApp.API.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\src\\EnglishLearningApp.API\\EnglishLearningApp.API.csproj",
+        "projectUniqueName": "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\english4u-backend\\src\\EnglishLearningApp.API\\EnglishLearningApp.API.csproj",
         "projectName": "EnglishLearningApp.API",
-        "projectPath": "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\src\\EnglishLearningApp.API\\EnglishLearningApp.API.csproj",
+        "projectPath": "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\english4u-backend\\src\\EnglishLearningApp.API\\EnglishLearningApp.API.csproj",
         "packagesPath": "C:\\Users\\Hande\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\src\\EnglishLearningApp.API\\obj\\",
+        "outputPath": "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\english4u-backend\\src\\EnglishLearningApp.API\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "C:\\Users\\Hande\\AppData\\Roaming\\NuGet\\NuGet.Config",
@@ -28,11 +28,11 @@
           "net9.0": {
             "targetAlias": "net9.0",
             "projectReferences": {
-              "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\src\\EnglishLearningApp.Application\\EnglishLearningApp.Application.csproj": {
-                "projectPath": "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\src\\EnglishLearningApp.Application\\EnglishLearningApp.Application.csproj"
+              "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\english4u-backend\\src\\EnglishLearningApp.Application\\EnglishLearningApp.Application.csproj": {
+                "projectPath": "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\english4u-backend\\src\\EnglishLearningApp.Application\\EnglishLearningApp.Application.csproj"
               },
-              "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\src\\EnglishLearningApp.Infrastructure\\EnglishLearningApp.Infrastructure.csproj": {
-                "projectPath": "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\src\\EnglishLearningApp.Infrastructure\\EnglishLearningApp.Infrastructure.csproj"
+              "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\english4u-backend\\src\\EnglishLearningApp.Infrastructure\\EnglishLearningApp.Infrastructure.csproj": {
+                "projectPath": "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\english4u-backend\\src\\EnglishLearningApp.Infrastructure\\EnglishLearningApp.Infrastructure.csproj"
               }
             }
           }
@@ -109,14 +109,14 @@
         }
       }
     },
-    "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\src\\EnglishLearningApp.Application\\EnglishLearningApp.Application.csproj": {
+    "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\english4u-backend\\src\\EnglishLearningApp.Application\\EnglishLearningApp.Application.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\src\\EnglishLearningApp.Application\\EnglishLearningApp.Application.csproj",
+        "projectUniqueName": "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\english4u-backend\\src\\EnglishLearningApp.Application\\EnglishLearningApp.Application.csproj",
         "projectName": "EnglishLearningApp.Application",
-        "projectPath": "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\src\\EnglishLearningApp.Application\\EnglishLearningApp.Application.csproj",
+        "projectPath": "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\english4u-backend\\src\\EnglishLearningApp.Application\\EnglishLearningApp.Application.csproj",
         "packagesPath": "C:\\Users\\Hande\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\src\\EnglishLearningApp.Application\\obj\\",
+        "outputPath": "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\english4u-backend\\src\\EnglishLearningApp.Application\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "C:\\Users\\Hande\\AppData\\Roaming\\NuGet\\NuGet.Config",
@@ -133,8 +133,8 @@
           "net9.0": {
             "targetAlias": "net9.0",
             "projectReferences": {
-              "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\src\\EnglishLearningApp.Domain\\EnglishLearningApp.Domain.csproj": {
-                "projectPath": "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\src\\EnglishLearningApp.Domain\\EnglishLearningApp.Domain.csproj"
+              "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\english4u-backend\\src\\EnglishLearningApp.Domain\\EnglishLearningApp.Domain.csproj": {
+                "projectPath": "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\english4u-backend\\src\\EnglishLearningApp.Domain\\EnglishLearningApp.Domain.csproj"
               }
             }
           }
@@ -198,14 +198,14 @@
         }
       }
     },
-    "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\src\\EnglishLearningApp.Domain\\EnglishLearningApp.Domain.csproj": {
+    "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\english4u-backend\\src\\EnglishLearningApp.Domain\\EnglishLearningApp.Domain.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\src\\EnglishLearningApp.Domain\\EnglishLearningApp.Domain.csproj",
+        "projectUniqueName": "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\english4u-backend\\src\\EnglishLearningApp.Domain\\EnglishLearningApp.Domain.csproj",
         "projectName": "EnglishLearningApp.Domain",
-        "projectPath": "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\src\\EnglishLearningApp.Domain\\EnglishLearningApp.Domain.csproj",
+        "projectPath": "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\english4u-backend\\src\\EnglishLearningApp.Domain\\EnglishLearningApp.Domain.csproj",
         "packagesPath": "C:\\Users\\Hande\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\src\\EnglishLearningApp.Domain\\obj\\",
+        "outputPath": "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\english4u-backend\\src\\EnglishLearningApp.Domain\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "C:\\Users\\Hande\\AppData\\Roaming\\NuGet\\NuGet.Config",
@@ -273,14 +273,14 @@
         }
       }
     },
-    "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\src\\EnglishLearningApp.Infrastructure\\EnglishLearningApp.Infrastructure.csproj": {
+    "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\english4u-backend\\src\\EnglishLearningApp.Infrastructure\\EnglishLearningApp.Infrastructure.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\src\\EnglishLearningApp.Infrastructure\\EnglishLearningApp.Infrastructure.csproj",
+        "projectUniqueName": "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\english4u-backend\\src\\EnglishLearningApp.Infrastructure\\EnglishLearningApp.Infrastructure.csproj",
         "projectName": "EnglishLearningApp.Infrastructure",
-        "projectPath": "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\src\\EnglishLearningApp.Infrastructure\\EnglishLearningApp.Infrastructure.csproj",
+        "projectPath": "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\english4u-backend\\src\\EnglishLearningApp.Infrastructure\\EnglishLearningApp.Infrastructure.csproj",
         "packagesPath": "C:\\Users\\Hande\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\src\\EnglishLearningApp.Infrastructure\\obj\\",
+        "outputPath": "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\english4u-backend\\src\\EnglishLearningApp.Infrastructure\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "C:\\Users\\Hande\\AppData\\Roaming\\NuGet\\NuGet.Config",
@@ -297,8 +297,8 @@
           "net9.0": {
             "targetAlias": "net9.0",
             "projectReferences": {
-              "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\src\\EnglishLearningApp.Application\\EnglishLearningApp.Application.csproj": {
-                "projectPath": "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\src\\EnglishLearningApp.Application\\EnglishLearningApp.Application.csproj"
+              "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\english4u-backend\\src\\EnglishLearningApp.Application\\EnglishLearningApp.Application.csproj": {
+                "projectPath": "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\english4u-backend\\src\\EnglishLearningApp.Application\\EnglishLearningApp.Application.csproj"
               }
             }
           }

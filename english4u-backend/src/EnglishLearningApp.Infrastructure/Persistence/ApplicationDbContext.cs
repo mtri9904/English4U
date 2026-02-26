@@ -29,6 +29,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<LessonComment> LessonComments => Set<LessonComment>();
     public DbSet<Tag> Tags => Set<Tag>();
     public DbSet<CourseTag> CourseTags => Set<CourseTag>();
+    public DbSet<UserUpload> UserUploads => Set<UserUpload>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -104,6 +105,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             entity.Property(e => e.ImageUrl).HasColumnName("imageUrl").HasMaxLength(500);
             entity.Property(e => e.CorrectAnswer).HasColumnName("correctAnswer");
             entity.Property(e => e.Options).HasColumnName("options");
+            entity.Property(e => e.Explanation).HasColumnName("explanation");
             entity.Property(e => e.Points).HasColumnName("points").HasDefaultValue(1);
             entity.Property(e => e.OrderIndex).HasColumnName("orderIndex");
             entity.Property(e => e.CreatedAt).HasColumnName("createdAt").HasDefaultValueSql("GETDATE()");
@@ -127,11 +129,18 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             entity.Property(e => e.PassingScore).HasColumnName("passingScore");
             entity.Property(e => e.IsPublished).HasColumnName("isPublished").HasDefaultValue(false);
             entity.Property(e => e.CreatedAt).HasColumnName("createdAt").HasDefaultValueSql("GETDATE()");
+            entity.Property(e => e.CreatedBy).HasColumnName("createdBy").HasColumnType("NVARCHAR(36)");
+            entity.Property(e => e.IsCustom).HasColumnName("isCustom").HasDefaultValue(false);
 
             entity.HasOne(e => e.Course)
                   .WithMany(c => c.Exams)
                   .HasForeignKey(e => e.CourseId)
                   .OnDelete(DeleteBehavior.Cascade);
+                  
+            entity.HasOne(e => e.Creator)
+                  .WithMany(u => u.CreatedExams)
+                  .HasForeignKey(e => e.CreatedBy)
+                  .OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<ExamQuestion>(entity =>
@@ -372,11 +381,17 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             entity.Property(e => e.Title).HasColumnName("title").HasMaxLength(255).IsRequired();
             entity.Property(e => e.Description).HasColumnName("description");
             entity.Property(e => e.CreatedAt).HasColumnName("createdAt").HasDefaultValueSql("GETDATE()");
+            entity.Property(e => e.UserId).HasColumnName("userId").HasColumnType("NVARCHAR(36)");
 
             entity.HasOne(e => e.Course)
                   .WithMany(c => c.FlashcardDecks)
                   .HasForeignKey(e => e.CourseId)
                   .OnDelete(DeleteBehavior.SetNull);
+                  
+            entity.HasOne(e => e.User)
+                  .WithMany(u => u.FlashcardDecks)
+                  .HasForeignKey(e => e.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<Flashcard>(entity =>
@@ -492,6 +507,24 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
                   .WithMany(t => t.CourseTags)
                   .HasForeignKey(e => e.TagId)
                   .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<UserUpload>(entity =>
+        {
+            entity.ToTable("user_uploads");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasColumnName("id").HasColumnType("NVARCHAR(36)");
+            entity.Property(e => e.UserId).HasColumnName("userId").HasColumnType("NVARCHAR(36)").IsRequired();
+            entity.Property(e => e.FileName).HasColumnName("fileName").HasMaxLength(255);
+            entity.Property(e => e.FileUrl).HasColumnName("fileUrl").HasMaxLength(500);
+            entity.Property(e => e.FileType).HasColumnName("fileType").HasMaxLength(50);
+            entity.Property(e => e.ProcessStatus).HasColumnName("processStatus").HasMaxLength(50);
+            entity.Property(e => e.CreatedAt).HasColumnName("createdAt").HasDefaultValueSql("GETDATE()");
+
+            entity.HasOne(e => e.User)
+                  .WithMany(u => u.UserUploads)
+                  .HasForeignKey(e => e.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

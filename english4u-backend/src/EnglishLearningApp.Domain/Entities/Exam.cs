@@ -11,8 +11,11 @@ public class Exam
     public double? PassingScore { get; set; }
     public bool IsPublished { get; set; } = false;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public Guid? CreatedBy { get; set; }
+    public bool IsCustom { get; set; } = false;
 
     public Course? Course { get; set; }
+    public User? Creator { get; set; }
     public ICollection<ExamQuestion> ExamQuestions { get; set; } = [];
     public ICollection<ExamSession> ExamSessions { get; set; } = [];
 }

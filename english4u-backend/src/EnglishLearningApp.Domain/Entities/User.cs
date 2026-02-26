@@ -22,5 +22,8 @@ public class User
     public ICollection<UserFlashcardProgress> UserFlashcardProgresses { get; set; } = [];
     public ICollection<CourseReview> CourseReviews { get; set; } = [];
     public ICollection<LessonComment> LessonComments { get; set; } = [];
+    public ICollection<FlashcardDeck> FlashcardDecks { get; set; } = [];
+    public ICollection<Exam> CreatedExams { get; set; } = [];
+    public ICollection<UserUpload> UserUploads { get; set; } = [];
     public DailyStreak? DailyStreak { get; set; }
 }
