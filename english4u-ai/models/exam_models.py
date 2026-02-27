@@ -1,15 +1,12 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Optional
 
-class Option(BaseModel):
-    id: str
-    content: str
-
 class Question(BaseModel):
-    question_text: str
-    options: List[Option]
-    correct_option_id: str
-    explanation: Optional[str] = None
+    content: str
+    options: str = Field(description="Các lựa chọn phân cách bởi ký tự |")
+    correctAnswer: str
+    explanation: str
+    points: int = 1
 
 class ExamGenerationRequest(BaseModel):
     document_content: str
@@ -17,4 +14,5 @@ class ExamGenerationRequest(BaseModel):
     difficulty: str = "medium"
 
 class ExamGenerationResponse(BaseModel):
+    title: str
     questions: List[Question]

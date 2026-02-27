@@ -46,6 +46,9 @@ public static class DependencyInjection
         services.AddScoped<IPasswordHasher, BcryptPasswordHasher>();
         services.Configure<CloudinarySettings>(configuration.GetSection("Cloudinary"));
         services.AddScoped<IMediaService, CloudinaryService>();
+        
+        services.AddScoped<IGenericRepository<UserUpload>, GenericRepository<UserUpload>>();
+        services.AddHttpClient<IAiIntegrationService, AiIntegrationService>();
 
         return services;
     }
