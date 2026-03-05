@@ -1,8 +1,0 @@
-<Solution>
-  <Folder Name="/src/">
-    <Project Path="src/EnglishLearningApp.API/EnglishLearningApp.API.csproj" />
-    <Project Path="src/EnglishLearningApp.Application/EnglishLearningApp.Application.csproj" />
-    <Project Path="src/EnglishLearningApp.Domain/EnglishLearningApp.Domain.csproj" />
-    <Project Path="src/EnglishLearningApp.Infrastructure/EnglishLearningApp.Infrastructure.csproj" />
-  </Folder>
-</Solution>

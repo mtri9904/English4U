@@ -1,15 +1,22 @@
 import axios from 'axios';
 
 export const axiosInstance = axios.create({
-    baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
+    baseURL: (import.meta as any).env.VITE_API_BASE_URL || 'http://localhost:5237/api',
+
     timeout: 10000,
 });
 
 axiosInstance.interceptors.request.use(
     (config) => {
         const token = localStorage.getItem('token');
-        if (token && config.headers) {
-            config.headers.Authorization = `Bearer ${token}`;
+        const userId = localStorage.getItem('userId');
+        if (config.headers) {
+            if (token) {
+                config.headers.Authorization = `Bearer ${token}`;
+            }
+            if (userId) {
+                config.headers['X-User-Id'] = userId;
+            }
         }
         return config;
     },

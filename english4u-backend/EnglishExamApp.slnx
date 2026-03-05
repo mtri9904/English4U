@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="EnglishExamApp.API/EnglishExamApp.API.csproj" />
+  <Project Path="EnglishExamApp.Application/EnglishExamApp.Application.csproj" />
+  <Project Path="EnglishExamApp.Domain/EnglishExamApp.Domain.csproj" />
+  <Project Path="EnglishExamApp.Infrastructure/EnglishExamApp.Infrastructure.csproj" />
+</Solution>

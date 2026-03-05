@@ -1,10 +1,14 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { PublicLayout } from '@/layouts/PublicLayout';
-import { MainLayout } from '@/layouts/MainLayout';
+import { ClientLayout } from '@/layouts/ClientLayout';
 import { HomePage } from '@/features/home/pages/HomePage';
 import { AboutPage } from '@/features/home/pages/AboutPage';
 import { ContactPage } from '@/features/home/pages/ContactPage';
 import { LoginPage } from '@/features/auth/pages/LoginPage';
+import { AdminLoginPage, AdminDashboard, ExamManagement, ExamDetailPage, ExamEditorPage, ProfilePage } from '@/features/admin';
+import { AdminLayout } from '@/layouts/AdminLayout';
+import { ClientDashboard } from '@/features/client';
+
 
 export const appRouter = createBrowserRouter([
     {
@@ -38,10 +42,51 @@ export const appRouter = createBrowserRouter([
         element: <LoginPage mode="forgot" />,
     },
     {
-        path: '/app',
-        element: <MainLayout />,
+        path: '/admin/login',
+        element: <AdminLoginPage />,
+    },
+    {
+        path: '/admin',
+        element: <AdminLayout />,
         children: [
-            // other routes
+            {
+                index: true,
+                element: <Navigate to="dashboard" replace />,
+            },
+            {
+                path: 'dashboard',
+                element: <AdminDashboard />,
+            },
+            {
+                path: 'exams',
+                element: <ExamManagement />,
+            },
+            {
+                path: 'exams/:id',
+                element: <ExamDetailPage />,
+            },
+            {
+                path: 'exams/create',
+                element: <ExamEditorPage />,
+            },
+            {
+                path: 'exams/edit/:id',
+                element: <ExamEditorPage />,
+            },
+            {
+                path: 'profile',
+                element: <ProfilePage />,
+            },
+        ]
+    },
+    {
+        path: '/app',
+        element: <ClientLayout />,
+        children: [
+            {
+                index: true,
+                element: <ClientDashboard />,
+            },
         ]
     },
     {
