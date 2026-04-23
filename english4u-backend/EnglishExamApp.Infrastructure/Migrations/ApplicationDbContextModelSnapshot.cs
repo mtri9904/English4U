@@ -17,7 +17,7 @@ namespace EnglishExamApp.Infrastructure.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "9.0.13")
+                .HasAnnotation("ProductVersion", "9.0.15")
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
@@ -310,6 +310,10 @@ namespace EnglishExamApp.Infrastructure.Migrations
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("sectionId");
 
+                    b.Property<string>("TranscriptData")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("transcriptData");
+
                     b.HasKey("Id");
 
                     b.HasIndex("SectionId");
@@ -552,6 +556,11 @@ namespace EnglishExamApp.Infrastructure.Migrations
                         .HasMaxLength(36)
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
+
+                    b.Property<string>("ImageUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)")
+                        .HasColumnName("imageUrl");
 
                     b.Property<bool>("IsCorrect")
                         .ValueGeneratedOnAdd()
@@ -922,6 +931,10 @@ namespace EnglishExamApp.Infrastructure.Migrations
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
+                    b.Property<string>("ActivationToken")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("ActivationToken");
+
                     b.Property<string>("AvatarUrl")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)")
@@ -937,7 +950,9 @@ namespace EnglishExamApp.Infrastructure.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("Department")
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("Department");
 
                     b.Property<string>("DisplayName")
                         .HasMaxLength(255)
@@ -956,11 +971,29 @@ namespace EnglishExamApp.Infrastructure.Migrations
                         .HasDefaultValue(true)
                         .HasColumnName("isActive");
 
+                    b.Property<bool>("IsEmailConfirmed")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false)
+                        .HasColumnName("IsEmailConfirmed");
+
+                    b.Property<bool>("IsOnline")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false)
+                        .HasColumnName("IsOnline");
+
                     b.Property<DateTime?>("LastLoginAt")
-                        .HasColumnType("datetime2");
+                        .HasColumnType("datetime2")
+                        .HasColumnName("LastLoginAt");
+
+                    b.Property<DateTime?>("LastSeenAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("LastSeenAt");
 
                     b.Property<string>("Notes")
-                        .HasColumnType("nvarchar(max)");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("Notes");
 
                     b.Property<string>("PasswordHash")
                         .IsRequired()
@@ -969,14 +1002,30 @@ namespace EnglishExamApp.Infrastructure.Migrations
                         .HasColumnName("passwordHash");
 
                     b.Property<string>("Phone")
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("Phone");
 
                     b.Property<string>("Position")
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("Position");
 
                     b.Property<string>("Provider")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasDefaultValue("local")
+                        .HasColumnName("Provider");
+
+                    b.Property<string>("ResetPasswordToken")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("ResetPasswordToken");
+
+                    b.Property<DateTime?>("TokenExpiry")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("TokenExpiry");
 
                     b.Property<DateTime>("UpdatedAt")
                         .ValueGeneratedOnAdd()

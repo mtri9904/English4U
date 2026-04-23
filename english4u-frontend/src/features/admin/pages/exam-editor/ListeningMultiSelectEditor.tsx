@@ -1,12 +1,11 @@
-import type { ClipboardEvent } from 'react';
-import { Button, Input, InputNumber, Select, Tag } from 'antd';
-import { MinusCircleOutlined, PlusOutlined } from '@ant-design/icons';
+import { Input, InputNumber, Tag } from 'antd';
 import type {
     CreateQuestionDto,
     CreateQuestionGroupDto,
     CreateQuestionOptionDto,
 } from '../../types/exam.types';
-import { buildCleanPastedValue, emptyOption, emptyQuestion } from './examEditor.helpers';
+import { emptyOption, emptyQuestion } from './examEditor.helpers';
+import { getCleanPastedInputValue } from '@/shared/utils/input';
 
 interface ListeningMultiSelectEditorProps {
     group: CreateQuestionGroupDto;
@@ -106,22 +105,41 @@ const normalizeQuestions = (
     });
 };
 
-const getCleanPastedInputValue = (
-    event: ClipboardEvent<HTMLInputElement | HTMLTextAreaElement>,
-    currentValue: string,
-) => {
-    const pasted = event.clipboardData.getData('text');
-    if (!pasted) return null;
+const normalizeSelectedAnswers = (
+    answers: string[],
+    optionCount: number,
+    answerCount: number,
+): string[] => {
+    const maxIndex = optionCount - 1;
+    const uniqueAnswers: string[] = [];
+    const seen = new Set<string>();
 
-    event.preventDefault();
-    const target = event.target as HTMLInputElement | HTMLTextAreaElement;
-    return buildCleanPastedValue(
-        currentValue,
-        pasted,
-        target.selectionStart,
-        target.selectionEnd,
-    );
+    answers.forEach((answer) => {
+        const normalized = normalizeAnswer(answer);
+        if (!normalized || seen.has(normalized)) return;
+
+        const optionIndex = normalized.charCodeAt(0) - 65;
+        if (optionIndex < 0 || optionIndex > maxIndex) return;
+
+        seen.add(normalized);
+        uniqueAnswers.push(normalized);
+    });
+
+    return uniqueAnswers.slice(0, answerCount);
 };
+
+const applySelectedAnswers = (
+    questions: CreateQuestionDto[],
+    selectedAnswers: string[],
+): CreateQuestionDto[] => (
+    questions.map((question, index) => ({
+        ...question,
+        content: '',
+        correctAnswer: selectedAnswers[index],
+    }))
+);
+
+
 
 export const ListeningMultiSelectEditor = ({
     group,
@@ -137,19 +155,32 @@ export const ListeningMultiSelectEditor = ({
     const workingQuestions = group.questions.length > 0
         ? group.questions
         : normalizeQuestions([], sharedOptions, answerCount);
+    const selectedAnswers = normalizeSelectedAnswers(
+        workingQuestions.map((question) => question.correctAnswer ?? ''),
+        sharedOptions.length,
+        answerCount,
+    );
     const prompt = parsePrompt(group.contentData, group.questions[0]?.content ?? '');
+    const questionRangeLabel = `Questions ${groupStartNum}-${groupStartNum + answerCount - 1}`;
 
     const updateGroup = (partial: Partial<CreateQuestionGroupDto>) => {
+        const nextPrompt = typeof partial.contentData === 'string'
+            ? parsePrompt(partial.contentData, prompt)
+            : prompt;
         const updatedGroups = [...groups];
         updatedGroups[groupIdx] = {
             ...group,
             ...partial,
+            contentData: buildContentData(nextPrompt),
         };
         onUpdate(updatedGroups);
     };
 
     const updatePrompt = (nextPrompt: string) => {
-        const nextQuestions = normalizeQuestions(workingQuestions, sharedOptions, answerCount);
+        const nextQuestions = applySelectedAnswers(
+            normalizeQuestions(workingQuestions, sharedOptions, answerCount),
+            selectedAnswers,
+        );
         updateGroup({
             contentData: buildContentData(nextPrompt),
             questions: nextQuestions,
@@ -158,15 +189,31 @@ export const ListeningMultiSelectEditor = ({
 
     const updateAnswerCount = (count?: number | null) => {
         const nextAnswerCount = normalizeAnswerCount(count);
+        const nextSelectedAnswers = normalizeSelectedAnswers(
+            selectedAnswers,
+            sharedOptions.length,
+            nextAnswerCount,
+        );
         updateGroup({
-            questions: normalizeQuestions(workingQuestions, sharedOptions, nextAnswerCount),
+            questions: applySelectedAnswers(
+                normalizeQuestions(workingQuestions, sharedOptions, nextAnswerCount),
+                nextSelectedAnswers,
+            ),
         });
     };
 
     const updateOptions = (nextOptions: CreateQuestionOptionDto[]) => {
         const normalizedCount = normalizeAnswerCount(workingQuestions.length || MIN_ANSWER_COUNT);
+        const nextSelectedAnswers = normalizeSelectedAnswers(
+            selectedAnswers,
+            nextOptions.length,
+            normalizedCount,
+        );
         updateGroup({
-            questions: normalizeQuestions(workingQuestions, nextOptions, normalizedCount),
+            questions: applySelectedAnswers(
+                normalizeQuestions(workingQuestions, nextOptions, normalizedCount),
+                nextSelectedAnswers,
+            ),
         });
     };
 
@@ -189,14 +236,64 @@ export const ListeningMultiSelectEditor = ({
         updateOptions(nextOptions);
     };
 
-    const selectedAnswers = workingQuestions.map((question) => normalizeAnswer(question.correctAnswer));
+    const updateCorrectAnswers = (values: string[]) => {
+        const nextSelectedAnswers = normalizeSelectedAnswers(
+            values,
+            sharedOptions.length,
+            answerCount,
+        );
+
+        updateGroup({
+            questions: applySelectedAnswers(
+                normalizeQuestions(workingQuestions, sharedOptions, answerCount),
+                nextSelectedAnswers,
+            ),
+        });
+    };
+
+    const toggleCorrectAnswer = (answer: string) => {
+        const normalized = normalizeAnswer(answer);
+        if (!normalized) return;
+
+        const isSelected = selectedAnswers.includes(normalized);
+        if (!isSelected && selectedAnswers.length >= answerCount) {
+            return;
+        }
+
+        const nextSelectedAnswers = isSelected
+            ? selectedAnswers.filter((item) => item !== normalized)
+            : [...selectedAnswers, normalized];
+
+        updateCorrectAnswers(nextSelectedAnswers);
+    };
 
     return (
         <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px', marginBottom: '8px' }}>
             <div style={{ fontWeight: 700, color: '#1e40af', marginBottom: '8px', fontSize: '0.8125rem' }}>
-                Multiple Choice (1 câu hỏi - nhiều đáp án)
+                MCQ_CHOOSE_N - 1 block option chung, N ô đáp án
             </div>
 
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '10px' }}>
+                <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#334155' }}>Số ô đáp án / số câu</span>
+                <InputNumber
+                    value={answerCount}
+                    min={MIN_ANSWER_COUNT}
+                    max={MAX_ANSWER_COUNT}
+                    size="middle"
+                    style={{ width: 110 }}
+                    onChange={updateAnswerCount}
+                />
+                <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                    Mỗi ô tương ứng 1 question number: Q{groupStartNum} - Q{groupStartNum + answerCount - 1}
+                </span>
+                <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                    Chọn đúng {answerCount} đáp án bằng ô vuông cạnh mỗi lựa chọn.
+                </span>
+            </div>
+
+            <div style={{ fontWeight: 600, color: '#334155', fontSize: '0.8125rem', marginBottom: '6px' }}>
+                Câu hỏi chung
+            </div>
             <Input.TextArea
                 value={prompt}
                 placeholder="Nhập câu hỏi chung (VD: Which THREE topics are they interested in...?)"
@@ -212,24 +309,9 @@ export const ListeningMultiSelectEditor = ({
                 onChange={(event) => updatePrompt(event.target.value)}
             />
 
-            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '10px' }}>
-                <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#334155' }}>Số câu trả lời</span>
-                <InputNumber
-                    value={answerCount}
-                    min={MIN_ANSWER_COUNT}
-                    max={MAX_ANSWER_COUNT}
-                    size="middle"
-                    style={{ width: 110 }}
-                    onChange={updateAnswerCount}
-                />
-                <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                    Hệ thống tạo Q{groupStartNum} - Q{groupStartNum + answerCount - 1}
-                </span>
-            </div>
-
             <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '10px', marginBottom: '10px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                    <span style={{ fontWeight: 600, color: '#334155', fontSize: '0.8125rem' }}>Danh sách lựa chọn (A-Z)</span>
+                    <span style={{ fontWeight: 600, color: '#334155', fontSize: '0.8125rem' }}>Danh sách lựa chọn chung</span>
                     <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Số lượng</span>
                     <InputNumber
                         value={sharedOptions.length}
@@ -240,12 +322,43 @@ export const ListeningMultiSelectEditor = ({
                         onChange={updateOptionCount}
                     />
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <div style={{ marginBottom: '10px', padding: '10px', border: '1px solid #dbeafe', background: '#eff6ff', borderRadius: '8px' }}>
+                    <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', marginBottom: '8px' }}>
+                        {questionRangeLabel}
+                    </div>
+                    <div style={{ color: '#1e293b', fontSize: '0.9375rem', lineHeight: 1.5, fontStyle: prompt.trim() ? 'normal' : 'italic' }}>
+                        {prompt.trim() || `Nhập prompt chung cho ${answerCount} ô đáp án của nhóm này.`}
+                    </div>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     {sharedOptions.map((option, optionIdx) => (
                         <div key={optionIdx} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                            <Tag color="blue" style={{ marginInlineEnd: 0, minWidth: 30, textAlign: 'center' }}>
+                            <Tag color="blue" style={{ marginInlineEnd: 0, minWidth: 30, textAlign: 'center', borderRadius: '999px' }}>
                                 {toLetter(optionIdx)}
                             </Tag>
+                            <button
+                                type="button"
+                                style={{
+                                    width: '16px',
+                                    height: '16px',
+                                    border: selectedAnswers.includes(toLetter(optionIdx)) ? '1px solid #2563eb' : '1px solid #94a3b8',
+                                    borderRadius: '2px',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    background: selectedAnswers.includes(toLetter(optionIdx)) ? '#dbeafe' : '#fff',
+                                    flexShrink: 0,
+                                    color: '#1d4ed8',
+                                    fontSize: '11px',
+                                    fontWeight: 700,
+                                    cursor: selectedAnswers.includes(toLetter(optionIdx)) || selectedAnswers.length < answerCount ? 'pointer' : 'not-allowed',
+                                    padding: 0,
+                                }}
+                                onClick={() => toggleCorrectAnswer(toLetter(optionIdx))}
+                                title={`Chọn đáp án ${toLetter(optionIdx)}`}
+                            >
+                                {selectedAnswers.includes(toLetter(optionIdx)) ? '✓' : ''}
+                            </button>
                             <Input
                                 value={option.optionText}
                                 placeholder={`Nội dung lựa chọn ${toLetter(optionIdx)}`}
@@ -261,64 +374,26 @@ export const ListeningMultiSelectEditor = ({
                         </div>
                     ))}
                 </div>
-            </div>
-
-            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '10px' }}>
-                <div style={{ fontWeight: 600, color: '#334155', fontSize: '0.8125rem', marginBottom: '8px' }}>
-                    Chọn đáp án cho từng câu
+                <div style={{ marginTop: '10px', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    {selectedAnswers.length > 0 ? selectedAnswers.map((answer) => (
+                        <Tag key={answer} color="blue" style={{ marginInlineEnd: 0 }}>
+                            [{answer}]
+                        </Tag>
+                    )) : (
+                        <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Chưa chọn đáp án</span>
+                    )}
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {workingQuestions.map((question, questionIdx) => (
-                        <div key={questionIdx} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                            <Tag color="blue" style={{ marginInlineEnd: 0 }}>
-                                Q{question.questionNumber || groupStartNum + questionIdx}
+                <div style={{ marginTop: '8px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    {Array.from({ length: answerCount }, (_, index) => {
+                        const questionNumber = groupStartNum + index;
+                        const answer = selectedAnswers[index];
+                        return (
+                            <Tag key={questionNumber} style={{ marginInlineEnd: 0 }}>
+                                Q{questionNumber}: {answer ?? '—'}
                             </Tag>
-                            <Select
-                                value={normalizeAnswer(question.correctAnswer)}
-                                size="middle"
-                                placeholder="Chọn đáp án"
-                                style={{ width: 140 }}
-                                options={sharedOptions.map((_, optionIdx) => {
-                                    const letter = toLetter(optionIdx);
-                                    const usedByAnother = selectedAnswers.some((answer, idx) => idx !== questionIdx && answer === letter);
-                                    return { label: letter, value: letter, disabled: usedByAnother };
-                                })}
-                                onChange={(value) => {
-                                    const nextQuestions = [...workingQuestions];
-                                    nextQuestions[questionIdx] = {
-                                        ...question,
-                                        content: '',
-                                        correctAnswer: value,
-                                        options: cloneOptions(sharedOptions),
-                                    };
-                                    updateGroup({ questions: nextQuestions });
-                                }}
-                            />
-                            {workingQuestions.length > MIN_ANSWER_COUNT && (
-                                <Button
-                                    type="text"
-                                    danger
-                                    icon={<MinusCircleOutlined />}
-                                    onClick={() => {
-                                        const nextQuestions = workingQuestions.filter((_, index) => index !== questionIdx);
-                                        updateGroup({
-                                            questions: normalizeQuestions(nextQuestions, sharedOptions, nextQuestions.length),
-                                        });
-                                    }}
-                                />
-                            )}
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
-                <Button
-                    type="default"
-                    size="small"
-                    icon={<PlusOutlined />}
-                    style={{ marginTop: '10px', height: '32px' }}
-                    onClick={() => updateAnswerCount(workingQuestions.length + 1)}
-                >
-                    Thêm câu trả lời
-                </Button>
             </div>
         </div>
     );

@@ -35,6 +35,7 @@ public sealed record ListeningPartDto(
     int? PartNumber,
     string AudioUrl,
     string? ContextDescription,
+    string? TranscriptData,
     IReadOnlyList<QuestionGroupDto> QuestionGroups);
 
 public sealed record WritingTaskDto(
@@ -79,5 +80,6 @@ public sealed record QuestionDto(
 public sealed record QuestionOptionDto(
     Guid Id,
     string OptionText,
+    string? ImageUrl,
     bool IsCorrect,
     int? OrderIndex);

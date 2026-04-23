@@ -4,8 +4,13 @@ import logging
 import os
 import re
 import tempfile
+import time
+import unicodedata
 from contextlib import asynccontextmanager
+from functools import lru_cache
 from typing import Literal
+from urllib.parse import urlparse
+from urllib.request import urlopen
 
 import instructor
 import ollama
@@ -15,8 +20,10 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from faster_whisper import WhisperModel
+from google import genai as google_genai
+from google.genai import types as google_genai_types
 from openai import OpenAI
-from pdf_parser import parse_ielts_pdf, parsed_passage_to_group
+from pdf_parser import OPTION_REQUIRED_TYPES, ParsedOption, parse_ielts_pdf, parsed_passage_to_group
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
@@ -24,8 +31,25 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3:8b")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
+GEMINI_ALIGNMENT_MODEL = os.getenv("GEMINI_ALIGNMENT_MODEL", "gemini-2.5-flash").strip()
+LISTENING_ALIGNMENT_USE_GEMINI = os.getenv("LISTENING_ALIGNMENT_USE_GEMINI", "false").strip().lower() in {"1", "true", "yes", "on"}
+GEMINI_ALIGNMENT_FALLBACK_MODELS = [
+    model.strip()
+    for model in os.getenv("GEMINI_ALIGNMENT_FALLBACK_MODELS", "").split(",")
+    if model.strip()
+]
+GEMINI_ALIGNMENT_MODEL_CANDIDATES = list(
+    dict.fromkeys([
+        model
+        for model in [GEMINI_ALIGNMENT_MODEL, *GEMINI_ALIGNMENT_FALLBACK_MODELS]
+        if model
+    ])
+)
 
 whisper_model: WhisperModel | None = None
+gemini_client: google_genai.Client | None = None
+gemini_alignment_quota_cooldown_until = 0.0
 
 instructor_client = instructor.from_openai(
     OpenAI(base_url="http://localhost:11434/v1", api_key="ollama"),
@@ -35,11 +59,13 @@ instructor_client = instructor.from_openai(
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global whisper_model
+    global whisper_model, gemini_client
     model_size = os.getenv("WHISPER_MODEL_SIZE", "base")
     whisper_model = WhisperModel(model_size, device="cpu", compute_type="int8")
+    gemini_client = google_genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
     yield
     whisper_model = None
+    gemini_client = None
 
 
 app = FastAPI(title="AI Scoring Service", version="2.0.0", lifespan=lifespan)
@@ -261,45 +287,10 @@ def generate_reading_exam_from_markdown(markdown_text: str) -> ReadingExam:
 
 @app.post("/api/ai/generate-reading-exam")
 async def generate_reading_exam(file: UploadFile = File(...)):
-    if not file.filename or not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Only PDF files are accepted. Received: {file.filename}",
-        )
-
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-        content = await file.read()
-        tmp.write(content)
-        tmp_path = tmp.name
-
-    try:
-        logger.info("Converting PDF to Markdown with Docling: %s", file.filename)
-        markdown_text = await asyncio.to_thread(convert_pdf_to_markdown, tmp_path)
-
-        if not markdown_text.strip():
-            raise HTTPException(status_code=400, detail="PDF contains no extractable text.")
-
-        logger.info("Markdown extracted: %d chars. Cleaning garbage...", len(markdown_text))
-        cleaned = clean_garbage_text(markdown_text)
-        logger.info(
-            "After cleaning: %d chars (removed %d chars of garbage)",
-            len(cleaned),
-            len(markdown_text) - len(cleaned),
-        )
-
-        logger.info("Calling Instructor + Ollama (model=%s) ...", OLLAMA_MODEL)
-        exam_data = await asyncio.to_thread(generate_reading_exam_from_markdown, markdown_text)
-
-        return exam_data.model_dump()
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error("Failed to generate reading exam: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"AI processing failed: {str(e)}")
-    finally:
-        if os.path.exists(tmp_path):
-            os.unlink(tmp_path)
+    raise HTTPException(
+        status_code=410,
+        detail="PDF exam generation has been disabled.",
+    )
 
 
 
@@ -324,6 +315,1556 @@ class ScoreResponse(BaseModel):
     answer_id: str
     overall_band: float
     rubrics: list[RubricScore]
+
+
+class ListeningTranscriptRequest(BaseModel):
+    audio_url: str
+    language: str | None = "en"
+
+
+class ListeningTranscriptSegment(BaseModel):
+    start_time: float
+    end_time: float | None = None
+    text: str
+
+
+class ListeningTranscriptResponse(BaseModel):
+    segments: list[ListeningTranscriptSegment]
+    transcript_text: str
+
+
+class ListeningAlignmentQuestion(BaseModel):
+    question_number: int
+    question_text: str | None = None
+    correct_answer: str | None = None
+    correct_option_texts: list[str] = Field(default_factory=list)
+    context_text: str | None = None
+    group_type: str | None = None
+
+
+class ListeningTranscriptAlignmentRequest(BaseModel):
+    transcript_segments: list[ListeningTranscriptSegment]
+    questions: list[ListeningAlignmentQuestion]
+
+
+class ListeningTranscriptQuestionAlignment(BaseModel):
+    question_number: int
+    segment_indexes: list[int] = Field(default_factory=list)
+    confidence: Literal["high", "medium", "low"] | None = None
+
+
+class ListeningTranscriptAlignmentResponse(BaseModel):
+    alignments: list[ListeningTranscriptQuestionAlignment]
+
+
+class ListeningAlignmentSelection(BaseModel):
+    question_number: int
+    candidate_id: int | None = None
+    confidence: Literal["high", "medium", "low"] | None = None
+
+
+class ListeningAlignmentSelectionBatch(BaseModel):
+    selections: list[ListeningAlignmentSelection]
+
+
+class GeminiAlignmentQuotaExhaustedError(RuntimeError):
+    pass
+
+
+MAP_LOCATION_CUE_PHRASES = [
+    "you ll see",
+    "you can see",
+    "if you want to go to",
+    "walk along",
+    "you ll come to",
+    "the last thing to mention is",
+    "there s a covered picnic",
+    "there s one near",
+    "if you take the side path",
+    "cross the bridge",
+    "that goes to the house",
+    "the building was originally",
+]
+
+MAP_LOCATION_TOKENS = {
+    "maze",
+    "cafe",
+    "barn",
+    "house",
+    "bridge",
+    "picnic",
+    "scarecrow",
+    "path",
+    "field",
+    "yard",
+    "pool",
+    "car",
+    "park",
+    "schoolhouse",
+    "workshop",
+    "workshops",
+    "farmyard",
+}
+
+
+ALIGNMENT_STOPWORDS = {
+    "the", "and", "that", "this", "with", "from", "into", "your", "their", "there", "about", "would", "could",
+    "should", "have", "has", "had", "were", "was", "been", "being", "while", "where", "when", "which", "what",
+    "then", "than", "them", "they", "those", "these", "just", "also", "only", "more", "most", "very",
+    "much", "many", "some", "such", "over", "under", "after", "before", "because", "through", "during", "between",
+    "each", "other", "another", "into", "onto", "upon", "across", "around", "within", "without", "against", "among",
+    "student", "students", "answer", "question", "questions", "listening", "part", "section",
+}
+
+ALIGNMENT_INTRO_PHRASES = [
+    "i ll tell you something about",
+    "let s look at",
+    "a word about",
+    "before you hear",
+    "now listen",
+    "listen carefully",
+    "you will hear",
+    "first you have some time",
+    "you have some time to look at",
+    "now turn to section",
+    "that is the end of section",
+    "you now have half a minute",
+    "hi great to see you",
+    "i m jodi",
+    "i ll be looking after both of you",
+]
+
+QUESTION_NUMBER_WORDS = {
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+    "eleven": 11,
+    "twelve": 12,
+    "thirteen": 13,
+    "fourteen": 14,
+    "fifteen": 15,
+    "sixteen": 16,
+    "seventeen": 17,
+    "eighteen": 18,
+    "nineteen": 19,
+    "twenty": 20,
+    "twentyone": 21,
+    "twentytwo": 22,
+    "twentythree": 23,
+    "twentyfour": 24,
+    "twentyfive": 25,
+    "twentysix": 26,
+    "twentyseven": 27,
+    "twentyeight": 28,
+    "twentynine": 29,
+    "thirty": 30,
+    "thirtyone": 31,
+    "thirtytwo": 32,
+    "thirtythree": 33,
+    "thirtyfour": 34,
+    "thirtyfive": 35,
+    "thirtysix": 36,
+    "thirtyseven": 37,
+    "thirtyeight": 38,
+    "thirtynine": 39,
+    "forty": 40,
+}
+
+SECTION_NUMBER_WORDS = {
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+}
+
+LISTENING_SECTION_TRANSITION_MARKERS = {
+    2: [
+        "now turn to section two",
+        "turn to section two",
+        "now turn to section 2",
+        "turn to section 2",
+    ],
+    3: [
+        "now turn to section three",
+        "turn to section three",
+        "now turn to section 3",
+        "turn to section 3",
+    ],
+    4: [
+        "now turn to section four",
+        "turn to section four",
+        "now turn to section 4",
+        "turn to section 4",
+    ],
+}
+
+
+def normalize_alignment_text(value: str | None) -> str:
+    normalized = unicodedata.normalize("NFD", value or "")
+    normalized = "".join(char for char in normalized if unicodedata.category(char) != "Mn")
+    normalized = normalized.lower()
+    normalized = re.sub(r"[^a-z0-9.%/$&+' -]+", " ", normalized)
+    normalized = re.sub(r"\s+", " ", normalized)
+    return normalized.strip()
+
+
+def build_alignment_token_variants(token: str) -> set[str]:
+    normalized = normalize_alignment_text(token)
+    if not normalized or " " in normalized:
+        return set()
+
+    variants = {normalized}
+
+    if normalized.endswith("ies") and len(normalized) > 4:
+        variants.add(normalized[:-3] + "y")
+
+    if normalized.endswith("ments") and len(normalized) > 7:
+        variants.add(normalized[:-5])
+        variants.add(normalized[:-1])
+
+    if normalized.endswith("ment") and len(normalized) > 6:
+        variants.add(normalized[:-4])
+
+    if normalized.endswith("ing") and len(normalized) > 5:
+        stem = normalized[:-3]
+        variants.add(stem)
+        variants.add(stem + "e")
+
+    if normalized.endswith("ed") and len(normalized) > 4:
+        stem = normalized[:-2]
+        variants.add(stem)
+        variants.add(stem + "e")
+
+    if normalized.endswith("es") and len(normalized) > 4:
+        variants.add(normalized[:-2])
+
+    if normalized.endswith("s") and len(normalized) > 3:
+        variants.add(normalized[:-1])
+
+    return {variant for variant in variants if len(variant) >= 2}
+
+
+def extract_alignment_tokens(text: str | None) -> set[str]:
+    normalized = normalize_alignment_text(text)
+    if not normalized:
+        return set()
+
+    tokens: set[str] = set()
+    for token in normalized.split(" "):
+        if not token:
+            continue
+        tokens.update(build_alignment_token_variants(token))
+
+    return tokens
+
+
+def parse_question_number_token(token: str | None) -> int | None:
+    cleaned = re.sub(r"[^a-z0-9]", "", (token or "").lower())
+    if not cleaned:
+        return None
+
+    if cleaned.isdigit():
+        return int(cleaned)
+
+    return QUESTION_NUMBER_WORDS.get(cleaned)
+
+
+def parse_number_phrase_token(token: str | None) -> int | None:
+    cleaned = normalize_alignment_text(token)
+    if not cleaned:
+        return None
+
+    direct = parse_question_number_token(cleaned)
+    if direct is not None:
+        return direct
+
+    compact = re.sub(r"[^a-z0-9]", "", cleaned)
+    return parse_question_number_token(compact)
+
+
+def extract_question_range_from_text(text: str | None) -> tuple[int, int] | None:
+    normalized = normalize_alignment_text(text)
+    if not normalized:
+        return None
+
+    match = re.search(
+        r"\bquestions?\s+([a-z0-9 -]+?)\s*(?:to|-)\s*([a-z0-9 -]+)\b",
+        normalized,
+    )
+    if not match:
+        return None
+
+    start_question = parse_number_phrase_token(match.group(1))
+    end_question = parse_number_phrase_token(match.group(2))
+    if start_question is None or end_question is None or start_question > end_question:
+        return None
+
+    return start_question, end_question
+
+
+def extract_section_number_from_text(text: str | None) -> int | None:
+    normalized = normalize_alignment_text(text)
+    if not normalized:
+        return None
+
+    match = re.search(r"\bsection\s+([a-z0-9 -]+)\b", normalized)
+    if not match:
+        return None
+
+    token = match.group(1).strip()
+    compact = re.sub(r"\s+", " ", token)
+    if compact in SECTION_NUMBER_WORDS:
+        return SECTION_NUMBER_WORDS[compact]
+
+    parsed = parse_number_phrase_token(compact)
+    if parsed is None or parsed < 1 or parsed > 4:
+        return None
+
+    return parsed
+
+
+def detect_question_range_scopes(segments: list[ListeningTranscriptSegment]) -> list[dict]:
+    raw_events: list[tuple[int, int, int]] = []
+
+    for segment_index, segment in enumerate(segments):
+        question_range = extract_question_range_from_text(segment.text)
+        if question_range is None:
+            continue
+
+        raw_events.append((segment_index, question_range[0], question_range[1]))
+
+    if not raw_events:
+        return []
+
+    compressed_events: list[tuple[int, int, int]] = []
+    for event in raw_events:
+        if compressed_events and compressed_events[-1][1:] == event[1:]:
+            compressed_events[-1] = event
+            continue
+
+        compressed_events.append(event)
+
+    scopes: list[dict] = []
+    for index, (segment_index, start_question, end_question) in enumerate(compressed_events):
+        next_segment_index = compressed_events[index + 1][0] if index + 1 < len(compressed_events) else len(segments)
+        start_segment_index = min(segment_index + 1, len(segments) - 1)
+        end_segment_index = min(
+            len(segments) - 1,
+            max(start_segment_index, next_segment_index - 1),
+        )
+        scopes.append({
+            "start_question": start_question,
+            "end_question": end_question,
+            "start_segment_index": start_segment_index,
+            "end_segment_index": end_segment_index,
+        })
+
+    return scopes
+
+
+def detect_section_scopes(segments: list[ListeningTranscriptSegment]) -> list[dict]:
+    raw_events: list[tuple[int, int]] = []
+
+    for segment_index, segment in enumerate(segments):
+        section_number = extract_section_number_from_text(segment.text)
+        if section_number is None:
+            continue
+
+        raw_events.append((segment_index, section_number))
+
+    if not raw_events:
+        return []
+
+    compressed_events: list[tuple[int, int]] = []
+    for event in raw_events:
+        if compressed_events and compressed_events[-1][1] == event[1]:
+            compressed_events[-1] = event
+            continue
+
+        compressed_events.append(event)
+
+    scopes: list[dict] = []
+    for index, (segment_index, section_number) in enumerate(compressed_events):
+        next_segment_index = compressed_events[index + 1][0] if index + 1 < len(compressed_events) else len(segments)
+        start_segment_index = min(segment_index + 1, len(segments) - 1)
+        end_segment_index = min(
+            len(segments) - 1,
+            max(start_segment_index, next_segment_index - 1),
+        )
+        scopes.append({
+            "section_number": section_number,
+            "start_segment_index": start_segment_index,
+            "end_segment_index": end_segment_index,
+        })
+
+    return scopes
+
+
+def find_scope_for_question(question_number: int, scopes: list[dict]) -> tuple[int, int] | None:
+    for scope in scopes:
+        if scope["start_question"] <= question_number <= scope["end_question"]:
+            return scope["start_segment_index"], scope["end_segment_index"]
+
+    return None
+
+
+def find_section_scope_for_question(question_number: int, scopes: list[dict]) -> tuple[int, int] | None:
+    target_section_number = max(1, min(4, ((question_number - 1) // 10) + 1))
+
+    for scope in scopes:
+        if scope["section_number"] == target_section_number:
+            return scope["start_segment_index"], scope["end_segment_index"]
+
+    return None
+
+
+def get_question_part_range(question_number: int) -> tuple[int, int]:
+    part_index = max(0, (question_number - 1) // 10)
+    start_question = part_index * 10 + 1
+    return start_question, start_question + 9
+
+
+def get_question_part_number(question_number: int) -> int:
+    return max(1, min(4, ((question_number - 1) // 10) + 1))
+
+
+def find_listening_section_start_index(
+    segments: list[ListeningTranscriptSegment],
+    section_number: int,
+    start_search_index: int = 0,
+) -> int | None:
+    markers = LISTENING_SECTION_TRANSITION_MARKERS.get(section_number, [])
+    normalized_segment_texts = [
+        normalize_alignment_text(segment.text)
+        for segment in segments
+    ]
+
+    for segment_index in range(start_search_index, len(segments)):
+        segment_text = normalized_segment_texts[segment_index]
+        if any(marker in segment_text for marker in markers):
+            return segment_index
+
+    for segment_index in range(start_search_index, len(segments)):
+        segment_text = normalized_segment_texts[segment_index]
+        if "turn to" in segment_text and extract_section_number_from_text(segment_text) == section_number:
+            return segment_index
+
+    section_scopes = detect_section_scopes(segments)
+    for scope in section_scopes:
+        if scope["section_number"] == section_number:
+            return max(0, scope["start_segment_index"] - 1)
+
+    return None
+
+
+def split_listening_transcript_into_parts(
+    segments: list[ListeningTranscriptSegment],
+) -> list[dict]:
+    if not segments:
+        return []
+
+    start_indexes = {1: 0}
+    search_start_index = 0
+    for section_number in (2, 3, 4):
+        start_index = find_listening_section_start_index(
+            segments,
+            section_number,
+            start_search_index=search_start_index,
+        )
+        if start_index is None:
+            raise ValueError(f"Could not locate transition marker for section {section_number}.")
+
+        start_indexes[section_number] = start_index
+        search_start_index = start_index + 1
+
+    ordered_start_indexes = [
+        start_indexes[1],
+        start_indexes[2],
+        start_indexes[3],
+        start_indexes[4],
+    ]
+    if ordered_start_indexes != sorted(ordered_start_indexes) or len(set(ordered_start_indexes)) != 4:
+        raise ValueError("Listening section boundaries are not strictly increasing.")
+
+    parts: list[dict] = []
+    for part_number, global_start_index in enumerate(ordered_start_indexes, start=1):
+        global_end_index = (
+            ordered_start_indexes[part_number]
+            if part_number < 4
+            else len(segments)
+        )
+        parts.append({
+            "part_number": part_number,
+            "global_start_index": global_start_index,
+            "segments": segments[global_start_index:global_end_index],
+        })
+
+    return parts
+
+
+def iter_exception_chain(ex: Exception):
+    current: Exception | None = ex
+    seen: set[int] = set()
+
+    while current is not None and id(current) not in seen:
+        yield current
+        seen.add(id(current))
+        next_error = current.__cause__ or current.__context__
+        current = next_error if isinstance(next_error, Exception) else None
+
+
+def extract_quota_retry_delay_seconds(ex: Exception) -> float | None:
+    patterns = [
+        r"retry in\s+([0-9]+(?:\.[0-9]+)?)s",
+        r"'retrydelay':\s*'([0-9]+)s'",
+        r'"retryDelay":\s*"([0-9]+)s"',
+    ]
+
+    for error in iter_exception_chain(ex):
+        message = str(error)
+        for pattern in patterns:
+            match = re.search(pattern, message, flags=re.IGNORECASE)
+            if match:
+                try:
+                    return max(1.0, float(match.group(1)))
+                except ValueError:
+                    continue
+
+    return None
+
+
+def is_gemini_quota_exhausted_error(ex: Exception) -> bool:
+    quota_markers = [
+        "resource_exhausted",
+        "quota exceeded",
+        "exceeded your current quota",
+        "generate_requestsperday",
+        "generatecontentinputtokenspermodelperday",
+        "retrydelay",
+    ]
+
+    for error in iter_exception_chain(ex):
+        if getattr(error, "status_code", None) == 429:
+            return True
+
+        message = str(error).lower()
+        if any(marker in message for marker in quota_markers):
+            return True
+
+    return False
+
+
+def is_gemini_alignment_quota_on_cooldown() -> bool:
+    return gemini_alignment_quota_cooldown_until > time.monotonic()
+
+
+def set_gemini_alignment_quota_cooldown(delay_seconds: float | None) -> None:
+    global gemini_alignment_quota_cooldown_until
+
+    if delay_seconds is None:
+        delay_seconds = 45.0
+
+    gemini_alignment_quota_cooldown_until = max(
+        gemini_alignment_quota_cooldown_until,
+        time.monotonic() + delay_seconds,
+    )
+
+
+def split_alignment_answer_candidates(value: str | None) -> list[str]:
+    return [
+        candidate
+        for candidate in (normalize_alignment_text(item) for item in (value or "").split("|"))
+        if len(candidate) >= 2
+    ]
+
+
+def get_alignment_answer_candidates(question: ListeningAlignmentQuestion) -> list[str]:
+    candidates = split_alignment_answer_candidates(question.correct_answer)
+    candidates.extend(
+        candidate
+        for candidate in (normalize_alignment_text(item) for item in question.correct_option_texts)
+        if len(candidate) >= 2
+    )
+    return list(dict.fromkeys(candidates))
+
+
+def get_alignment_evidence_tokens(question: ListeningAlignmentQuestion) -> list[str]:
+    tokens: set[str] = set()
+
+    for candidate in get_alignment_answer_candidates(question):
+        tokens.update(extract_alignment_tokens(candidate))
+
+    for option_text in question.correct_option_texts or []:
+        tokens.update(extract_alignment_tokens(option_text))
+
+    return [
+        token
+        for token in tokens
+        if len(token) >= 3 and token not in ALIGNMENT_STOPWORDS
+    ]
+
+
+def get_alignment_keyword_tokens(question: ListeningAlignmentQuestion) -> list[str]:
+    question_tokens = [
+        token
+        for token in extract_alignment_tokens(question.question_text)
+        if len(token) >= 3 and token not in ALIGNMENT_STOPWORDS
+    ]
+
+    if len(question_tokens) >= 2:
+        return question_tokens
+
+    fallback_tokens = [
+        token
+        for token in extract_alignment_tokens(question.context_text)
+        if len(token) >= 3 and token not in ALIGNMENT_STOPWORDS
+    ]
+
+    return list(dict.fromkeys([*question_tokens, *fallback_tokens]))
+
+
+def get_alignment_anchor_phrases(question: ListeningAlignmentQuestion) -> list[str]:
+    phrases: list[str] = []
+
+    for source in [question.question_text or "", question.context_text or ""]:
+        if not source.strip():
+            continue
+
+        for line in source.splitlines():
+            normalized_line = normalize_alignment_text(line)
+            if not normalized_line or len(normalized_line) < 3:
+                continue
+
+            phrases.append(normalized_line)
+
+        normalized_source = normalize_alignment_text(source)
+        if normalized_source and len(normalized_source) >= 3:
+            phrases.append(normalized_source)
+
+    deduped_phrases: list[str] = []
+    seen: set[str] = set()
+    for phrase in phrases:
+        if phrase in seen:
+            continue
+        if len(phrase) > 140:
+            continue
+
+        seen.add(phrase)
+        deduped_phrases.append(phrase)
+
+    return deduped_phrases[:8]
+
+
+def alignment_text_contains_candidate(segment_text: str, candidate: str) -> bool:
+    if not candidate:
+        return False
+
+    if len(candidate) <= 3:
+        return re.search(rf"(^|[^a-z0-9]){re.escape(candidate)}([^a-z0-9]|$)", segment_text) is not None
+
+    return candidate in segment_text
+
+
+def looks_like_introductory_alignment_segment(raw_text: str) -> bool:
+    normalized = normalize_alignment_text(raw_text)
+    return any(phrase in normalized for phrase in ALIGNMENT_INTRO_PHRASES)
+
+
+def score_alignment_window(
+    window_text: str,
+    raw_text: str,
+    anchor_phrases: list[str],
+    answer_candidates: list[str],
+    evidence_tokens: list[str],
+    keyword_tokens: list[str],
+    group_type: str | None = None,
+) -> float:
+    score = 0.0
+    normalized_window_tokens = extract_alignment_tokens(window_text)
+    evidence_match_count = 0
+    has_direct_candidate_match = False
+    requires_direct_evidence = bool(answer_candidates or evidence_tokens)
+    keyword_match_count = 0
+    strong_keyword_match_count = 0
+    direct_anchor_match_count = 0
+    anchor_match_count = 0
+    normalized_group_type = (group_type or "").strip().upper()
+
+    for phrase in anchor_phrases:
+        if alignment_text_contains_candidate(window_text, phrase):
+            score += 26 if len(phrase) >= 10 else 20
+            direct_anchor_match_count += 1
+            anchor_match_count += 1
+            continue
+
+        phrase_tokens = [token for token in phrase.split(" ") if len(token) >= 3]
+        if not phrase_tokens:
+            continue
+
+        matched_tokens = sum(
+            1
+            for token in phrase_tokens
+            if any(variant in normalized_window_tokens for variant in build_alignment_token_variants(token))
+        )
+        if matched_tokens == len(phrase_tokens):
+            score += 12 if len(phrase_tokens) >= 3 else 8
+            anchor_match_count += 1
+        elif matched_tokens >= max(1, int(len(phrase_tokens) * 0.6 + 0.5)):
+            score += 4
+            anchor_match_count += 1
+
+    for candidate in answer_candidates:
+        if alignment_text_contains_candidate(window_text, candidate):
+            score += 18 if len(candidate) >= 8 else 14
+            has_direct_candidate_match = True
+            continue
+
+        candidate_tokens = [token for token in candidate.split(" ") if token]
+        if len(candidate_tokens) >= 2:
+            matched_tokens = sum(
+                1
+                for token in candidate_tokens
+                if any(variant in normalized_window_tokens for variant in build_alignment_token_variants(token))
+            )
+            if matched_tokens == len(candidate_tokens):
+                score += 10
+                has_direct_candidate_match = True
+            elif matched_tokens >= max(2, int(len(candidate_tokens) * 0.66 + 0.5)):
+                score += 5
+
+    for token in evidence_tokens:
+        if token in normalized_window_tokens:
+            evidence_match_count += 1
+            score += 4 if len(token) >= 6 else 3
+
+    for token in keyword_tokens:
+        if token in normalized_window_tokens:
+            keyword_match_count += 1
+            if len(token) >= 6:
+                strong_keyword_match_count += 1
+
+            if requires_direct_evidence:
+                score += 0.25 if len(token) >= 6 else 0.1
+            else:
+                score += 1.25 if len(token) >= 6 else 0.75
+
+    if (normalized_group_type.startswith("MATCHING") or normalized_group_type.startswith("MCQ")) and direct_anchor_match_count > 0:
+        score += max(0, window_text.count(" ") // 6) * 0.75
+
+    if not requires_direct_evidence:
+        if strong_keyword_match_count >= 1:
+            score += 2.25
+        if keyword_match_count >= 2:
+            score += 1.5
+        elif keyword_match_count == 1 and strong_keyword_match_count == 0:
+            score += 0.5
+
+    if requires_direct_evidence and not has_direct_candidate_match and evidence_match_count == 0:
+        # Some multiple-choice answers are paraphrased rather than spoken verbatim.
+        # Allow strong question-text overlap to survive as a lower-confidence candidate.
+        if direct_anchor_match_count >= 1 or anchor_match_count >= 2:
+            score += 3.0
+        elif strong_keyword_match_count >= 1 and keyword_match_count >= 2:
+            score += 1.5
+        else:
+            return 0.0
+
+    if looks_like_introductory_alignment_segment(raw_text):
+        if has_direct_candidate_match:
+            score -= 2
+        elif evidence_match_count > 0:
+            score -= 8
+        else:
+            score -= 18
+
+    if not requires_direct_evidence and not has_direct_candidate_match and evidence_match_count == 0 and score < 3.0:
+        return 0.0
+
+    if score <= 0:
+        return 0.0
+
+    return score
+
+
+def format_alignment_time_label(seconds: float | None) -> str:
+    total_seconds = max(0, int(seconds or 0))
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+    remaining_seconds = total_seconds % 60
+
+    if hours > 0:
+        return f"{hours:02d}:{minutes:02d}:{remaining_seconds:02d}"
+
+    return f"{minutes:02d}:{remaining_seconds:02d}"
+
+
+def build_alignment_candidate_windows(
+    segments: list[ListeningTranscriptSegment],
+    question: ListeningAlignmentQuestion,
+    allowed_segment_range: tuple[int, int] | None = None,
+) -> list[dict]:
+    normalized_segment_texts = [normalize_alignment_text(segment.text) for segment in segments]
+    anchor_phrases = get_alignment_anchor_phrases(question)
+    answer_candidates = get_alignment_answer_candidates(question)
+    evidence_tokens = get_alignment_evidence_tokens(question)
+    keyword_tokens = get_alignment_keyword_tokens(question)
+    normalized_group_type = (question.group_type or "").strip().upper()
+
+    if not anchor_phrases and not answer_candidates and not evidence_tokens and not keyword_tokens:
+        return []
+
+    candidates: list[dict] = []
+    allowed_start_index = allowed_segment_range[0] if allowed_segment_range else 0
+    allowed_end_index = allowed_segment_range[1] if allowed_segment_range else len(segments) - 1
+    if normalized_group_type.startswith("MATCHING") or normalized_group_type.startswith("MCQ"):
+        max_window_size = 4
+    elif answer_candidates or evidence_tokens:
+        max_window_size = 2
+    else:
+        max_window_size = 3
+
+    for start_index in range(allowed_start_index, allowed_end_index + 1):
+        max_end_index = min(allowed_end_index, start_index + max_window_size - 1)
+        for end_index in range(start_index, max_end_index + 1):
+            window_text = " ".join(normalized_segment_texts[start_index:end_index + 1]).strip()
+            raw_text = " ".join(
+                segment.text.strip()
+                for segment in segments[start_index:end_index + 1]
+                if segment.text and segment.text.strip()
+            ).strip()
+            score = score_alignment_window(
+                window_text,
+                raw_text,
+                anchor_phrases,
+                answer_candidates,
+                evidence_tokens,
+                keyword_tokens,
+                normalized_group_type,
+            )
+            if score <= 0:
+                continue
+
+            # Prefer the shortest precise snippet when scores are otherwise similar.
+            score -= (end_index - start_index) * 0.35
+            if score <= 0:
+                continue
+
+            candidates.append({
+                "segment_indexes": list(range(start_index, end_index + 1)),
+                "start_index": start_index,
+                "end_index": end_index,
+                "score": score,
+                "time_label": (
+                    f"{format_alignment_time_label(segments[start_index].start_time)}"
+                    f" - {format_alignment_time_label(segments[end_index].end_time or segments[end_index].start_time)}"
+                ),
+                "text": raw_text,
+            })
+
+    deduped_candidates: list[dict] = []
+    seen_keys: set[tuple[int, ...]] = set()
+    for candidate in sorted(candidates, key=lambda item: (-item["score"], len(item["segment_indexes"]), item["start_index"])):
+        key = tuple(candidate["segment_indexes"])
+        if key in seen_keys:
+            continue
+
+        seen_keys.add(key)
+        deduped_candidates.append(candidate)
+        if len(deduped_candidates) >= 12:
+            break
+
+    for index, candidate in enumerate(deduped_candidates, start=1):
+        candidate["candidate_id"] = index
+
+    return deduped_candidates
+
+
+def select_fallback_alignment_candidate(
+    candidates: list[dict],
+    *,
+    requires_direct_evidence: bool = False,
+) -> tuple[dict | None, Literal["high", "medium", "low"]]:
+    if not candidates:
+        return None, "low"
+
+    top_candidate = candidates[0]
+    second_score = candidates[1]["score"] if len(candidates) > 1 else 0.0
+    score_gap = top_candidate["score"] - second_score
+
+    if requires_direct_evidence:
+        if top_candidate["score"] < 8 and score_gap < 3:
+            return None, "low"
+    elif top_candidate["score"] < 3.5:
+        return None, "low"
+
+    if top_candidate["score"] >= 16 or score_gap >= 8:
+        return top_candidate, "high"
+
+    if top_candidate["score"] >= 9 or score_gap >= 3:
+        return top_candidate, "medium"
+
+    return top_candidate, "low"
+
+
+def build_alignment_batch_prompt(batch_questions: list[tuple[ListeningAlignmentQuestion, list[dict]]]) -> str:
+    ordered_question_numbers = [question.question_number for question, _ in batch_questions]
+    batch_start_question = min(ordered_question_numbers) if ordered_question_numbers else 0
+    batch_end_question = max(ordered_question_numbers) if ordered_question_numbers else 0
+    blocks: list[str] = []
+
+    for question, candidates in batch_questions:
+        candidate_lines = []
+        for candidate in candidates:
+            candidate_lines.append(
+                f"- Candidate {candidate['candidate_id']} | segments {candidate['segment_indexes']} | "
+                f"[{candidate['time_label']}] {candidate['text']}"
+            )
+
+        blocks.append(
+            "\n".join([
+                f"Question {question.question_number}",
+                f"Question text: {question.question_text or ''}",
+                f"Correct answer: {question.correct_answer or ''}",
+                f"Correct option texts: {', '.join(question.correct_option_texts or [])}",
+                f"Context: {question.context_text or ''}",
+                f"Group type: {question.group_type or ''}",
+                "Rule: choose exactly one single candidate segment that directly states or clearly paraphrases the evidence.",
+                "Rule: never choose greetings, instructions, introductions, scene-setting, or broad topic/setup lines.",
+                "Rule: if no candidate is reliable, return null instead of guessing.",
+                "Candidates:",
+                *candidate_lines,
+            ]).strip()
+        )
+
+    return (
+        "You are aligning IELTS Listening questions to exact transcript segments.\n"
+        f"This batch only covers questions {batch_start_question} to {batch_end_question}.\n"
+        f"Return exactly {len(batch_questions)} selections: one for every listed question number, with no omissions and no extra question numbers.\n"
+        "For each question, choose exactly one candidate_id whose single segment directly contains the spoken evidence for the correct answer.\n"
+        "Use exact wording, spelled forms, and clear paraphrases.\n"
+        "Do not choose based only on broad topic similarity.\n"
+        "Do not choose greetings, instructions, scene-setting, introductions, or summary/setup lines.\n"
+        "If one candidate mentions the topic generally and another candidate gives the actual answer detail, choose the actual answer detail.\n"
+        "Do not reuse the same candidate for multiple different questions unless the exact same spoken evidence genuinely answers both.\n"
+        "If none of the candidates clearly supports the correct answer, return null for candidate_id.\n\n"
+        + "\n\n---\n\n".join(blocks)
+    )
+
+
+async def generate_alignment_batch_with_gemini_split(
+    batch_questions: list[tuple[ListeningAlignmentQuestion, list[dict]]],
+) -> ListeningAlignmentSelectionBatch:
+    prompt = build_alignment_batch_prompt(batch_questions)
+
+    try:
+        return await asyncio.to_thread(
+            generate_alignment_batch_with_gemini,
+            prompt,
+        )
+    except GeminiAlignmentQuotaExhaustedError:
+        raise
+    except Exception:
+        if len(batch_questions) <= 4:
+            raise
+
+        midpoint = len(batch_questions) // 2
+        left_result = await generate_alignment_batch_with_gemini_split(batch_questions[:midpoint])
+        right_result = await generate_alignment_batch_with_gemini_split(batch_questions[midpoint:])
+        return ListeningAlignmentSelectionBatch(
+            selections=[
+                *left_result.selections,
+                *right_result.selections,
+            ]
+        )
+
+
+def generate_alignment_batch_with_gemini(
+    prompt: str,
+) -> ListeningAlignmentSelectionBatch:
+    if gemini_client is None:
+        raise RuntimeError("Gemini client is not configured.")
+
+    if is_gemini_alignment_quota_on_cooldown():
+        raise GeminiAlignmentQuotaExhaustedError(
+            "Gemini alignment is temporarily on quota cooldown."
+        )
+
+    last_error: Exception | None = None
+    saw_quota_error = False
+    saw_non_quota_error = False
+    for model_name in GEMINI_ALIGNMENT_MODEL_CANDIDATES:
+        try:
+            response = gemini_client.models.generate_content(
+                model=model_name,
+                contents=prompt,
+                config=google_genai_types.GenerateContentConfig(
+                    system_instruction=(
+                        "You align IELTS Listening questions to transcript candidates. "
+                        "Return only valid JSON that matches the requested schema."
+                    ),
+                    response_mime_type="application/json",
+                    response_schema=ListeningAlignmentSelectionBatch,
+                    temperature=0.1,
+                    candidate_count=1,
+                    max_output_tokens=2048,
+                ),
+            )
+            if isinstance(response.parsed, ListeningAlignmentSelectionBatch):
+                return response.parsed
+
+            if isinstance(response.text, str) and response.text.strip():
+                return ListeningAlignmentSelectionBatch.model_validate_json(response.text)
+
+            raise RuntimeError(f"Gemini model {model_name} returned no structured alignment payload.")
+        except Exception as ex:  # pragma: no cover
+            last_error = ex
+            if is_gemini_quota_exhausted_error(ex):
+                saw_quota_error = True
+                set_gemini_alignment_quota_cooldown(extract_quota_retry_delay_seconds(ex))
+                logger.warning("Gemini alignment model %s quota exhausted.", model_name)
+                continue
+
+            saw_non_quota_error = True
+            logger.exception("Gemini alignment model %s failed.", model_name)
+
+    if saw_quota_error and not saw_non_quota_error:
+        raise GeminiAlignmentQuotaExhaustedError(
+            "All Gemini alignment model candidates are quota exhausted."
+        ) from last_error
+
+    raise RuntimeError("All Gemini alignment model candidates failed.") from last_error
+
+
+def build_map_labelling_candidates(
+    segments: list[ListeningTranscriptSegment],
+    allowed_segment_range: tuple[int, int],
+) -> list[dict]:
+    normalized_segment_texts = [normalize_alignment_text(segment.text) for segment in segments]
+    allowed_start_index, allowed_end_index = allowed_segment_range
+    candidates: list[dict] = []
+
+    for start_index in range(allowed_start_index, allowed_end_index + 1):
+        max_end_index = min(allowed_end_index, start_index + 1)
+        for end_index in range(start_index, max_end_index + 1):
+            raw_text = " ".join(
+                segment.text.strip()
+                for segment in segments[start_index:end_index + 1]
+                if segment.text and segment.text.strip()
+            ).strip()
+            normalized_window_text = " ".join(normalized_segment_texts[start_index:end_index + 1]).strip()
+
+            if not raw_text or looks_like_introductory_alignment_segment(raw_text):
+                continue
+
+            score = 0.0
+            for phrase in MAP_LOCATION_CUE_PHRASES:
+                if phrase in normalized_window_text:
+                    score += 3.0
+
+            tokens = extract_alignment_tokens(normalized_window_text)
+            token_match_count = sum(1 for token in MAP_LOCATION_TOKENS if token in tokens)
+            score += token_match_count * 1.5
+
+            if "turn" in tokens and ("left" in tokens or "right" in tokens):
+                score += 1.5
+
+            if "cross" in tokens and "bridge" in tokens:
+                score += 1.5
+
+            if score < 3.5:
+                continue
+
+            score -= (end_index - start_index) * 0.25
+            candidates.append({
+                "segment_indexes": list(range(start_index, end_index + 1)),
+                "start_index": start_index,
+                "end_index": end_index,
+                "score": score,
+                "time_label": (
+                    f"{format_alignment_time_label(segments[start_index].start_time)}"
+                    f" - {format_alignment_time_label(segments[end_index].end_time or segments[end_index].start_time)}"
+                ),
+                "text": raw_text,
+            })
+
+    deduped_candidates: list[dict] = []
+    seen_keys: set[tuple[int, ...]] = set()
+    for candidate in sorted(candidates, key=lambda item: (item["start_index"], -item["score"], len(item["segment_indexes"]))):
+        key = tuple(candidate["segment_indexes"])
+        if key in seen_keys:
+            continue
+
+        seen_keys.add(key)
+        deduped_candidates.append(candidate)
+
+    return deduped_candidates
+
+
+def fill_map_labelling_gaps(
+    questions: list[ListeningAlignmentQuestion],
+    alignments_by_question: dict[int, ListeningTranscriptQuestionAlignment],
+    segments: list[ListeningTranscriptSegment],
+    question_scopes: list[dict],
+    section_scopes: list[dict],
+) -> None:
+    ordered_questions = sorted(
+        [question for question in questions if (question.group_type or "").upper() == "MAP_LABELLING"],
+        key=lambda item: item.question_number,
+    )
+    if not ordered_questions:
+        return
+
+    groups: list[list[ListeningAlignmentQuestion]] = []
+    current_group: list[ListeningAlignmentQuestion] = []
+    for question in ordered_questions:
+        if current_group and question.question_number != current_group[-1].question_number + 1:
+            groups.append(current_group)
+            current_group = []
+        current_group.append(question)
+
+    if current_group:
+        groups.append(current_group)
+
+    for group in groups:
+        scope = (
+            find_scope_for_question(group[0].question_number, question_scopes)
+            or find_section_scope_for_question(group[0].question_number, section_scopes)
+        )
+        if scope is None:
+            continue
+
+        candidate_pool = build_map_labelling_candidates(segments, scope)
+        if not candidate_pool:
+            continue
+
+        used_candidate_indexes: set[int] = set()
+
+        def mark_used_for_alignment(alignment: ListeningTranscriptQuestionAlignment) -> None:
+            aligned_indexes = set(alignment.segment_indexes)
+            for candidate_index, candidate in enumerate(candidate_pool):
+                if aligned_indexes.intersection(candidate["segment_indexes"]):
+                    used_candidate_indexes.add(candidate_index)
+
+        for question in group:
+            existing_alignment = alignments_by_question.get(question.question_number)
+            if existing_alignment and existing_alignment.segment_indexes:
+                mark_used_for_alignment(existing_alignment)
+
+        previous_end_index = scope[0] - 1
+        for index, question in enumerate(group):
+            existing_alignment = alignments_by_question.get(question.question_number)
+            if existing_alignment and existing_alignment.segment_indexes:
+                previous_end_index = max(previous_end_index, max(existing_alignment.segment_indexes))
+                continue
+
+            next_anchor_start_index: int | None = None
+            for later_question in group[index + 1:]:
+                later_alignment = alignments_by_question.get(later_question.question_number)
+                if later_alignment and later_alignment.segment_indexes:
+                    next_anchor_start_index = min(later_alignment.segment_indexes)
+                    break
+
+            chosen_candidate_index: int | None = None
+            for candidate_index, candidate in enumerate(candidate_pool):
+                if candidate_index in used_candidate_indexes:
+                    continue
+                if candidate["start_index"] <= previous_end_index:
+                    continue
+                if next_anchor_start_index is not None and candidate["start_index"] >= next_anchor_start_index:
+                    continue
+
+                chosen_candidate_index = candidate_index
+                break
+
+            if chosen_candidate_index is None:
+                continue
+
+            chosen_candidate = candidate_pool[chosen_candidate_index]
+            used_candidate_indexes.add(chosen_candidate_index)
+            previous_end_index = chosen_candidate["end_index"]
+            alignments_by_question[question.question_number] = ListeningTranscriptQuestionAlignment(
+                question_number=question.question_number,
+                segment_indexes=chosen_candidate["segment_indexes"],
+                confidence="low",
+            )
+
+
+def get_alignment_scope_key(
+    question_number: int,
+    question_scopes: list[dict],
+    section_scopes: list[dict],
+) -> tuple:
+    for scope in question_scopes:
+        if scope["start_question"] <= question_number <= scope["end_question"]:
+            return ("question-range", scope["start_question"], scope["end_question"])
+
+    target_section_number = max(1, min(4, ((question_number - 1) // 10) + 1))
+    for scope in section_scopes:
+        if scope["section_number"] == target_section_number:
+            return ("section", target_section_number)
+
+    start_question, end_question = get_question_part_range(question_number)
+    return ("part", start_question, end_question)
+
+
+def find_matching_alignment_candidate(
+    candidates: list[dict],
+    segment_indexes: list[int] | None,
+) -> dict | None:
+    if not candidates or not segment_indexes:
+        return None
+
+    target_key = tuple(segment_indexes)
+    for candidate in candidates:
+        if tuple(candidate["segment_indexes"]) == target_key:
+            return candidate
+
+    return None
+
+
+def reconcile_alignment_gaps_and_duplicates(
+    questions: list[ListeningAlignmentQuestion],
+    alignments_by_question: dict[int, ListeningTranscriptQuestionAlignment],
+    candidate_lists_by_question: dict[int, list[dict]],
+    question_scopes: list[dict],
+    section_scopes: list[dict],
+) -> None:
+    grouped_questions: dict[tuple, list[ListeningAlignmentQuestion]] = {}
+    for question in sorted(questions, key=lambda item: item.question_number):
+        if (question.group_type or "").upper() == "MAP_LABELLING":
+            continue
+        if question.question_number not in candidate_lists_by_question:
+            continue
+
+        scope_key = get_alignment_scope_key(question.question_number, question_scopes, section_scopes)
+        grouped_questions.setdefault(scope_key, []).append(question)
+
+    for ordered_questions in grouped_questions.values():
+        if len(ordered_questions) < 2:
+            continue
+
+        selected_candidates_by_question: dict[int, dict | None] = {}
+        for question in ordered_questions:
+            alignment = alignments_by_question.get(question.question_number)
+            selected_candidates_by_question[question.question_number] = find_matching_alignment_candidate(
+                candidate_lists_by_question.get(question.question_number, []),
+                alignment.segment_indexes if alignment else None,
+            )
+
+        duplicate_groups: dict[tuple[int, ...], list[ListeningAlignmentQuestion]] = {}
+        for question in ordered_questions:
+            selected_candidate = selected_candidates_by_question.get(question.question_number)
+            if selected_candidate is None:
+                continue
+
+            duplicate_groups.setdefault(tuple(selected_candidate["segment_indexes"]), []).append(question)
+
+        for duplicate_questions in duplicate_groups.values():
+            if len(duplicate_questions) <= 1:
+                continue
+
+            def duplicate_priority(item: ListeningAlignmentQuestion) -> tuple[int, float, int]:
+                alignment = alignments_by_question.get(item.question_number)
+                confidence_rank = 0
+                if alignment and alignment.confidence == "high":
+                    confidence_rank = 2
+                elif alignment and alignment.confidence == "medium":
+                    confidence_rank = 1
+
+                candidate = selected_candidates_by_question.get(item.question_number)
+                candidate_score = candidate["score"] if candidate is not None else 0.0
+                return confidence_rank, candidate_score, -item.question_number
+
+            keeper = max(duplicate_questions, key=duplicate_priority)
+            for question in duplicate_questions:
+                if question.question_number == keeper.question_number:
+                    continue
+
+                selected_candidates_by_question[question.question_number] = None
+                alignments_by_question[question.question_number] = ListeningTranscriptQuestionAlignment(
+                    question_number=question.question_number,
+                    segment_indexes=[],
+                    confidence="low",
+                )
+
+        for _ in range(3):
+            made_change = False
+
+            for index, question in enumerate(ordered_questions):
+                question_number = question.question_number
+                current_alignment = alignments_by_question.get(question_number)
+                current_candidate = selected_candidates_by_question.get(question_number)
+                if current_candidate is not None and current_alignment and current_alignment.segment_indexes:
+                    continue
+
+                candidates = candidate_lists_by_question.get(question_number, [])
+                if not candidates:
+                    continue
+
+                previous_candidate: dict | None = None
+                for previous_question in reversed(ordered_questions[:index]):
+                    previous_candidate = selected_candidates_by_question.get(previous_question.question_number)
+                    if previous_candidate is not None:
+                        break
+
+                next_candidate: dict | None = None
+                for next_question in ordered_questions[index + 1:]:
+                    next_candidate = selected_candidates_by_question.get(next_question.question_number)
+                    if next_candidate is not None:
+                        break
+
+                used_signatures = {
+                    tuple(candidate["segment_indexes"])
+                    for other_question_number, candidate in selected_candidates_by_question.items()
+                    if other_question_number != question_number and candidate is not None
+                }
+                used_segment_indexes = {
+                    segment_index
+                    for other_question_number, candidate in selected_candidates_by_question.items()
+                    if other_question_number != question_number and candidate is not None
+                    for segment_index in candidate["segment_indexes"]
+                }
+
+                best_candidate: dict | None = None
+                best_adjusted_score = float("-inf")
+                for candidate in candidates:
+                    adjusted_score = candidate["score"]
+                    candidate_signature = tuple(candidate["segment_indexes"])
+                    if candidate_signature in used_signatures:
+                        adjusted_score -= 20
+
+                    overlap_count = len(set(candidate["segment_indexes"]).intersection(used_segment_indexes))
+                    adjusted_score -= overlap_count * 4.5
+
+                    if previous_candidate is not None and candidate["end_index"] < previous_candidate["start_index"]:
+                        adjusted_score -= 4 + min(
+                            6.0,
+                            (previous_candidate["start_index"] - candidate["end_index"]) * 0.25,
+                        )
+
+                    if next_candidate is not None and candidate["start_index"] > next_candidate["end_index"]:
+                        adjusted_score -= 4 + min(
+                            6.0,
+                            (candidate["start_index"] - next_candidate["end_index"]) * 0.25,
+                        )
+
+                    if (
+                        previous_candidate is not None
+                        and next_candidate is not None
+                        and previous_candidate["end_index"] < candidate["start_index"] < next_candidate["start_index"]
+                    ):
+                        adjusted_score += 1.5
+
+                    if adjusted_score > best_adjusted_score:
+                        best_adjusted_score = adjusted_score
+                        best_candidate = candidate
+
+                requires_direct_evidence = bool(
+                    get_alignment_answer_candidates(question) or get_alignment_evidence_tokens(question)
+                )
+                minimum_score = 4.0 if requires_direct_evidence else 3.0
+                if best_candidate is None or best_adjusted_score < minimum_score:
+                    continue
+
+                confidence: Literal["high", "medium", "low"]
+                if best_adjusted_score >= 12:
+                    confidence = "high"
+                elif best_adjusted_score >= 7:
+                    confidence = "medium"
+                else:
+                    confidence = "low"
+
+                selected_candidates_by_question[question_number] = best_candidate
+                alignments_by_question[question_number] = ListeningTranscriptQuestionAlignment(
+                    question_number=question_number,
+                    segment_indexes=best_candidate["segment_indexes"],
+                    confidence=confidence,
+                )
+                made_change = True
+
+            if not made_change:
+                break
+
+
+def optimize_alignment_sequences(
+    questions: list[ListeningAlignmentQuestion],
+    alignments_by_question: dict[int, ListeningTranscriptQuestionAlignment],
+    candidate_lists_by_question: dict[int, list[dict]],
+    question_scopes: list[dict],
+    section_scopes: list[dict],
+) -> None:
+    grouped_questions: dict[tuple, list[ListeningAlignmentQuestion]] = {}
+    for question in sorted(questions, key=lambda item: item.question_number):
+        if (question.group_type or "").upper() == "MAP_LABELLING":
+            continue
+        if question.question_number not in candidate_lists_by_question:
+            continue
+
+        scope_key = get_alignment_scope_key(question.question_number, question_scopes, section_scopes)
+        grouped_questions.setdefault(scope_key, []).append(question)
+
+    for ordered_questions in grouped_questions.values():
+        if len(ordered_questions) < 2:
+            continue
+
+        state_scores: dict[int, float] = {-1: 0.0}
+        state_paths: dict[int, list[tuple[int, dict | None]]] = {-1: []}
+
+        for question in ordered_questions:
+            question_number = question.question_number
+            existing_alignment = alignments_by_question.get(question_number)
+            existing_signature = (
+                tuple(existing_alignment.segment_indexes)
+                if existing_alignment and existing_alignment.segment_indexes
+                else None
+            )
+            confidence_bonus = 0.0
+            if existing_alignment and existing_alignment.confidence == "high":
+                confidence_bonus = 3.5
+            elif existing_alignment and existing_alignment.confidence == "medium":
+                confidence_bonus = 2.0
+            elif existing_alignment and existing_alignment.confidence == "low":
+                confidence_bonus = 0.75
+
+            question_candidates = candidate_lists_by_question.get(question_number, [])[:8]
+            if existing_signature and existing_alignment and existing_alignment.confidence in {"high", "medium"}:
+                anchored_candidates = [
+                    candidate
+                    for candidate in question_candidates
+                    if tuple(candidate["segment_indexes"]) == existing_signature
+                ]
+                if anchored_candidates:
+                    question_candidates = anchored_candidates
+
+            next_state_scores: dict[int, float] = {}
+            next_state_paths: dict[int, list[tuple[int, dict | None]]] = {}
+
+            for previous_end_index, previous_score in state_scores.items():
+                previous_path = state_paths[previous_end_index]
+
+                allow_null = not (
+                    existing_signature
+                    and existing_alignment
+                    and existing_alignment.confidence in {"high", "medium"}
+                )
+                if allow_null:
+                    null_score = previous_score - 3.5
+                    best_null_score = next_state_scores.get(previous_end_index, float("-inf"))
+                    if null_score > best_null_score:
+                        next_state_scores[previous_end_index] = null_score
+                        next_state_paths[previous_end_index] = [
+                            *previous_path,
+                            (question_number, None),
+                        ]
+
+                for candidate in question_candidates:
+                    if candidate["start_index"] <= previous_end_index:
+                        continue
+
+                    candidate_score = float(candidate["score"])
+                    if tuple(candidate["segment_indexes"]) == existing_signature:
+                        candidate_score += confidence_bonus
+
+                    if len(candidate["segment_indexes"]) > 1:
+                        candidate_score -= 0.35 * (len(candidate["segment_indexes"]) - 1)
+
+                    state_end_index = candidate["end_index"]
+                    combined_score = previous_score + candidate_score
+                    best_candidate_score = next_state_scores.get(state_end_index, float("-inf"))
+                    if combined_score > best_candidate_score:
+                        next_state_scores[state_end_index] = combined_score
+                        next_state_paths[state_end_index] = [
+                            *previous_path,
+                            (question_number, candidate),
+                        ]
+
+            if not next_state_scores:
+                continue
+
+            state_scores = next_state_scores
+            state_paths = next_state_paths
+
+        if not state_scores:
+            continue
+
+        best_end_index = max(state_scores, key=lambda key: state_scores[key])
+        best_path = state_paths[best_end_index]
+        for question_number, candidate in best_path:
+            existing_alignment = alignments_by_question.get(question_number)
+            if candidate is not None and existing_alignment and tuple(existing_alignment.segment_indexes) == tuple(candidate["segment_indexes"]):
+                confidence = existing_alignment.confidence or "medium"
+            else:
+                confidence = "medium" if candidate else "low"
+
+            alignments_by_question[question_number] = ListeningTranscriptQuestionAlignment(
+                question_number=question_number,
+                segment_indexes=candidate["segment_indexes"] if candidate else [],
+                confidence=confidence,
+            )
+
+
+def collapse_alignment_to_anchor_segments(
+    questions: list[ListeningAlignmentQuestion],
+    alignments_by_question: dict[int, ListeningTranscriptQuestionAlignment],
+    segments: list[ListeningTranscriptSegment],
+) -> None:
+    questions_by_number = {
+        question.question_number: question
+        for question in questions
+    }
+
+    for question_number, alignment in list(alignments_by_question.items()):
+        if not alignment.segment_indexes or len(alignment.segment_indexes) <= 1:
+            continue
+
+        question = questions_by_number.get(question_number)
+        if question is None:
+            continue
+        normalized_group_type = (question.group_type or "").strip().upper()
+        if normalized_group_type == "MAP_LABELLING" or normalized_group_type.startswith("MATCHING"):
+            continue
+
+        anchor_phrases = get_alignment_anchor_phrases(question)
+        answer_candidates = get_alignment_answer_candidates(question)
+        evidence_tokens = get_alignment_evidence_tokens(question)
+        keyword_tokens = get_alignment_keyword_tokens(question)
+
+        best_segment_index: int | None = None
+        best_segment_score = float("-inf")
+        for segment_index in alignment.segment_indexes:
+            if segment_index < 0 or segment_index >= len(segments):
+                continue
+
+            segment_text = normalize_alignment_text(segments[segment_index].text)
+            raw_text = segments[segment_index].text
+            segment_score = score_alignment_window(
+                segment_text,
+                raw_text,
+                anchor_phrases,
+                answer_candidates,
+                evidence_tokens,
+                keyword_tokens,
+                normalized_group_type,
+            )
+            if segment_score > best_segment_score:
+                best_segment_score = segment_score
+                best_segment_index = segment_index
+
+        if best_segment_index is None:
+            continue
+
+        alignments_by_question[question_number] = ListeningTranscriptQuestionAlignment(
+            question_number=question_number,
+            segment_indexes=[best_segment_index],
+            confidence=alignment.confidence,
+        )
 
 
 WRITING_RUBRICS = [
@@ -439,6 +1980,326 @@ async def score_speaking(
     )
 
 
+def download_audio_url_to_tempfile(audio_url: str) -> str:
+    parsed = urlparse(audio_url)
+    suffix = os.path.splitext(parsed.path or "")[1] or ".mp3"
+
+    with urlopen(audio_url) as response:
+        content = response.read()
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        tmp.write(content)
+        return tmp.name
+
+
+@app.post("/api/ai/generate-listening-transcript", response_model=ListeningTranscriptResponse)
+async def generate_listening_transcript(request: ListeningTranscriptRequest):
+    if whisper_model is None:
+        raise HTTPException(status_code=503, detail="Whisper model not loaded.")
+
+    audio_url = request.audio_url.strip()
+    if not audio_url:
+        raise HTTPException(status_code=400, detail="audio_url is required.")
+
+    try:
+        tmp_path = await asyncio.to_thread(download_audio_url_to_tempfile, audio_url)
+    except Exception as ex:  # pragma: no cover
+        logger.exception("Failed to download listening audio from %s", audio_url)
+        raise HTTPException(status_code=400, detail=f"Could not download audio from URL: {ex}") from ex
+
+    try:
+        segments, _ = whisper_model.transcribe(
+            tmp_path,
+            language=(request.language or "en").strip() or "en",
+            beam_size=5,
+            vad_filter=True,
+        )
+        normalized_segments = [
+            ListeningTranscriptSegment(
+                start_time=round(segment.start, 2),
+                end_time=round(segment.end, 2) if segment.end is not None else None,
+                text=segment.text.strip(),
+            )
+            for segment in segments
+            if segment.text and segment.text.strip()
+        ]
+    finally:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+
+    if not normalized_segments:
+        raise HTTPException(status_code=400, detail="Could not transcribe audio.")
+
+    transcript_text = " ".join(segment.text for segment in normalized_segments).strip()
+    return ListeningTranscriptResponse(
+        segments=normalized_segments,
+        transcript_text=transcript_text,
+    )
+
+
+async def align_listening_transcript_part(
+    part_number: int,
+    transcript_segments: list[ListeningTranscriptSegment],
+    questions: list[ListeningAlignmentQuestion],
+    gemini_request_lock: asyncio.Lock | None = None,
+    gemini_quota_exhausted_event: asyncio.Event | None = None,
+) -> list[ListeningTranscriptQuestionAlignment]:
+    if not transcript_segments or not questions:
+        return []
+
+    logger.info(
+        "Aligning IELTS listening part %s with %s transcript segments and %s questions.",
+        part_number,
+        len(transcript_segments),
+        len(questions),
+    )
+
+    question_scopes = detect_question_range_scopes(transcript_segments)
+    section_scopes = detect_section_scopes(transcript_segments)
+    candidate_map_by_question: dict[int, dict[int, dict]] = {}
+    candidate_lists_by_question: dict[int, list[dict]] = {}
+    direct_alignments: list[ListeningTranscriptQuestionAlignment] = []
+    pending_batch: list[tuple[ListeningAlignmentQuestion, list[dict]]] = []
+
+    for question in sorted(questions, key=lambda item: item.question_number):
+        allowed_segment_range = (
+            find_scope_for_question(question.question_number, question_scopes)
+            or find_section_scope_for_question(question.question_number, section_scopes)
+            or (0, len(transcript_segments) - 1)
+        )
+        candidates = build_alignment_candidate_windows(
+            transcript_segments,
+            question,
+            allowed_segment_range=allowed_segment_range,
+        )
+        candidate_lists_by_question[question.question_number] = candidates
+        if not candidates:
+            direct_alignments.append(
+                ListeningTranscriptQuestionAlignment(
+                    question_number=question.question_number,
+                    segment_indexes=[],
+                    confidence="low",
+                )
+            )
+            continue
+
+        candidate_map_by_question[question.question_number] = {
+            candidate["candidate_id"]: candidate
+            for candidate in candidates
+        }
+
+        if len(candidates) == 1 and candidates[0]["score"] >= 12:
+            direct_alignments.append(
+                ListeningTranscriptQuestionAlignment(
+                    question_number=question.question_number,
+                    segment_indexes=candidates[0]["segment_indexes"],
+                    confidence="high",
+                )
+            )
+            continue
+
+        pending_batch.append((question, candidates))
+
+    batch_alignments: list[ListeningTranscriptQuestionAlignment] = []
+    if pending_batch:
+        batch_result = None
+        if LISTENING_ALIGNMENT_USE_GEMINI:
+            try:
+                should_skip_gemini = (
+                    (gemini_quota_exhausted_event is not None and gemini_quota_exhausted_event.is_set())
+                    or is_gemini_alignment_quota_on_cooldown()
+                )
+
+                if not should_skip_gemini:
+                    if gemini_request_lock is not None:
+                        async with gemini_request_lock:
+                            should_skip_gemini = (
+                                (gemini_quota_exhausted_event is not None and gemini_quota_exhausted_event.is_set())
+                                or is_gemini_alignment_quota_on_cooldown()
+                            )
+                            if not should_skip_gemini:
+                                batch_result = await generate_alignment_batch_with_gemini_split(pending_batch)
+                    else:
+                        batch_result = await generate_alignment_batch_with_gemini_split(pending_batch)
+            except GeminiAlignmentQuotaExhaustedError:  # pragma: no cover
+                if gemini_quota_exhausted_event is not None:
+                    gemini_quota_exhausted_event.set()
+                logger.warning(
+                    "Listening transcript alignment Gemini quota exhausted on part %s. "
+                    "Switching this part to local candidate scoring.",
+                    part_number,
+                )
+            except Exception:  # pragma: no cover
+                batch_result = None
+                logger.exception(
+                    "Listening transcript alignment batch failed for part %s. "
+                    "Falling back to local candidate scoring.",
+                    part_number,
+                )
+        else:
+            logger.info(
+                "Listening transcript alignment is configured for local-only mode. "
+                "Skipping Gemini on part %s.",
+                part_number,
+            )
+
+        if batch_result is None:
+            for question, candidates in pending_batch:
+                fallback_candidate, fallback_confidence = select_fallback_alignment_candidate(
+                    candidates,
+                    requires_direct_evidence=bool(
+                        get_alignment_answer_candidates(question) or get_alignment_evidence_tokens(question)
+                    ),
+                )
+                batch_alignments.append(
+                    ListeningTranscriptQuestionAlignment(
+                        question_number=question.question_number,
+                        segment_indexes=fallback_candidate["segment_indexes"] if fallback_candidate else [],
+                        confidence=fallback_confidence,
+                    )
+                )
+        else:
+            selected_candidate_ids = {
+                selection.question_number: selection
+                for selection in batch_result.selections
+            }
+
+            for question, candidates in pending_batch:
+                selected = selected_candidate_ids.get(question.question_number)
+                candidate = (
+                    candidate_map_by_question.get(question.question_number, {}).get(selected.candidate_id)
+                    if selected and selected.candidate_id is not None
+                    else None
+                )
+
+                if candidate is None:
+                    candidate, fallback_confidence = select_fallback_alignment_candidate(
+                        candidates,
+                        requires_direct_evidence=bool(
+                            get_alignment_answer_candidates(question) or get_alignment_evidence_tokens(question)
+                        ),
+                    )
+                    confidence = selected.confidence if selected and selected.confidence else fallback_confidence
+                else:
+                    confidence = selected.confidence if selected and selected.confidence else "medium"
+
+                batch_alignments.append(
+                    ListeningTranscriptQuestionAlignment(
+                        question_number=question.question_number,
+                        segment_indexes=candidate["segment_indexes"] if candidate else [],
+                        confidence=confidence,
+                    )
+                )
+
+    all_alignments = [
+        *direct_alignments,
+        *batch_alignments,
+    ]
+    alignments_by_question = {
+        alignment.question_number: alignment
+        for alignment in all_alignments
+    }
+    fill_map_labelling_gaps(
+        questions,
+        alignments_by_question,
+        transcript_segments,
+        question_scopes,
+        section_scopes,
+    )
+    reconcile_alignment_gaps_and_duplicates(
+        questions,
+        alignments_by_question,
+        candidate_lists_by_question,
+        question_scopes,
+        section_scopes,
+    )
+    optimize_alignment_sequences(
+        questions,
+        alignments_by_question,
+        candidate_lists_by_question,
+        question_scopes,
+        section_scopes,
+    )
+    collapse_alignment_to_anchor_segments(
+        questions,
+        alignments_by_question,
+        transcript_segments,
+    )
+
+    part_alignments = list(alignments_by_question.values())
+    part_alignments.sort(key=lambda alignment: alignment.question_number)
+    return part_alignments
+
+
+@app.post("/api/ai/align-listening-transcript", response_model=ListeningTranscriptAlignmentResponse)
+async def align_listening_transcript(request: ListeningTranscriptAlignmentRequest):
+    transcript_segments = [
+        segment for segment in request.transcript_segments
+        if segment.text and segment.text.strip()
+    ]
+    if not transcript_segments:
+        raise HTTPException(status_code=400, detail="transcript_segments are required.")
+
+    questions = [
+        question for question in request.questions
+        if question.question_number > 0
+    ]
+    if not questions:
+        raise HTTPException(status_code=400, detail="questions are required.")
+    try:
+        transcript_parts = split_listening_transcript_into_parts(transcript_segments)
+    except ValueError as ex:
+        logger.exception("Failed to split IELTS listening transcript into 4 parts.")
+        raise HTTPException(status_code=400, detail=str(ex)) from ex
+
+    questions_by_part: dict[int, list[ListeningAlignmentQuestion]] = {
+        1: [],
+        2: [],
+        3: [],
+        4: [],
+    }
+    for question in sorted(questions, key=lambda item: item.question_number):
+        questions_by_part.setdefault(get_question_part_number(question.question_number), []).append(question)
+
+    part_jobs: list[tuple[dict, asyncio.Task]] = []
+    gemini_request_lock = asyncio.Lock()
+    gemini_quota_exhausted_event = asyncio.Event()
+    for transcript_part in transcript_parts:
+        part_questions = questions_by_part.get(transcript_part["part_number"], [])
+        if not part_questions:
+            continue
+
+        task = asyncio.create_task(
+            align_listening_transcript_part(
+                transcript_part["part_number"],
+                transcript_part["segments"],
+                part_questions,
+                gemini_request_lock=gemini_request_lock,
+                gemini_quota_exhausted_event=gemini_quota_exhausted_event,
+            )
+        )
+        part_jobs.append((transcript_part, task))
+
+    all_alignments: list[ListeningTranscriptQuestionAlignment] = []
+    for transcript_part, task in part_jobs:
+        part_alignments = await task
+        global_start_index = transcript_part["global_start_index"]
+        for alignment in part_alignments:
+            all_alignments.append(
+                ListeningTranscriptQuestionAlignment(
+                    question_number=alignment.question_number,
+                    segment_indexes=[
+                        global_start_index + segment_index
+                        for segment_index in alignment.segment_indexes
+                    ],
+                    confidence=alignment.confidence,
+                )
+            )
+
+    all_alignments.sort(key=lambda alignment: alignment.question_number)
+    return ListeningTranscriptAlignmentResponse(alignments=all_alignments)
+
+
 class GeneratedOption(BaseModel):
     optionText: str
     isCorrect: bool
@@ -491,7 +2352,7 @@ def extract_pdf_text(file_path: str) -> str:
     return "\n\n".join(all_text)
 
 
-FILL_ANSWERS_PROMPT = """You are an expert IELTS examiner. Given a reading passage and its questions, provide the correct answer and a brief explanation for EACH question.
+FILL_ANSWERS_PROMPT = """You are an expert IELTS examiner. Given a reading passage and a list of extracted questions, fill missing answers and missing options.
 
 PASSAGE:
 \"\"\"
@@ -501,21 +2362,81 @@ PASSAGE:
 QUESTIONS (JSON):
 {questions_json}
 
-For each question, determine the correct answer based ONLY on information in the passage.
+For each question, determine the correct answer based ONLY on information in the passage and question text.
 Rules:
 - For TFNG/YNNG: answer must be exactly "TRUE", "FALSE", "NOT GIVEN", "YES", or "NO".
 - For MCQ_SINGLE/MCQ_MULTIPLE and MATCHING*: answer must be the exact letter label (e.g. A, B, i, ii).
 - For COMPLETION and SHORT_ANSWER: answer must be the exact word(s) from the passage.
 - Explanation must be 1-2 sentences citing the passage.
+- If `missingOptions=true`, generate full options list for that question.
+- Keep option labels consistent (A,B,C... or i,ii,iii... when appropriate).
 
 Return ONLY valid JSON array:
 [
   {{
     "number": <question number>,
     "correctAnswer": "<answer>",
-    "explanation": "<brief explanation citing the passage>"
+    "explanation": "<brief explanation citing the passage>",
+    "options": [
+      {{"label": "A", "text": "option text"}}
+    ]
   }}
 ]"""
+
+
+def normalize_ai_answer(answer: str | None) -> str | None:
+    if not answer:
+        return None
+    cleaned = re.sub(r"\s+", " ", answer).strip()
+    if not cleaned:
+        return None
+
+    normalized_map = {
+        "NOTGIVEN": "NOT GIVEN",
+        "TRUE": "TRUE",
+        "FALSE": "FALSE",
+        "YES": "YES",
+        "NO": "NO",
+    }
+    upper = cleaned.upper()
+    compact = upper.replace(" ", "")
+    if compact in normalized_map:
+        return normalized_map[compact]
+    if re.fullmatch(r"[A-Z]", upper):
+        return upper
+    if re.fullmatch(r"[IVXLCDM]{1,8}", upper):
+        return upper
+    return cleaned
+
+
+def parse_ai_options(raw_options: object) -> list[ParsedOption]:
+    if not isinstance(raw_options, list):
+        return []
+
+    parsed: list[ParsedOption] = []
+    for idx, item in enumerate(raw_options):
+        if isinstance(item, dict):
+            label_raw = str(item.get("label", "")).strip() or chr(65 + idx)
+            text_raw = (
+                str(item.get("text", "")).strip()
+                or str(item.get("optionText", "")).strip()
+            )
+        else:
+            label_raw = chr(65 + idx)
+            text_raw = str(item).strip()
+
+        if not text_raw:
+            continue
+
+        parsed.append(
+            ParsedOption(
+                text=re.sub(r"\s+", " ", text_raw).strip(),
+                label=re.sub(r"\s+", " ", label_raw).strip().upper(),
+                order_index=len(parsed),
+            )
+        )
+
+    return parsed
 
 
 ANSWER_SPLIT_PATTERN = re.compile(
@@ -597,173 +2518,72 @@ Trả về QuestionGroup cho Passage {passage_number} (title, content = toàn b�
 
     group_dict = result.model_dump()
     questions = group_dict.get("questions", [])
+    normalized_questions: list[dict] = []
+
     for i, q in enumerate(questions):
+        question_number = q.get("questionNumber")
+        if not isinstance(question_number, int):
+            question_number = i + 1
+
+        q["questionNumber"] = question_number
         q["orderIndex"] = i
         q["points"] = q.get("points", 1.0)
         if q.get("options") is None:
             q["options"] = []
         for j, opt in enumerate(q.get("options", [])):
             opt["orderIndex"] = j
+        normalized_questions.append(q)
+
+    question_groups: list[dict] = []
+    current_group: dict | None = None
+
+    for q in normalized_questions:
+        q_type = q.get("questionType", "MCQ_SINGLE")
+        if current_group is None or current_group.get("groupType") != q_type:
+            if current_group is not None:
+                numbers = [
+                    item.get("questionNumber")
+                    for item in current_group.get("questions", [])
+                    if isinstance(item.get("questionNumber"), int)
+                ]
+                current_group["startQuestion"] = min(numbers) if numbers else None
+                current_group["endQuestion"] = max(numbers) if numbers else None
+                question_groups.append(current_group)
+
+            current_group = {
+                "groupType": q_type,
+                "instruction": "",
+                "questions": [],
+            }
+
+        current_group["questions"].append(q)
+
+    if current_group is not None:
+        numbers = [
+            item.get("questionNumber")
+            for item in current_group.get("questions", [])
+            if isinstance(item.get("questionNumber"), int)
+        ]
+        current_group["startQuestion"] = min(numbers) if numbers else None
+        current_group["endQuestion"] = max(numbers) if numbers else None
+        question_groups.append(current_group)
 
     return {
         "title": group_dict.get("title", f"Passage {passage_number}"),
         "content": group_dict.get("content", ""),
         "audioUrl": None,
         "orderIndex": passage_number - 1,
-        "questions": questions,
+        "questionGroups": question_groups,
+        "questions": normalized_questions,
     }
 
 
 @app.post("/api/ai/generate-exam-from-pdf")
 async def generate_exam_from_pdf(file: UploadFile = File(...)):
-    logger.info("Received file: %s", file.filename)
-    if not file.filename or not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail=f"Only PDF files are accepted. Received: {file.filename}")
-
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-        content = await file.read()
-        tmp.write(content)
-        tmp_path = tmp.name
-
-    try:
-        raw_text = extract_pdf_text(tmp_path)
-    except Exception as e:
-        raise HTTPException(status_code=422, detail=f"Failed to extract PDF text: {str(e)}")
-    finally:
-        if os.path.exists(tmp_path):
-            os.unlink(tmp_path)
-
-    if not raw_text.strip():
-        raise HTTPException(status_code=400, detail="PDF contains no extractable text.")
-
-    parsed = parse_ielts_pdf(raw_text)
-    num_passages = len(parsed.passages)
-
-    test_content_raw, answer_key_raw = split_test_and_answers(raw_text)
-    test_content = clean_garbage_text(test_content_raw)
-    answer_key = answer_key_raw.strip()
-
-    logger.info(
-        "PDF split: test=%d chars, answer_key=%d chars, pdfplumber passages=%d, questions=%d",
-        len(test_content), len(answer_key), num_passages, parsed.total_questions,
+    raise HTTPException(
+        status_code=410,
+        detail="PDF exam generation has been disabled.",
     )
-
-    async def stream_generator():
-        try:
-            if num_passages > 0 and parsed.has_enough_questions and parsed.has_all_answers:
-                mode = "SCAN"
-            elif num_passages > 0 and parsed.has_enough_questions:
-                mode = "FILL_ANSWERS"
-            else:
-                mode = "FULL_AI"
-
-            logger.info("MODE: %s", mode)
-
-            if mode in ("SCAN", "FILL_ANSWERS"):
-                title = parsed.passages[0].title if parsed.passages else "IELTS Reading Practice"
-                total_q = parsed.total_questions
-            else:
-                title = file.filename.replace(".pdf", "").replace("_", " ").replace("-", " ").title() if file.filename else "IELTS Reading Practice"
-                total_q = 0
-
-            metadata = {
-                "title": f"{title} - Practice Test",
-                "description": f"Extracted from PDF ({mode})",
-                "durationMinutes": 60,
-                "examType": "IELTS",
-            }
-
-            if mode == "SCAN":
-                metadata["description"] = f"{num_passages} passages, {total_q} questions (all answers found)"
-            elif mode == "FILL_ANSWERS":
-                metadata["description"] = f"{num_passages} passages, {total_q} questions ({parsed.total_missing_answers} answers by AI)"
-
-            yield json.dumps({"type": "metadata", "data": metadata}) + "\n"
-
-            actual_passages = num_passages if mode != "FULL_AI" else 3
-            generated_count = 0
-
-            for idx in range(actual_passages):
-                if mode == "SCAN":
-                    passage = parsed.passages[idx]
-                    group = parsed_passage_to_group(passage, idx)
-                    generated_count += passage.question_count
-                    logger.info(
-                        "SCAN Passage %d/%d '%s': %d questions",
-                        idx + 1, actual_passages, passage.title, passage.question_count,
-                    )
-
-                elif mode == "FILL_ANSWERS":
-                    passage = parsed.passages[idx]
-                    if passage.has_all_answers:
-                        group = parsed_passage_to_group(passage, idx)
-                        logger.info("FILL Passage %d/%d '%s': all answered", idx + 1, actual_passages, passage.title)
-                    else:
-                        missing_qs = []
-                        for g in passage.question_groups:
-                            for q in g.questions:
-                                if not q.correct_answer:
-                                    missing_qs.append({
-                                        "number": q.number,
-                                        "questionType": q.question_type,
-                                        "content": q.content,
-                                        "options": [{"label": o.label, "text": o.text} for o in q.options],
-                                    })
-
-                        logger.info(
-                            "FILL Passage %d/%d '%s': %d missing -> AI solving",
-                            idx + 1, actual_passages, passage.title, len(missing_qs),
-                        )
-
-                        fill_prompt = FILL_ANSWERS_PROMPT.format(
-                            passage_text=passage.content[:6000],
-                            questions_json=json.dumps(missing_qs, ensure_ascii=False, indent=2),
-                        )
-                        ai_answers = await call_ollama(fill_prompt)
-                        answers_list = ai_answers if isinstance(ai_answers, list) else ai_answers.get("answers", ai_answers.get("questions", []))
-
-                        for item in answers_list:
-                            q_num = item.get("number")
-                            if q_num is None:
-                                continue
-                            for g in passage.question_groups:
-                                for q in g.questions:
-                                    if q.number == q_num and not q.correct_answer:
-                                        q.correct_answer = item.get("correctAnswer", "")
-                                        q.explanation = item.get("explanation", "")
-
-                        group = parsed_passage_to_group(passage, idx)
-
-                    generated_count += passage.question_count
-
-                else:
-                    logger.info(
-                        "FULL_AI Passage %d/%d: Calling Instructor + %s with Pydantic schema...",
-                        idx + 1, actual_passages, OLLAMA_MODEL,
-                    )
-                    group = await asyncio.to_thread(
-                        generate_single_passage,
-                        test_content[:12000],
-                        answer_key[:6000],
-                        idx + 1,
-                        actual_passages,
-                    )
-                    generated_count += len(group.get("questions", []))
-                    logger.info(
-                        "FULL_AI Passage %d/%d '%s': %d questions generated",
-                        idx + 1, actual_passages, group.get("title", "?"), len(group.get("questions", [])),
-                    )
-
-                yield json.dumps({"type": "passage", "index": idx, "total": actual_passages, "data": group}) + "\n"
-
-            yield json.dumps({"type": "done"}) + "\n"
-            logger.info("Stream completed: %d passages, %d total questions", actual_passages, generated_count)
-
-        except Exception as e:
-            logger.error("Stream generation failed: %s", e, exc_info=True)
-            yield json.dumps({"type": "error", "message": str(e)}) + "\n"
-
-    return StreamingResponse(stream_generator(), media_type="application/x-ndjson")
 
 
 @app.get("/health")

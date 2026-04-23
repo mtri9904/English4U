@@ -1,8 +1,9 @@
-import { useMemo, type ClipboardEvent } from 'react';
+import { useMemo } from 'react';
 import { Button, Empty, Input, InputNumber, Select, Upload } from 'antd';
 import { CloseOutlined, MinusCircleOutlined, PictureOutlined, PlusOutlined } from '@ant-design/icons';
 import type { CreateQuestionGroupDto, CreateQuestionOptionDto } from '../../types/exam.types';
-import { buildCleanPastedValue, emptyOption, emptyQuestion } from './examEditor.helpers';
+import { emptyOption, emptyQuestion } from './examEditor.helpers';
+import { getCleanPastedInputValue } from '@/shared/utils/input';
 
 interface MapLabellingEditorProps {
     group: CreateQuestionGroupDto;
@@ -109,22 +110,7 @@ const cloneOptions = (options: CreateQuestionOptionDto[]) => (
     }))
 );
 
-const getCleanPastedInputValue = (
-    event: ClipboardEvent<HTMLInputElement | HTMLTextAreaElement>,
-    currentValue: string,
-) => {
-    const pasted = event.clipboardData.getData('text');
-    if (!pasted) return null;
 
-    event.preventDefault();
-    const target = event.target as HTMLInputElement | HTMLTextAreaElement;
-    return buildCleanPastedValue(
-        currentValue,
-        pasted,
-        target.selectionStart,
-        target.selectionEnd,
-    );
-};
 
 export const MapLabellingEditor = ({
     group,
@@ -237,6 +223,11 @@ export const MapLabellingEditor = ({
                                 onClick={() => updateMapAssets({ imageUrl: '' })}
                             />
                         ) : null}
+                        onPaste={(event) => {
+                            const nextValue = getCleanPastedInputValue(event, mapAssets.imageUrl ?? '');
+                            if (nextValue === null) return;
+                            updateMapAssets({ imageUrl: nextValue });
+                        }}
                         onChange={(event) => updateMapAssets({ imageUrl: event.target.value })}
                     />
                 </div>

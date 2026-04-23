@@ -2,6 +2,7 @@ import { useMemo, useRef, useState, type MutableRefObject } from 'react';
 import { Button, Input } from 'antd';
 import { BoldOutlined, MinusCircleOutlined } from '@ant-design/icons';
 import { TiptapQxEditor, type TiptapQxEditorRef } from '../../components/TiptapQxEditor';
+import { getCleanPastedInputValue } from '@/shared/utils/input';
 
 interface GenericTableEditorProps {
     contentData?: string | null;
@@ -92,6 +93,15 @@ export const GenericTableEditor = ({
         editorRef?.insertQ(nextQNum);
     };
 
+    const toggleBold = () => {
+        if (!focused) return;
+
+        const key = getCellKey(focused.r, focused.c);
+        const editorRef = cellEditorRefs.current[key] ?? null;
+        activeEditorRef.current = editorRef;
+        editorRef?.toggleBold();
+    };
+
     return (
         <div style={{ padding: '12px', border: '1px solid #d9d9d9', borderRadius: '6px', background: '#fafafa', marginBottom: '10px' }}>
             <div style={{ fontWeight: 600, marginBottom: '8px', fontSize: '0.8125rem' }}>Bảng Điền Từ (Layout Động)</div>
@@ -99,6 +109,11 @@ export const GenericTableEditor = ({
                 value={tableLayout.title}
                 size="large"
                 placeholder={TABLE_TITLE_PLACEHOLDER}
+                onPaste={(event) => {
+                    const newVal = getCleanPastedInputValue(event, tableLayout.title || '');
+                    if (newVal === null) return;
+                    updateTable(tableLayout.rows.map((row) => [...row]), newVal);
+                }}
                 onChange={(event) => updateTable(tableLayout.rows.map((row) => [...row]), event.target.value)}
                 style={{ marginBottom: '10px', fontWeight: 700, fontSize: '1rem' }}
             />
@@ -128,23 +143,7 @@ export const GenericTableEditor = ({
                     icon={<BoldOutlined />}
                     onMouseDown={(event) => {
                         event.preventDefault();
-                        if (!focused) return;
-
-                        const activeElement = document.activeElement as HTMLTextAreaElement;
-                        if (!activeElement || activeElement.tagName !== 'TEXTAREA') return;
-
-                        const start = activeElement.selectionStart;
-                        const end = activeElement.selectionEnd;
-                        const text = activeElement.value;
-                        const selected = text.substring(start, end);
-
-                        const newText = selected
-                            ? text.substring(0, start) + `**${selected}**` + text.substring(end)
-                            : `${text} ****`;
-
-                        const newData = tableLayout.rows.map((row) => [...row]);
-                        newData[focused.r][focused.c] = newText;
-                        updateTable(newData);
+                        toggleBold();
                     }}
                 >
                     In đậm
@@ -169,6 +168,7 @@ export const GenericTableEditor = ({
                                                 newData[rowIdx][colIdx] = value;
                                                 updateTable(newData);
                                             }}
+                                            enableMarkdownBold
                                             onFocus={() => {
                                                 setFocused({ r: rowIdx, c: colIdx });
                                                 activeEditorRef.current = cellEditorRefs.current[getCellKey(rowIdx, colIdx)] ?? null;

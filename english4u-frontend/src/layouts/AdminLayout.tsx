@@ -1,34 +1,71 @@
-import React, { useState, useEffect } from 'react';
-import { Layout, Menu, Button, Dropdown, Avatar, theme, MenuProps, message } from 'antd';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Layout, Menu, Button, Dropdown, Avatar, theme, MenuProps, message, Badge, Popover, Divider, Empty, Spin } from 'antd';
 import {
     DashboardOutlined,
     UserOutlined,
     FormOutlined,
+    FileSearchOutlined,
     TrophyOutlined,
     CreditCardOutlined,
     BellOutlined,
+    PlaySquareOutlined,
     LogoutOutlined,
     MenuFoldOutlined,
-    MenuUnfoldOutlined
+    MenuUnfoldOutlined,
+    CheckCircleOutlined,
+    ReloadOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { GenerationProgressWidget } from '@/features/admin/components';
-import { useUserProfileQuery } from '@/features/admin/api/user.api';
+import { useUserProfileQuery, userApi } from '@/features/admin/api/user.api';
 import { useQueryClient } from '@tanstack/react-query';
+import {
+    useAdminNotificationStatsQuery,
+    useAdminNotificationsQuery,
+    useMarkAllNotificationsReadMutation,
+    useUpdateNotificationReadMutation,
+} from '@/features/admin/api/notification.api';
+import { PdfGenerationProgressWidget } from '@/features/admin/components/PdfGenerationProgressWidget';
+import { pdfGenerationJobStore } from '@/features/admin/stores/pdfGenerationJob.store';
+import { useRealtimeSync } from '@/features/realtime/hooks/useRealtimeSync';
+import { formatDateTimeToMinute } from '@/shared/lib/dateTime';
 
 const { Header, Sider, Content } = Layout;
 
 export const AdminLayout: React.FC = () => {
     const [collapsed, setCollapsed] = useState(false);
+    const [isNotificationOpen, setIsNotificationOpen] = useState(false);
     const navigate = useNavigate();
     const location = useLocation();
     const { data: profile } = useUserProfileQuery();
     const queryClient = useQueryClient();
+    const hasUserId = !!localStorage.getItem('userId');
+    const hasToken = !!localStorage.getItem('token');
+    const notificationQueryParams = useMemo(() => ({ pageNumber: 1, pageSize: 8 }), []);
+    useRealtimeSync(hasToken);
+
+    const {
+        data: adminNotificationStats,
+        isLoading: isNotificationStatsLoading,
+    } = useAdminNotificationStatsQuery({
+        enabled: hasUserId,
+    });
+    const {
+        data: adminNotificationsPaged,
+        isLoading: isNotificationsLoading,
+        isFetching: isNotificationsFetching,
+        refetch: refetchNotifications,
+    } = useAdminNotificationsQuery(notificationQueryParams, {
+        enabled: hasUserId && isNotificationOpen,
+    });
+    const updateNotificationReadMutation = useUpdateNotificationReadMutation();
+    const markAllNotificationsReadMutation = useMarkAllNotificationsReadMutation();
+    const notificationItems = adminNotificationsPaged?.items ?? [];
 
     // Route Guard logic
     useEffect(() => {
         const token = localStorage.getItem('token');
         if (!token) {
+            pdfGenerationJobStore.clear();
             message.warning('Vui lòng đăng nhập để truy cập CMS!');
             navigate('/admin/login', { replace: true });
         }
@@ -37,12 +74,103 @@ export const AdminLayout: React.FC = () => {
 
     const { token: { colorBgContainer, borderRadiusLG } } = theme.useToken();
 
-    const handleLogout = () => {
+    const handleLogout = async () => {
+        try {
+            await userApi.markOffline();
+        } catch {
+            // Ignore offline update errors on logout flow.
+        }
+        pdfGenerationJobStore.clear();
         localStorage.removeItem('token');
         localStorage.removeItem('userId');
         queryClient.clear();
         navigate('/admin/login');
     };
+
+    const handleUpdateNotificationRead = async (id: string, isRead: boolean) => {
+        try {
+            await updateNotificationReadMutation.mutateAsync({ id, isRead });
+        } catch {
+            // Keep header interactions smooth even if network/API is temporarily unavailable.
+        }
+    };
+
+    const handleMarkAllRead = async () => {
+        try {
+            await markAllNotificationsReadMutation.mutateAsync();
+        } catch {
+            // Keep header interactions smooth even if network/API is temporarily unavailable.
+        }
+    };
+
+    const notificationPopoverContent = (
+        <div style={{ width: 380, maxWidth: 'calc(100vw - 24px)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                <div style={{ fontWeight: 700, color: '#0f172a' }}>Thông báo hệ thống</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Button
+                        type="text"
+                        size="small"
+                        icon={<ReloadOutlined spin={isNotificationsFetching} />}
+                        onClick={() => refetchNotifications()}
+                    />
+                    <Button
+                        type="text"
+                        size="small"
+                        icon={<CheckCircleOutlined />}
+                        loading={markAllNotificationsReadMutation.isPending}
+                        onClick={handleMarkAllRead}
+                    >
+                        Đọc tất cả
+                    </Button>
+                </div>
+            </div>
+            <Divider style={{ margin: '10px 0' }} />
+
+            {isNotificationsLoading || isNotificationStatsLoading ? (
+                <div style={{ display: 'grid', placeItems: 'center', minHeight: 120 }}>
+                    <Spin size="small" />
+                </div>
+            ) : notificationItems.length === 0 ? (
+                <Empty description="Chưa có thông báo" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+            ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 340, overflowY: 'auto' }}>
+                    {notificationItems.map((item) => (
+                        <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => {
+                                handleUpdateNotificationRead(item.id, true);
+                                setIsNotificationOpen(false);
+                                navigate('/admin/notifications');
+                            }}
+                            style={{
+                                border: '1px solid #e2e8f0',
+                                borderLeft: `3px solid ${item.isRead ? '#94a3b8' : '#2563eb'}`,
+                                background: item.isRead ? '#ffffff' : '#f8fbff',
+                                borderRadius: 10,
+                                padding: '10px 10px 8px',
+                                textAlign: 'left',
+                                cursor: 'pointer',
+                                width: '100%',
+                            }}
+                        >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
+                                <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.85rem' }}>{item.title}</div>
+                                {!item.isRead && <Badge color="#2563eb" />}
+                            </div>
+                            <div style={{ color: '#475569', fontSize: '0.78rem', marginTop: 4, lineHeight: 1.35 }}>
+                                {item.message || 'Không có nội dung chi tiết.'}
+                            </div>
+                            <div style={{ marginTop: 6, color: '#94a3b8', fontSize: '0.72rem' }}>
+                                Người nhận: {item.userDisplayName} - {formatDateTimeToMinute(item.createdAt) || 'N/A'}
+                            </div>
+                        </button>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
 
     const userMenu: MenuProps = {
         items: [
@@ -80,6 +208,16 @@ export const AdminLayout: React.FC = () => {
             key: '/admin/exams',
             icon: <FormOutlined />,
             label: 'Bài thi & Kiểm tra',
+        },
+        {
+            key: '/admin/exams/raw-preview',
+            icon: <FileSearchOutlined />,
+            label: 'Demo Text Thô PDF',
+        },
+        {
+            key: '/admin/attempts',
+            icon: <PlaySquareOutlined />,
+            label: 'Lượt thi',
         },
         {
             key: '/admin/gamification',
@@ -151,7 +289,21 @@ export const AdminLayout: React.FC = () => {
                     />
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                        <Button type="text" icon={<BellOutlined />} style={{ fontSize: '16px' }} />
+                        <Popover
+                            trigger="click"
+                            placement="bottomRight"
+                            open={isNotificationOpen}
+                            onOpenChange={setIsNotificationOpen}
+                            content={notificationPopoverContent}
+                        >
+                            <Badge count={adminNotificationStats?.unread ?? 0} size="small">
+                                <Button
+                                    type="text"
+                                    icon={<BellOutlined />}
+                                    style={{ fontSize: '16px' }}
+                                />
+                            </Badge>
+                        </Popover>
                         <Dropdown menu={userMenu} placement="bottomRight" trigger={['click']}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', padding: '0 8px', borderRadius: '8px' }}>
                                 <Avatar
@@ -168,7 +320,7 @@ export const AdminLayout: React.FC = () => {
                 <Content style={{ margin: '24px', padding: 24, minHeight: 280, background: colorBgContainer, borderRadius: borderRadiusLG }}>
                     <Outlet />
                 </Content>
-                <GenerationProgressWidget />
+                <PdfGenerationProgressWidget />
             </Layout>
         </Layout>
     );

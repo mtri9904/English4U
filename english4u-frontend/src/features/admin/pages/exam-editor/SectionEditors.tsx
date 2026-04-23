@@ -1,12 +1,14 @@
-import type { ClipboardEvent, Dispatch, MutableRefObject, SetStateAction } from 'react';
-import { Button, Input, InputNumber, Upload, message } from 'antd';
+import { useRef, useState, type ClipboardEvent, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
+import { Button, Input, InputNumber, Upload, Tag, message } from 'antd';
 import { CloseOutlined, MinusCircleOutlined, PictureOutlined, PlusOutlined, SoundOutlined, BoldOutlined } from '@ant-design/icons';
 import type {
     CreateSectionDto,
 } from '../../types/exam.types';
-import type { TiptapQxEditorRef } from '../../components/TiptapQxEditor';
+import { TiptapQxEditor, type TiptapQxEditorRef } from '../../components/TiptapQxEditor';
+import { parseWritingTaskAssetsData, serializeWritingTaskAssetsData } from '@/shared/lib/writingTaskAssets';
 import {
     buildCleanPastedValue,
+    applySharedListeningAudioUrl,
     SKILL_COLORS,
     emptyListeningPart,
     emptyPassage,
@@ -14,6 +16,10 @@ import {
     emptySpeakingQuestion,
     emptyWritingTask,
     reorderQuestionNumbers,
+    EXAM_LIMITS,
+    countSectionQuestions,
+    getMaxQuestionNumber,
+    getSharedListeningAudioUrl,
 } from './examEditor.helpers';
 import { QuestionGroupsEditor } from './QuestionGroupsEditor';
 
@@ -25,6 +31,8 @@ interface SharedSectionEditorProps {
 
 interface ReadingSectionEditorProps extends SharedSectionEditorProps {
     activeEditorRef: MutableRefObject<TiptapQxEditorRef | null>;
+    uploading: boolean;
+    handleUploadFile: (file: File, type: 'image' | 'video' | 'raw' | 'auto') => Promise<string>;
 }
 
 interface ListeningSectionEditorProps extends SharedSectionEditorProps {
@@ -32,6 +40,7 @@ interface ListeningSectionEditorProps extends SharedSectionEditorProps {
     globalAudioUrl: string | null;
     setGlobalAudioUrl: Dispatch<SetStateAction<string | null>>;
     handleUploadFile: (file: File, type: 'image' | 'video' | 'raw' | 'auto') => Promise<string>;
+    handleGenerateListeningTranscript?: (audioUrl: string, listeningParts?: CreateSectionDto['listeningParts']) => Promise<string[]>;
     activeEditorRef: MutableRefObject<TiptapQxEditorRef | null>;
 }
 
@@ -62,12 +71,22 @@ export const ReadingSectionEditor = ({
     sIdx,
     updateSection,
     activeEditorRef,
+    uploading,
+    handleUploadFile,
 }: ReadingSectionEditorProps) => {
     const passages = section.readingPassages ?? [];
     let currentQNum = 1;
+    const passageEditorRefs = useRef<Record<number, TiptapQxEditorRef | null>>({});
+    const questionCount = countSectionQuestions(section, 'Reading');
+    const hasQuestionCapacity = questionCount < EXAM_LIMITS.Reading.questions;
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <Tag color={questionCount > EXAM_LIMITS.Reading.questions ? 'red' : 'green'}>
+                    Reading {questionCount}/{EXAM_LIMITS.Reading.questions} câu
+                </Tag>
+            </div>
             {passages.map((passage, pIdx) => (
                 <div key={pIdx} style={{ background: '#fff', borderRadius: '12px', padding: '16px', border: '1px solid #e2e8f0' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
@@ -100,54 +119,45 @@ export const ReadingSectionEditor = ({
                             icon={<BoldOutlined />}
                             onMouseDown={(event) => {
                                 event.preventDefault();
-                                const activeElement = document.activeElement as HTMLTextAreaElement;
-                                if (!activeElement || activeElement.tagName !== 'TEXTAREA') return;
-
-                                const start = activeElement.selectionStart;
-                                const end = activeElement.selectionEnd;
-                                const text = activeElement.value;
-                                const selected = text.substring(start, end);
-                                if (!selected) return;
-
-                                const newValue = text.substring(0, start) + `**${selected}**` + text.substring(end);
-                                const updatedPassages = [...passages];
-                                updatedPassages[pIdx] = { ...passage, paragraphsData: newValue };
-                                updateSection(sIdx, { readingPassages: updatedPassages });
+                                const editorRef = passageEditorRefs.current[pIdx] ?? null;
+                                activeEditorRef.current = editorRef;
+                                editorRef?.toggleBold();
                             }}
                         >
                             In đậm
                         </Button>
                     </div>
-                    <Input.TextArea
-                        value={passage.paragraphsData ?? ''}
-                        placeholder="Nội dung chi tiết của bài đọc..."
-                        autoSize={{ minRows: 8, maxRows: 20 }}
-                        size="small"
-                        style={{ marginBottom: '10px' }}
-                        onPaste={(event) => {
-                            const newValue = getCleanPastedInputValue(event, passage.paragraphsData ?? '');
-                            if (newValue === null) return;
-
-                            const updatedPassages = [...passages];
-                            updatedPassages[pIdx] = { ...passage, paragraphsData: newValue };
-                            updateSection(sIdx, { readingPassages: updatedPassages });
-                            message.info('Văn bản đã được tự động dàn lại trang');
-                        }}
-                        onChange={(event) => {
-                            const updatedPassages = [...passages];
-                            updatedPassages[pIdx] = { ...passage, paragraphsData: event.target.value };
-                            updateSection(sIdx, { readingPassages: updatedPassages });
-                        }}
-                    />
+                    <div style={{ marginBottom: '10px' }}>
+                        <TiptapQxEditor
+                            ref={(instance) => {
+                                passageEditorRefs.current[pIdx] = instance;
+                            }}
+                            value={passage.paragraphsData ?? ''}
+                            placeholder="Nội dung chi tiết của bài đọc..."
+                            minHeight="260px"
+                            enableMarkdownBold
+                            onFocus={() => {
+                                activeEditorRef.current = passageEditorRefs.current[pIdx] ?? null;
+                            }}
+                            onChange={(value) => {
+                                const updatedPassages = [...passages];
+                                updatedPassages[pIdx] = { ...passage, paragraphsData: value };
+                                updateSection(sIdx, { readingPassages: updatedPassages });
+                            }}
+                        />
+                    </div>
                     {(() => {
                         const startOfPassage = currentQNum;
-                        const questionsInPassage = passage.questionGroups.reduce((acc, group) => acc + group.questions.length, 0);
                         const editor = (
                             <QuestionGroupsEditor
                                 groups={passage.questionGroups}
                                 skill="Reading"
                                 startQNum={startOfPassage}
+                                maxQuestionCount={EXAM_LIMITS.Reading.questions}
+                                totalQuestionCount={questionCount}
                                 activeEditorRef={activeEditorRef}
+                                uploading={uploading}
+                                handleUploadFile={handleUploadFile}
                                 onUpdate={(groups) => {
                                     const updatedPassages = [...passages];
                                     updatedPassages[pIdx] = { ...passage, questionGroups: groups };
@@ -155,7 +165,7 @@ export const ReadingSectionEditor = ({
                                     let questionNum = 1;
                                     const reindexedPassages = updatedPassages.map((item) => {
                                         const newGroups = reorderQuestionNumbers(item.questionGroups, questionNum);
-                                        questionNum += newGroups.reduce((acc, group) => acc + (group.questions?.length || 0), 0);
+                                        questionNum = Math.max(questionNum, getMaxQuestionNumber(newGroups) + 1);
                                         return { ...item, questionGroups: newGroups };
                                     });
 
@@ -164,31 +174,34 @@ export const ReadingSectionEditor = ({
                             />
                         );
 
-                        currentQNum += questionsInPassage;
+                        currentQNum = Math.max(currentQNum, getMaxQuestionNumber(passage.questionGroups) + 1);
                         return editor;
                     })()}
                 </div>
             ))}
-            <Button
-                type="default"
-                icon={<PlusOutlined />}
-                block
-                style={{
-                    background: '#f0fdf4',
-                    borderColor: SKILL_COLORS.Reading,
-                    color: SKILL_COLORS.Reading,
-                    fontWeight: 600,
-                    height: '38px',
-                    borderRadius: '8px',
-                    marginTop: '8px',
-                }}
-                onClick={() => {
-                    const updatedPassages = [...passages, { ...emptyPassage(), passageNumber: passages.length + 1 }];
-                    updateSection(sIdx, { readingPassages: updatedPassages });
-                }}
-            >
-                Thêm Passage mới cho phần Reading
-            </Button>
+            {passages.length < EXAM_LIMITS.Reading.passages && hasQuestionCapacity && (
+                <Button
+                    type="default"
+                    icon={<PlusOutlined />}
+                    block
+                    style={{
+                        background: '#f0fdf4',
+                        borderColor: SKILL_COLORS.Reading,
+                        color: SKILL_COLORS.Reading,
+                        fontWeight: 600,
+                        height: '38px',
+                        borderRadius: '8px',
+                        marginTop: '8px',
+                    }}
+                    onClick={() => {
+                        if (passages.length >= EXAM_LIMITS.Reading.passages) return;
+                        const updatedPassages = [...passages, { ...emptyPassage(), passageNumber: passages.length + 1 }];
+                        updateSection(sIdx, { readingPassages: updatedPassages });
+                    }}
+                >
+                    Thêm Passage mới (Tối đa {EXAM_LIMITS.Reading.passages})
+                </Button>
+            )}
         </div>
     );
 };
@@ -201,121 +214,123 @@ export const ListeningSectionEditor = ({
     globalAudioUrl,
     setGlobalAudioUrl,
     handleUploadFile,
+    handleGenerateListeningTranscript,
     activeEditorRef,
 }: ListeningSectionEditorProps) => {
     const parts = section.listeningParts ?? [];
+    const sharedAudioUrl = globalAudioUrl || getSharedListeningAudioUrl(parts);
     let currentQNum = 1;
+    const questionCount = countSectionQuestions(section, 'Listening');
+    const hasQuestionCapacity = questionCount < EXAM_LIMITS.Listening.questions;
+    const [generatingTranscriptIndex, setGeneratingTranscriptIndex] = useState<number | null>(null);
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <Tag color={questionCount > EXAM_LIMITS.Listening.questions ? 'red' : 'green'}>
+                    Listening {questionCount}/{EXAM_LIMITS.Listening.questions} câu
+                </Tag>
+            </div>
+            <div style={{ padding: '14px', background: '#eef2ff', borderRadius: '12px', border: '1px dashed #6366f1' }}>
+                <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#3730a3', marginBottom: '8px' }}>
+                    <SoundOutlined /> Audio chung cho toàn bài Listening
+                </div>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <Upload
+                        accept="audio/*"
+                        maxCount={1}
+                        showUploadList={false}
+                        beforeUpload={async (file) => {
+                            const url = await handleUploadFile(file, 'video');
+                            if (url) {
+                                setGlobalAudioUrl(url);
+                                updateSection(sIdx, { listeningParts: applySharedListeningAudioUrl(parts, url) });
+                            }
+                            return false;
+                        }}
+                    >
+                        <Button
+                            type="primary"
+                            icon={<SoundOutlined />}
+                            size="small"
+                            loading={uploading}
+                            style={{ background: SKILL_COLORS.Listening, borderColor: SKILL_COLORS.Listening }}
+                        >
+                            Tải audio toàn bài
+                        </Button>
+                    </Upload>
+                    <Input
+                        value={sharedAudioUrl}
+                        readOnly
+                        placeholder="Chưa có file audio dùng chung"
+                        size="small"
+                        style={{ flex: 1, background: '#f8fafc', color: '#475569' }}
+                        suffix={sharedAudioUrl ? (
+                            <CloseOutlined
+                                style={{ color: '#ef4444', cursor: 'pointer' }}
+                                onClick={() => {
+                                    setGlobalAudioUrl('');
+                                    updateSection(sIdx, { listeningParts: applySharedListeningAudioUrl(parts, '') });
+                                }}
+                            />
+                        ) : null}
+                    />
+                </div>
+                <div style={{ marginTop: '8px', fontSize: '0.75rem', color: '#4338ca', lineHeight: 1.6 }}>
+                    Listening giờ chỉ dùng một file audio cho toàn bộ bài. Các Part bên dưới chỉ còn để chia nhóm câu hỏi và nội dung hiển thị.
+                </div>
+            </div>
             {parts.map((part, pIdx) => (
                 <div key={pIdx} style={{ background: '#fff', borderRadius: '12px', padding: '16px', border: '1px solid #e2e8f0' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                         <span style={{ fontWeight: 700, color: SKILL_COLORS.Listening }}>Part {pIdx + 1}</span>
-                        {parts.length > 1 && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             <Button
-                                type="text"
-                                danger
-                                icon={<MinusCircleOutlined />}
                                 size="small"
-                                onClick={() => updateSection(sIdx, { listeningParts: parts.filter((_, index) => index !== pIdx) })}
-                            />
-                        )}
-                    </div>
-                    <div style={{ padding: '12px', background: '#eef2ff', borderRadius: '8px', border: '1px dashed #6366f1', marginBottom: '10px' }}>
-                        <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#3730a3', marginBottom: '6px' }}>
-                            <SoundOutlined /> Audio
-                        </div>
-                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px' }}>
-                            <Upload
-                                accept="audio/*"
-                                maxCount={1}
-                                showUploadList={false}
-                                disabled={globalAudioUrl !== null && pIdx !== 0}
-                                beforeUpload={async (file) => {
-                                    const url = await handleUploadFile(file, 'video');
-                                    if (url) {
-                                        if (globalAudioUrl !== null) {
-                                            setGlobalAudioUrl(url);
-                                            const updatedParts = parts.map((item) => ({ ...item, audioUrl: url }));
-                                            updateSection(sIdx, { listeningParts: updatedParts });
-                                        } else {
-                                            const updatedParts = [...parts];
-                                            updatedParts[pIdx] = { ...part, audioUrl: url };
-                                            updateSection(sIdx, { listeningParts: updatedParts });
-                                        }
+                                type="default"
+                                icon={<SoundOutlined />}
+                                loading={generatingTranscriptIndex === pIdx}
+                                disabled={!sharedAudioUrl || !handleGenerateListeningTranscript}
+                                onClick={async () => {
+                                    if (!sharedAudioUrl || !handleGenerateListeningTranscript) {
+                                        return;
                                     }
-                                    return false;
+
+                                    setGeneratingTranscriptIndex(pIdx);
+                                    try {
+                                        const transcriptDataByPart = await handleGenerateListeningTranscript(sharedAudioUrl, parts);
+                                        const updatedParts = parts.map((item, index) => ({
+                                            ...item,
+                                            transcriptData: transcriptDataByPart[index] ?? transcriptDataByPart[0] ?? '',
+                                        }));
+                                        updateSection(sIdx, { listeningParts: updatedParts });
+                                    } catch (error) {
+                                        message.error(
+                                            error instanceof Error
+                                                ? error.message
+                                                : 'Không thể generate transcript cho audio này.',
+                                        );
+                                    } finally {
+                                        setGeneratingTranscriptIndex((current) => current === pIdx ? null : current);
+                                    }
                                 }}
                             >
+                                Generate transcript
+                            </Button>
+                            {parts.length > 1 && (
                                 <Button
-                                    type="primary"
-                                    icon={<SoundOutlined />}
-                                    size="small"
-                                    loading={uploading}
-                                    disabled={globalAudioUrl !== null && pIdx !== 0}
-                                    style={{ background: SKILL_COLORS.Listening, borderColor: SKILL_COLORS.Listening }}
-                                >
-                                    Tải Audio {globalAudioUrl !== null && pIdx !== 0 ? '(Khoá)' : ''}
-                                </Button>
-                            </Upload>
-                            <Input
-                                value={globalAudioUrl || part.audioUrl}
-                                readOnly
-                                placeholder={pIdx === 0 ? 'Chưa có file audio nào' : 'Dùng chung audio với Part 1'}
-                                size="small"
-                                style={{ flex: 1, background: '#f8fafc', color: '#475569' }}
-                                suffix={(globalAudioUrl || part.audioUrl) && !(globalAudioUrl !== null && pIdx !== 0) ? (
-                                    <CloseOutlined
-                                        style={{ color: '#ef4444', cursor: 'pointer' }}
-                                        onClick={() => {
-                                            if (globalAudioUrl !== null) {
-                                                setGlobalAudioUrl('');
-                                                const updatedParts = parts.map((item) => ({ ...item, audioUrl: '' }));
-                                                updateSection(sIdx, { listeningParts: updatedParts });
-                                            } else {
-                                                const updatedParts = [...parts];
-                                                updatedParts[pIdx] = { ...part, audioUrl: '' };
-                                                updateSection(sIdx, { listeningParts: updatedParts });
-                                            }
-                                        }}
-                                    />
-                                ) : null}
-                            />
-                        </div>
-                        <div style={{ display: 'flex', gap: '8px', marginBottom: '6px' }}>
-                            {globalAudioUrl === null && parts.length > 1 && part.audioUrl && (
-                                <Button
-                                    size="small"
-                                    type="link"
-                                    onClick={() => {
-                                        setGlobalAudioUrl(part.audioUrl);
-                                        const updatedParts = parts.map((item) => ({ ...item, audioUrl: part.audioUrl }));
-                                        updateSection(sIdx, { listeningParts: updatedParts });
-                                        message.success('Đã bật chế độ Audio chung cho đề thi!');
-                                    }}
-                                >
-                                    Áp dụng cho tất cả Parts
-                                </Button>
-                            )}
-                            {globalAudioUrl !== null && pIdx === 0 && (
-                                <Button
-                                    size="small"
-                                    type="link"
+                                    type="text"
                                     danger
-                                    onClick={() => {
-                                        setGlobalAudioUrl(null);
-                                        message.info('Đã tắt chế độ Audio chung. Bạn có thể chỉnh audio riêng cho từng part.');
-                                    }}
-                                >
-                                    Tắt Audio chung
-                                </Button>
+                                    icon={<MinusCircleOutlined />}
+                                    size="small"
+                                    onClick={() => updateSection(sIdx, { listeningParts: parts.filter((_, index) => index !== pIdx) })}
+                                />
                             )}
                         </div>
                     </div>
                     <Input.TextArea
                         value={part.contextDescription ?? ''}
-                        placeholder="Mô tả context / transcript..."
+                        placeholder="Nội dung hiển thị của part: note/form/map/instruction..."
                         autoSize={{ minRows: 3, maxRows: 10 }}
                         style={{ marginBottom: '12px' }}
                         onPaste={(event) => {
@@ -332,14 +347,37 @@ export const ListeningSectionEditor = ({
                             updateSection(sIdx, { listeningParts: updatedParts });
                         }}
                     />
+                    <Input.TextArea
+                        value={part.transcriptData ?? ''}
+                        placeholder='Transcript JSON cho AI replay, ví dụ: {"schemaVersion":3,"segments":[{"startTime":115,"endTime":125,"text":"..."}]}'
+                        autoSize={{ minRows: 4, maxRows: 12 }}
+                        style={{ marginBottom: '12px' }}
+                        onPaste={(event) => {
+                            const nextValue = getCleanPastedInputValue(event, part.transcriptData ?? '');
+                            if (nextValue === null) return;
+
+                            const updatedParts = [...parts];
+                            updatedParts[pIdx] = { ...part, transcriptData: nextValue };
+                            updateSection(sIdx, { listeningParts: updatedParts });
+                        }}
+                        onChange={(event) => {
+                            const updatedParts = [...parts];
+                            updatedParts[pIdx] = { ...part, transcriptData: event.target.value };
+                            updateSection(sIdx, { listeningParts: updatedParts });
+                        }}
+                    />
+                    <div style={{ marginTop: '-4px', marginBottom: '12px', fontSize: '0.75rem', color: '#475569', lineHeight: 1.6 }}>
+                        Field này chỉ phục vụ AI gia sư tìm mốc audio và trích transcript. Không thay thế nội dung `contextDescription` đang hiển thị cho học viên. Schema mới chỉ cần `segments` có `startTime`, `endTime`, `text`; AI review tự suy luận evidence/replay theo part + câu hỏi + đáp án.
+                    </div>
                     {(() => {
                         const startOfPart = currentQNum;
-                        const questionsInPart = part.questionGroups.reduce((acc, group) => acc + group.questions.length, 0);
                         const editor = (
                             <QuestionGroupsEditor
                                 groups={part.questionGroups}
                                 skill="Listening"
                                 startQNum={startOfPart}
+                                maxQuestionCount={EXAM_LIMITS.Listening.questions}
+                                totalQuestionCount={questionCount}
                                 activeEditorRef={activeEditorRef}
                                 uploading={uploading}
                                 handleUploadFile={handleUploadFile}
@@ -350,7 +388,7 @@ export const ListeningSectionEditor = ({
                                     let questionNum = 1;
                                     const reindexedParts = updatedParts.map((item) => {
                                         const newGroups = reorderQuestionNumbers(item.questionGroups, questionNum);
-                                        questionNum += newGroups.reduce((acc, group) => acc + (group.questions?.length || 0), 0);
+                                        questionNum = Math.max(questionNum, getMaxQuestionNumber(newGroups) + 1);
                                         return { ...item, questionGroups: newGroups };
                                     });
 
@@ -359,34 +397,37 @@ export const ListeningSectionEditor = ({
                             />
                         );
 
-                        currentQNum += questionsInPart;
+                        currentQNum = Math.max(currentQNum, getMaxQuestionNumber(part.questionGroups) + 1);
                         return editor;
                     })()}
                 </div>
             ))}
-            <Button
-                type="default"
-                icon={<PlusOutlined />}
-                block
-                style={{
-                    background: '#eef2ff',
-                    borderColor: SKILL_COLORS.Listening,
-                    color: SKILL_COLORS.Listening,
-                    fontWeight: 600,
-                    height: '38px',
-                    borderRadius: '8px',
-                    marginTop: '8px',
-                }}
-                onClick={() => {
-                    const newPart = { ...emptyListeningPart(), partNumber: parts.length + 1 };
-                    if (globalAudioUrl) {
-                        newPart.audioUrl = globalAudioUrl;
-                    }
-                    updateSection(sIdx, { listeningParts: [...parts, newPart] });
-                }}
-            >
-                Thêm Listening Part mới
-            </Button>
+            {parts.length < EXAM_LIMITS.Listening.parts && hasQuestionCapacity && (
+                <Button
+                    type="default"
+                    icon={<PlusOutlined />}
+                    block
+                    style={{
+                        background: '#eef2ff',
+                        borderColor: SKILL_COLORS.Listening,
+                        color: SKILL_COLORS.Listening,
+                        fontWeight: 600,
+                        height: '38px',
+                        borderRadius: '8px',
+                        marginTop: '8px',
+                    }}
+                    onClick={() => {
+                        if (parts.length >= EXAM_LIMITS.Listening.parts) return;
+                        const newPart = { ...emptyListeningPart(), partNumber: parts.length + 1 };
+                        if (sharedAudioUrl) {
+                            newPart.audioUrl = sharedAudioUrl;
+                        }
+                        updateSection(sIdx, { listeningParts: [...parts, newPart] });
+                    }}
+                >
+                    Thêm Listening Part mới (Tối đa {EXAM_LIMITS.Listening.parts})
+                </Button>
+            )}
         </div>
     );
 };
@@ -402,7 +443,10 @@ export const WritingSectionEditor = ({
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {tasks.map((task, taskIdx) => (
+            {tasks.map((task, taskIdx) => {
+                const writingAssets = parseWritingTaskAssetsData(task.assetsData);
+
+                return (
                 <div key={taskIdx} style={{ background: '#fff', borderRadius: '12px', padding: '16px', border: '1px solid #e2e8f0' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                         <span style={{ fontWeight: 700, color: SKILL_COLORS.Writing }}>Task {task.taskNumber ?? taskIdx + 1}</span>
@@ -464,7 +508,13 @@ export const WritingSectionEditor = ({
                                         const url = await handleUploadFile(file, 'image');
                                         if (url) {
                                             const updatedTasks = [...tasks];
-                                            updatedTasks[taskIdx] = { ...task, assetsData: url };
+                                            updatedTasks[taskIdx] = {
+                                                ...task,
+                                                assetsData: serializeWritingTaskAssetsData({
+                                                    imageUrl: url,
+                                                    hiddenDataText: writingAssets.hiddenDataText,
+                                                }),
+                                            };
                                             updateSection(sIdx, { writingTasks: updatedTasks });
                                         }
                                         return false;
@@ -481,44 +531,58 @@ export const WritingSectionEditor = ({
                                     </Button>
                                 </Upload>
                                 <Input
-                                    value={task.assetsData ?? ''}
+                                    value={writingAssets.primaryImageUrl ?? ''}
                                     placeholder="Chưa có ảnh biểu đồ"
                                     readOnly
                                     size="small"
                                     style={{ flex: 1, background: '#fffcf0', color: '#92400e' }}
-                                    suffix={task.assetsData ? (
+                                    suffix={writingAssets.primaryImageUrl ? (
                                         <CloseOutlined
                                             style={{ color: '#ef4444', cursor: 'pointer' }}
                                             onClick={() => {
                                                 const updatedTasks = [...tasks];
-                                                updatedTasks[taskIdx] = { ...task, assetsData: '' };
+                                                updatedTasks[taskIdx] = {
+                                                    ...task,
+                                                    assetsData: serializeWritingTaskAssetsData({
+                                                        imageUrl: '',
+                                                        hiddenDataText: writingAssets.hiddenDataText,
+                                                    }),
+                                                };
                                                 updateSection(sIdx, { writingTasks: updatedTasks });
                                             }}
                                         />
                                     ) : null}
                                 />
                             </div>
+                            <div style={{ marginTop: '10px', fontSize: '0.75rem', color: '#a16207', lineHeight: 1.6 }}>
+                                Khi lưu đề, hệ thống sẽ tự đọc ảnh biểu đồ ở nền để chuẩn bị dữ liệu cho AI chấm và AI gia sư.
+                            </div>
                         </div>
                     )}
                 </div>
-            ))}
-            <Button
-                type="default"
-                icon={<PlusOutlined />}
-                block
-                style={{
-                    background: '#fffbeb',
-                    borderColor: SKILL_COLORS.Writing,
-                    color: '#92400e',
-                    fontWeight: 600,
-                    height: '38px',
-                    borderRadius: '8px',
-                    marginTop: '12px',
-                }}
-                onClick={() => updateSection(sIdx, { writingTasks: [...tasks, emptyWritingTask(tasks.length + 1)] })}
-            >
-                Thêm Writing Task mới
-            </Button>
+            )})}
+            {tasks.length < EXAM_LIMITS.Writing.tasks && (
+                <Button
+                    type="default"
+                    icon={<PlusOutlined />}
+                    block
+                    style={{
+                        background: '#fffbeb',
+                        borderColor: SKILL_COLORS.Writing,
+                        color: '#92400e',
+                        fontWeight: 600,
+                        height: '38px',
+                        borderRadius: '8px',
+                        marginTop: '12px',
+                    }}
+                    onClick={() => {
+                        if (tasks.length >= EXAM_LIMITS.Writing.tasks) return;
+                        updateSection(sIdx, { writingTasks: [...tasks, emptyWritingTask(tasks.length + 1)] });
+                    }}
+                >
+                    Thêm Writing Task mới (Tối đa {EXAM_LIMITS.Writing.tasks})
+                </Button>
+            )}
         </div>
     );
 };
@@ -664,23 +728,28 @@ export const SpeakingSectionEditor = ({
                     </Button>
                 </div>
             ))}
-            <Button
-                type="default"
-                icon={<PlusOutlined />}
-                block
-                style={{
-                    background: '#fef2f2',
-                    borderColor: SKILL_COLORS.Speaking,
-                    color: SKILL_COLORS.Speaking,
-                    fontWeight: 600,
-                    height: '38px',
-                    borderRadius: '8px',
-                    marginTop: '12px',
-                }}
-                onClick={() => updateSection(sIdx, { speakingParts: [...parts, emptySpeakingPart(parts.length + 1)] })}
-            >
-                Thêm Speaking Part
-            </Button>
+            {parts.length < EXAM_LIMITS.Speaking.parts && (
+                <Button
+                    type="default"
+                    icon={<PlusOutlined />}
+                    block
+                    style={{
+                        background: '#fef2f2',
+                        borderColor: SKILL_COLORS.Speaking,
+                        color: SKILL_COLORS.Speaking,
+                        fontWeight: 600,
+                        height: '38px',
+                        borderRadius: '8px',
+                        marginTop: '12px',
+                    }}
+                    onClick={() => {
+                        if (parts.length >= EXAM_LIMITS.Speaking.parts) return;
+                        updateSection(sIdx, { speakingParts: [...parts, emptySpeakingPart(parts.length + 1)] });
+                    }}
+                >
+                    Thêm Speaking Part (Tối đa {EXAM_LIMITS.Speaking.parts})
+                </Button>
+            )}
         </div>
     );
 };

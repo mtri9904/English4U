@@ -170,6 +170,10 @@
             "Microsoft.EntityFrameworkCore": {
               "target": "Package",
               "version": "[9.*, )"
+            },
+            "Microsoft.EntityFrameworkCore.Relational": {
+              "target": "Package",
+              "version": "[9.*, )"
             }
           },
           "imports": [
@@ -330,6 +334,10 @@
         "net9.0": {
           "targetAlias": "net9.0",
           "dependencies": {
+            "Docnet.Core": {
+              "target": "Package",
+              "version": "[2.6.0, )"
+            },
             "Microsoft.EntityFrameworkCore.SqlServer": {
               "target": "Package",
               "version": "[9.*, )"
@@ -339,6 +347,14 @@
               "suppressParent": "All",
               "target": "Package",
               "version": "[9.*, )"
+            },
+            "System.Drawing.Common": {
+              "target": "Package",
+              "version": "[6.0.0, )"
+            },
+            "UglyToad.PdfPig": {
+              "target": "Package",
+              "version": "[1.7.0-custom-5, )"
             }
           },
           "imports": [

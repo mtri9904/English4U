@@ -5,9 +5,34 @@ import { HomePage } from '@/features/home/pages/HomePage';
 import { AboutPage } from '@/features/home/pages/AboutPage';
 import { ContactPage } from '@/features/home/pages/ContactPage';
 import { LoginPage } from '@/features/auth/pages/LoginPage';
-import { AdminLoginPage, AdminDashboard, ExamManagement, ExamDetailPage, ExamEditorPage, ProfilePage } from '@/features/admin';
+import ResetPasswordPage from '@/features/auth/pages/ResetPasswordPage';
+import {
+    AdminLoginPage,
+    AdminDashboard,
+    StudentManagementPage,
+    ExamManagement,
+    PdfRawPreviewPage,
+    ExamDetailPage,
+    ExamEditorPage,
+    AttemptManagementPage,
+    ProfilePage,
+    NotificationManagementPage,
+    BillingManagementPage,
+    AdminNotFoundPage,
+} from '@/features/admin';
 import { AdminLayout } from '@/layouts/AdminLayout';
-import { ClientDashboard } from '@/features/client';
+import {
+    ClientDashboard,
+    ClientNotFoundPage,
+    ClientPlaceholderPage,
+    ClientMyExamsPage,
+    ClientPracticeExamPage,
+    ClientPracticePage,
+    ClientReadingSessionPage,
+    ClientListeningSessionPage,
+    ClientWritingSessionPage,
+    ClientSessionSubmitPage,
+} from '@/features/client';
 
 
 export const appRouter = createBrowserRouter([
@@ -42,6 +67,10 @@ export const appRouter = createBrowserRouter([
         element: <LoginPage mode="forgot" />,
     },
     {
+        path: '/reset-password',
+        element: <ResetPasswordPage />,
+    },
+    {
         path: '/admin/login',
         element: <AdminLoginPage />,
     },
@@ -58,8 +87,20 @@ export const appRouter = createBrowserRouter([
                 element: <AdminDashboard />,
             },
             {
+                path: 'users',
+                element: <StudentManagementPage />,
+            },
+            {
                 path: 'exams',
                 element: <ExamManagement />,
+            },
+            {
+                path: 'exams/raw-preview',
+                element: <PdfRawPreviewPage />,
+            },
+            {
+                path: 'attempts',
+                element: <AttemptManagementPage />,
             },
             {
                 path: 'exams/:id',
@@ -77,6 +118,18 @@ export const appRouter = createBrowserRouter([
                 path: 'profile',
                 element: <ProfilePage />,
             },
+            {
+                path: 'notifications',
+                element: <NotificationManagementPage />,
+            },
+            {
+                path: 'billing',
+                element: <BillingManagementPage />,
+            },
+            {
+                path: '*',
+                element: <AdminNotFoundPage />,
+            },
         ]
     },
     {
@@ -87,10 +140,65 @@ export const appRouter = createBrowserRouter([
                 index: true,
                 element: <ClientDashboard />,
             },
+            {
+                path: 'practice',
+                element: <ClientPracticePage />,
+            },
+            {
+                path: 'practice/:examId',
+                element: <ClientPracticeExamPage />,
+            },
+            {
+                path: 'my-exams',
+                element: <ClientMyExamsPage />,
+            },
+            {
+                path: 'sessions/:sessionId/reading',
+                element: <ClientReadingSessionPage />,
+            },
+            {
+                path: 'sessions/:sessionId/listening',
+                element: <ClientListeningSessionPage />,
+            },
+            {
+                path: 'sessions/:sessionId/writing',
+                element: <ClientWritingSessionPage />,
+            },
+            {
+                path: 'sessions/:sessionId/submit',
+                element: <ClientSessionSubmitPage />,
+            },
+            {
+                path: 'progress',
+                element: (
+                    <ClientPlaceholderPage
+                        title="Tiến trình"
+                        description="Biểu đồ band, tỷ lệ đúng và mức tiến bộ theo kỹ năng sẽ hiển thị ở đây."
+                    />
+                ),
+            },
+            {
+                path: 'profile',
+                element: (
+                    <ClientPlaceholderPage
+                        title="Hồ sơ"
+                        description="Thông tin tài khoản và dữ liệu cá nhân của bạn sẽ được quản lý tại đây."
+                    />
+                ),
+            },
+            {
+                path: 'settings',
+                element: (
+                    <ClientPlaceholderPage
+                        title="Cài đặt"
+                        description="Các thiết lập liên quan đến timer, audio và thông báo sẽ nằm trong màn này."
+                    />
+                ),
+            },
         ]
     },
     {
         path: '*',
-        element: <Navigate to="/" replace />,
+        element: <ClientNotFoundPage />,
     }
 ]);

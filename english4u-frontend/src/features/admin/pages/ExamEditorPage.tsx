@@ -1,20 +1,56 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Card, Divider, FloatButton, Input, InputNumber, Result, Select, Spin, Tabs, message } from 'antd';
-import { ArrowLeftOutlined, MinusCircleOutlined, PlusOutlined, SaveOutlined, VerticalAlignTopOutlined } from '@ant-design/icons';
-import { AnimatePresence, motion } from 'framer-motion';
+import { Button, Card, Divider, FloatButton, Input, InputNumber, Result, Select, Spin, Tag, message } from 'antd';
+import { ArrowLeftOutlined, SaveOutlined, VerticalAlignTopOutlined } from '@ant-design/icons';
+import { motion } from 'framer-motion';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useCreateExamMutation, useExamDetailQuery, useUpdateExamMutation } from '../api/exam.api';
+import {
+    useCreateExamMutation,
+    useExamDetailQuery,
+    useGenerateListeningTranscriptMutation,
+    useUpdateExamMutation,
+} from '../api/exam.api';
 import { uploadToCloudinary } from '@/shared/lib/cloudinary';
 import type { TiptapQxEditorRef } from '../components/TiptapQxEditor';
-import type { CreateExamDto, CreateSectionDto } from '../types/exam.types';
+import type { CreateExamDto, CreateQuestionGroupDto, CreateSectionDto } from '../types/exam.types';
 import type { SkillType } from '../constants/questionTypes';
-import { emptySection, SKILL_COLORS } from './exam-editor/examEditor.helpers';
+import {
+    emptySection,
+    normalizeListeningPartsToSharedAudio,
+    SKILL_COLORS,
+    validateExamStructureLimits,
+} from './exam-editor/examEditor.helpers';
+import { serializeListeningTranscriptData, splitListeningTranscriptSegmentsByPart } from '@/shared/lib/listeningTranscript';
 import {
     ListeningSectionEditor,
     ReadingSectionEditor,
     SpeakingSectionEditor,
     WritingSectionEditor,
 } from './exam-editor/SectionEditors';
+import { getCleanPastedInputValue } from '@/shared/utils/input';
+import { getEffectiveMcqGroupType, normalizeSkillType } from '@/shared/lib/examDisplay';
+
+const normalizeQuestionGroupType = (group: CreateQuestionGroupDto): CreateQuestionGroupDto => {
+    const effectiveType = getEffectiveMcqGroupType({
+        groupType: group.groupType,
+        contentData: group.contentData,
+        questionCount: group.questions.length,
+        hasQuestionContent: group.questions.some((question) => !!question.content?.trim()),
+    });
+
+    return effectiveType ? { ...group, groupType: effectiveType } : group;
+};
+
+const normalizeSectionQuestionTypes = (section: CreateSectionDto): CreateSectionDto => ({
+    ...section,
+    readingPassages: section.readingPassages?.map((passage) => ({
+        ...passage,
+        questionGroups: passage.questionGroups.map(normalizeQuestionGroupType),
+    })),
+    listeningParts: section.listeningParts?.map((part) => ({
+        ...part,
+        questionGroups: part.questionGroups.map(normalizeQuestionGroupType),
+    })),
+});
 
 export const ExamEditorPage = () => {
     const { id } = useParams<{ id: string }>();
@@ -25,6 +61,7 @@ export const ExamEditorPage = () => {
     const { data: initialData, isLoading: isLoadingData, error: loadError } = useExamDetailQuery(id || '');
     const createMutation = useCreateExamMutation();
     const updateMutation = useUpdateExamMutation();
+    const generateListeningTranscriptMutation = useGenerateListeningTranscriptMutation();
 
     const [uploading, setUploading] = useState(false);
     const [globalAudioUrl, setGlobalAudioUrl] = useState<string | null>(null);
@@ -61,6 +98,9 @@ export const ExamEditorPage = () => {
 
     useEffect(() => {
         if (isEdit && initialData) {
+            const rawFirstSection = (initialData.sections?.[0] as CreateSectionDto | undefined) ?? emptySection('Reading');
+            const firstSectionSkill = (normalizeSkillType(rawFirstSection.skillType) || 'Reading') as SkillType;
+            const firstSection = normalizeSectionQuestionTypes({ ...rawFirstSection, skillType: firstSectionSkill });
             setForm({
                 title: initialData.title,
                 description: initialData.description || '',
@@ -68,18 +108,12 @@ export const ExamEditorPage = () => {
                 totalPoints: initialData.totalPoints || 0,
                 examType: initialData.examType || 'IELTS',
                 isPublished: initialData.isPublished,
-                sections: initialData.sections as any,
+                sections: [{ ...firstSection, orderIndex: 0 }],
             });
 
-            const allAudios = (initialData.sections || [])
-                .flatMap((section: any) => section.listeningParts || [])
+            const allAudios = (firstSection.listeningParts || [])
                 .map((part: any) => part.audioUrl);
-
-            if (allAudios.length > 1 && allAudios.every((audio: string) => audio === allAudios[0] && audio !== '')) {
-                setGlobalAudioUrl(allAudios[0]);
-            } else {
-                setGlobalAudioUrl(null);
-            }
+            setGlobalAudioUrl(allAudios.find((audio: string) => !!audio)?.trim() || null);
         }
     }, [isEdit, initialData]);
 
@@ -92,11 +126,30 @@ export const ExamEditorPage = () => {
         }));
     };
 
-    const handleAddSection = (skill: SkillType) => {
-        setForm((prev) => ({
-            ...prev,
-            sections: [...prev.sections, { ...emptySection(skill), orderIndex: prev.sections.length }],
-        }));
+    const handleGenerateListeningTranscript = async (audioUrl: string, listeningParts?: CreateSectionDto['listeningParts']) => {
+        if (!audioUrl.trim()) {
+            throw new Error('Chưa có audio URL để tạo transcript.');
+        }
+
+        try {
+            const result = await generateListeningTranscriptMutation.mutateAsync({
+                audioUrl: audioUrl.trim(),
+                language: 'en',
+            });
+
+            const partCount = Math.max(1, listeningParts?.length ?? 1);
+            const splitResult = splitListeningTranscriptSegmentsByPart(result.segments, partCount);
+            message.success(
+                splitResult.usedDetectedBoundaries
+                    ? `Đã sinh ${result.segmentCount} transcript segments và chia thành ${partCount} part. AI review sẽ tự suy luận evidence/replay theo part + câu hỏi + đáp án.`
+                    : `Đã sinh ${result.segmentCount} transcript segments. Chưa thấy marker chia part rõ, AI review sẽ fallback suy luận trong transcript audio.`,
+            );
+            return splitResult.segmentsByPart.map((partSegments) => serializeListeningTranscriptData({
+                segments: partSegments,
+            }));
+        } catch (error: any) {
+            throw new Error(error?.response?.data?.message || 'Không thể generate transcript từ audio.');
+        }
     };
 
     const handleSubmit = async () => {
@@ -108,7 +161,19 @@ export const ExamEditorPage = () => {
         const submitData: CreateExamDto = {
             ...form,
             totalPoints: calculatedTotalPoints,
+            sections: form.sections
+                .map(normalizeSectionQuestionTypes)
+                .map((section) => (
+                    section.skillType === 'Listening'
+                        ? { ...section, listeningParts: normalizeListeningPartsToSharedAudio(section.listeningParts ?? []) }
+                        : section
+                )),
         };
+        const limitErrors = validateExamStructureLimits(submitData);
+        if (limitErrors.length > 0) {
+            message.error(limitErrors[0]);
+            return;
+        }
 
         try {
             if (isEdit && id) {
@@ -139,7 +204,7 @@ export const ExamEditorPage = () => {
     };
 
     const renderSectionContent = (section: CreateSectionDto, sIdx: number) => {
-        const skill = section.skillType as SkillType;
+        const skill = (normalizeSkillType(section.skillType) || 'Reading') as SkillType;
 
         switch (skill) {
             case 'Reading':
@@ -149,6 +214,8 @@ export const ExamEditorPage = () => {
                         sIdx={sIdx}
                         updateSection={updateSection}
                         activeEditorRef={activeEditorRef}
+                        uploading={uploading}
+                        handleUploadFile={handleUploadFile}
                     />
                 );
             case 'Listening':
@@ -161,6 +228,7 @@ export const ExamEditorPage = () => {
                         globalAudioUrl={globalAudioUrl}
                         setGlobalAudioUrl={setGlobalAudioUrl}
                         handleUploadFile={handleUploadFile}
+                        handleGenerateListeningTranscript={handleGenerateListeningTranscript}
                         activeEditorRef={activeEditorRef}
                     />
                 );
@@ -209,6 +277,17 @@ export const ExamEditorPage = () => {
         );
     }
 
+    const activeSection = form.sections[0] ?? emptySection('Reading');
+    const activeSkill = (normalizeSkillType(activeSection.skillType) || 'Reading') as SkillType;
+    const hasLegacyMultiSection = (initialData?.sections?.length ?? 0) > 1;
+
+    const handleChangeSkill = (value: SkillType) => {
+        setGlobalAudioUrl(null);
+        updateForm({
+            sections: [{ ...emptySection(value), orderIndex: 0 }],
+        });
+    };
+
     return (
         <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto', background: '#f8fafc', minHeight: '100vh' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
@@ -250,7 +329,11 @@ export const ExamEditorPage = () => {
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                         <div>
                             <label style={{ fontWeight: 600, fontSize: '0.8125rem', color: '#334155', display: 'block', marginBottom: '4px' }}>Tên đề thi *</label>
-                            <Input value={form.title} onChange={(event) => updateForm({ title: event.target.value })} placeholder="VD: IELTS Mock Test 2026" />
+                            <Input value={form.title} onPaste={e => {
+                                const newVal = getCleanPastedInputValue(e, form.title || '');
+                                if (newVal === null) return;
+                                updateForm({ title: newVal });
+                            }} onChange={(event) => updateForm({ title: event.target.value })} placeholder="VD: IELTS Mock Test 2026" />
                         </div>
                         <div>
                             <label style={{ fontWeight: 600, fontSize: '0.8125rem', color: '#334155', display: 'block', marginBottom: '4px' }}>Loại đề</label>
@@ -264,6 +347,11 @@ export const ExamEditorPage = () => {
                     </div>
                     <Input.TextArea
                         value={form.description}
+                        onPaste={e => {
+                            const newVal = getCleanPastedInputValue(e, form.description || '');
+                            if (newVal === null) return;
+                            updateForm({ description: newVal });
+                        }}
                         onChange={(event) => updateForm({ description: event.target.value })}
                         placeholder="Mô tả đề thi..."
                         autoSize={{ minRows: 2, maxRows: 4 }}
@@ -281,77 +369,81 @@ export const ExamEditorPage = () => {
 
                     <Divider style={{ margin: '8px 0' }} />
 
-                    <Tabs
-                        type="card"
-                        items={form.sections.map((section, sIdx) => {
-                            const skill = section.skillType as SkillType;
-                            return {
-                                key: String(sIdx),
-                                label: (
-                                    <span style={{ color: SKILL_COLORS[skill], fontWeight: 600 }}>
-                                        {skill === 'Reading' ? '📖' : skill === 'Listening' ? '🎧' : skill === 'Writing' ? '✍️' : '🎤'} {skill}
-                                    </span>
-                                ),
-                                children: (
-                                    <AnimatePresence mode="wait">
-                                        <motion.div key={sIdx} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-                                            <div style={{ display: 'flex', gap: '10px', marginBottom: '12px', flexWrap: 'wrap' }}>
-                                                <Select
-                                                    value={skill}
-                                                    style={{ width: 180 }}
-                                                    onChange={(value: SkillType) => {
-                                                        const newSection = emptySection(value);
-                                                        newSection.orderIndex = sIdx;
-                                                        const updatedSections = [...form.sections];
-                                                        updatedSections[sIdx] = newSection;
-                                                        setForm((prev) => ({ ...prev, sections: updatedSections }));
-                                                    }}
-                                                    options={[
-                                                        { label: '📖 Reading', value: 'Reading' },
-                                                        { label: '🎧 Listening', value: 'Listening' },
-                                                        { label: '✍️ Writing', value: 'Writing' },
-                                                        { label: '🎤 Speaking', value: 'Speaking' },
-                                                    ]}
-                                                />
-                                                <Input
-                                                    value={section.title ?? ''}
-                                                    style={{ flex: 1 }}
-                                                    placeholder="Tiêu đề section"
-                                                    onChange={(event) => updateSection(sIdx, { title: event.target.value })}
-                                                />
-                                                {form.sections.length > 1 && (
-                                                    <Button
-                                                        danger
-                                                        icon={<MinusCircleOutlined />}
-                                                        onClick={() => {
-                                                            const updatedSections = form.sections.filter((_, index) => index !== sIdx);
-                                                            updateForm({ sections: updatedSections });
-                                                        }}
-                                                    />
-                                                )}
-                                            </div>
-                                            {renderSectionContent(section, sIdx)}
-                                        </motion.div>
-                                    </AnimatePresence>
-                                ),
-                            };
-                        })}
-                    />
-
-                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                        {(['Reading', 'Listening', 'Writing', 'Speaking'] as SkillType[]).map((skill) => (
-                            <Button
-                                key={skill}
-                                type="dashed"
-                                size="small"
-                                icon={<PlusOutlined />}
-                                onClick={() => handleAddSection(skill)}
-                                style={{ borderColor: SKILL_COLORS[skill], color: SKILL_COLORS[skill] }}
-                            >
-                                + {skill}
-                            </Button>
-                        ))}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                        <div>
+                            <div style={{ fontWeight: 700, color: '#0f172a', marginBottom: 4 }}>
+                                Cấu hình kỹ năng
+                            </div>
+                            <div style={{ color: '#64748b', fontSize: '0.875rem' }}>
+                                Mỗi đề thi chỉ gồm một kỹ năng và một section tương ứng.
+                            </div>
+                        </div>
+                        <Tag
+                            style={{
+                                borderRadius: 999,
+                                padding: '6px 12px',
+                                margin: 0,
+                                border: 'none',
+                                background: `${SKILL_COLORS[activeSkill] || '#0ea5e9'}18`,
+                                color: SKILL_COLORS[activeSkill] || '#0ea5e9',
+                                fontWeight: 700,
+                            }}
+                        >
+                            {activeSkill}
+                        </Tag>
                     </div>
+
+                    {hasLegacyMultiSection && (
+                        <div
+                            style={{
+                                padding: '12px 14px',
+                                borderRadius: 12,
+                                background: '#fff7ed',
+                                border: '1px solid #fdba74',
+                                color: '#9a3412',
+                                fontSize: '0.875rem',
+                            }}
+                        >
+                            Đề này đang có dữ liệu nhiều section từ cấu trúc cũ. CMS hiện chỉ chỉnh sửa section đầu tiên để đồng bộ với mô hình một đề một kỹ năng.
+                        </div>
+                    )}
+
+                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '10px', marginBottom: '12px' }}>
+                            <div>
+                                <label style={{ fontWeight: 600, fontSize: '0.8125rem', color: '#334155', display: 'block', marginBottom: '4px' }}>
+                                    Kỹ năng đề thi
+                                </label>
+                                <Select
+                                    value={activeSkill}
+                                    style={{ width: '100%' }}
+                                    onChange={handleChangeSkill}
+                                    options={[
+                                        { label: '📖 Reading', value: 'Reading' },
+                                        { label: '🎧 Listening', value: 'Listening' },
+                                        { label: '✍️ Writing', value: 'Writing' },
+                                        { label: '🎤 Speaking', value: 'Speaking' },
+                                    ]}
+                                />
+                            </div>
+                            <div>
+                                <label style={{ fontWeight: 600, fontSize: '0.8125rem', color: '#334155', display: 'block', marginBottom: '4px' }}>
+                                    Tiêu đề section
+                                </label>
+                                <Input
+                                    value={activeSection.title ?? ''}
+                                    placeholder="Tiêu đề section"
+                                    onPaste={e => {
+                                        const newVal = getCleanPastedInputValue(e, activeSection.title || '');
+                                        if (newVal === null) return;
+                                        updateSection(0, { title: newVal });
+                                    }}
+                                    onChange={(event) => updateSection(0, { title: event.target.value })}
+                                />
+                            </div>
+                        </div>
+                        {renderSectionContent(activeSection, 0)}
+                    </motion.div>
                 </div>
             </Card>
 

@@ -2,22 +2,24 @@ import { useState, useMemo, useEffect } from 'react';
 import { Modal, Input, Select, InputNumber, Button, Divider, message, Upload, Tabs, Tag } from 'antd';
 import { PlusOutlined, MinusCircleOutlined, SoundOutlined, PictureOutlined, BoldOutlined, CloseOutlined } from '@ant-design/icons';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useCreateExamMutation, useUpdateExamMutation } from '../api/exam.api';
+import {
+    useCreateExamMutation,
+    useGenerateListeningTranscriptMutation,
+    useUpdateExamMutation,
+} from '../api/exam.api';
 import { uploadToCloudinary } from '@/shared/lib/cloudinary';
 import type {
     ExamDto,
     CreateExamDto, CreateSectionDto,
-    CreateReadingPassageDto, CreateListeningPartDto,
-    CreateWritingTaskDto, CreateSpeakingPartDto, CreateSpeakingQuestionDto,
-    CreateQuestionGroupDto, CreateQuestionDto, CreateQuestionOptionDto,
+    CreateQuestionGroupDto, CreateQuestionDto,
 } from '../types/exam.types';
 import {
-    QUESTION_TYPES, TFNG_OPTIONS, YNNG_OPTIONS,
+    QUESTION_TYPES,
     SINGLE_CHOICE_TYPES, MULTI_CHOICE_TYPES, MATCHING_TYPES, FILL_TYPES,
-    READING_QUESTION_TYPE_OPTIONS, LISTENING_QUESTION_TYPE_OPTIONS,
     type SkillType,
 } from '../constants/questionTypes';
-import { cleanUpClipboardText } from '../pages/exam-editor/examEditor.helpers';
+import { getCleanPastedInputValue, cleanUpText } from '@/shared/utils/input';
+import { TruthValueDefinitionTable } from '@/shared/components/TruthValueDefinitionTable';
 
 interface Props {
     open: boolean;
@@ -25,98 +27,52 @@ interface Props {
     initialData?: ExamDto | null;
 }
 
-const SKILL_COLORS: Record<SkillType, string> = {
-    Reading: '#10b981', Listening: '#6366f1', Writing: '#f59e0b', Speaking: '#ef4444',
-};
+import { getOptionLabel } from '@/shared/utils/optionLabel.utils';
+import {
+    emptyOption, emptyQuestion, emptyGroup, emptyPassage, emptyListeningPart,
+    applySharedListeningAudioUrl, getSharedListeningAudioUrl, normalizeListeningPartsToSharedAudio,
+    reorderQuestionNumbers, emptyWritingTask, emptySpeakingQuestion, emptySpeakingPart,
+    emptySection, GROUP_TYPE_OPTIONS, SKILL_COLORS, getOptionsForType, EXAM_LIMITS, getMaxQuestionNumber,
+    applyBoldToTextarea, validateExamStructureLimits,
+} from '../pages/exam-editor/examEditor.helpers';
+import { FlowchartCompletionEditor } from '../pages/exam-editor/FlowchartCompletionEditor';
+import { ListeningMultiSelectEditor } from '../pages/exam-editor/ListeningMultiSelectEditor';
+import { parseWritingTaskAssetsData, serializeWritingTaskAssetsData } from '@/shared/lib/writingTaskAssets';
+import { serializeListeningTranscriptData, splitListeningTranscriptSegmentsByPart } from '@/shared/lib/listeningTranscript';
 
-const emptyOption = (idx = 0): CreateQuestionOptionDto => ({
-    optionText: '', isCorrect: false, orderIndex: idx,
-});
+const buildBlankOptions = (count: number, existingOptions: CreateQuestionDto['options'] = []) =>
+    Array.from({ length: count }, (_, index) => ({
+        ...(existingOptions[index] ?? emptyOption(index)),
+        orderIndex: index,
+    }));
 
-const emptyQuestion = (): CreateQuestionDto => ({
-    content: '', correctAnswer: undefined, points: 1, options: [],
-});
+const FIXED_OPTION_MATCHING_TYPES = new Set<string>([
+    QUESTION_TYPES.MATCHING_CLASSIFICATION,
+]);
 
-const emptyGroup = (groupType = 'MCQ_SINGLE'): CreateQuestionGroupDto => ({
-    groupType, instruction: '', questions: [emptyQuestion()],
-});
-
-const emptyPassage = (): CreateReadingPassageDto => ({
-    title: '', paragraphsData: '', questionGroups: [emptyGroup()],
-});
-
-const emptyListeningPart = (): CreateListeningPartDto => ({
-    partNumber: 1, audioUrl: '', contextDescription: '', questionGroups: [emptyGroup()],
-});
-
-const reorderQuestionNumbers = (groups: CreateQuestionGroupDto[], startQNum: number) => {
-    let currentQ = startQNum;
-    return groups.map(group => {
-        const isComplex = [
-            'TABLE_COMPLETION', 'MATCHING_TABLE', 'NOTE_COMPLETION', 'FORM_COMPLETION', 'MAP_LABELLING', 'DIAGRAM_LABELLING'
-        ].includes(group.groupType ?? '');
-
-        let newGroup: CreateQuestionGroupDto;
-
-        if (isComplex && group.contentData) {
-            const regex = /\[Q(\d+)\]/g;
-            const matches = [...group.contentData.matchAll(regex)];
-            const oldToNew = new Map<number, number>();
-            const orderedOldNums: number[] = [];
-            const seen = new Set<number>();
-
-            matches.forEach(m => {
-                const old = parseInt(m[1], 10);
-                if (!seen.has(old)) {
-                    seen.add(old);
-                    orderedOldNums.push(old);
-                }
-            });
-
-            const startVal = currentQ;
-            orderedOldNums.forEach(old => {
-                oldToNew.set(old, currentQ++);
-            });
-            const endVal = currentQ - 1;
-
-            const newContent = group.contentData.replace(/\[Q(\d+)\]/g, (_, p1) => {
-                const old = parseInt(p1, 10);
-                return `[Q${oldToNew.get(old) || p1}]`;
-            });
-
-            const newQs = orderedOldNums.map(old => {
-                const existing = group.questions.find(q => q.questionNumber === old);
-                const newNum = oldToNew.get(old)!;
-                return existing ? { ...existing, questionNumber: newNum } : { ...emptyQuestion(), questionNumber: newNum };
-            });
-
-            newGroup = { ...group, contentData: newContent, questions: newQs, startQuestion: startVal, endQuestion: endVal };
-        } else {
-            const startVal = currentQ;
-            const newQs = group.questions.map(q => ({
-                ...q,
-                questionNumber: currentQ++
-            }));
-            const endVal = currentQ - 1;
-            newGroup = { ...group, questions: newQs, startQuestion: startVal, endQuestion: endVal };
+const closeActiveSelectDropdown = () => {
+    requestAnimationFrame(() => {
+        const active = document.activeElement;
+        if (active instanceof HTMLElement) {
+            active.blur();
         }
-        return newGroup;
     });
 };
 
-const emptyWritingTask = (taskNumber = 1): CreateWritingTaskDto => ({
-    taskNumber, promptText: '', minWords: taskNumber === 1 ? 150 : 250,
-});
+const normalizeSingleQuestionToken = (value: string, questionNumber: number) => {
+    const token = `[Q${questionNumber}]`;
+    let hasToken = false;
 
-const emptySpeakingQuestion = (): CreateSpeakingQuestionDto => ({
-    content: '', cueCardPoints: undefined, audioPromptUrl: undefined,
-});
+    return value.replace(/\[Q\d+\]/g, () => {
+        if (hasToken) {
+            return '';
+        }
+        hasToken = true;
+        return token;
+    });
+};
 
-const emptySpeakingPart = (partNumber = 1): CreateSpeakingPartDto => ({
-    partNumber, description: '', questions: [emptySpeakingQuestion()],
-});
-
-const cleanUpText = (text: string) => cleanUpClipboardText(text);
+const hasQuestionToken = (value?: string | null) => /\[Q\d+\]/.test(value ?? '');
 
 const GenericTableEditor = ({ contentData, onChange, nextQNum }: { contentData?: string | null, onChange: (val: string) => void, nextQNum: number }) => {
     const tableData: string[][] = useMemo(() => {
@@ -163,21 +119,11 @@ const GenericTableEditor = ({ contentData, onChange, nextQNum }: { contentData?:
                         const el = document.activeElement as HTMLTextAreaElement;
                         if (!el || el.tagName !== 'TEXTAREA') return;
 
-                        const start = el.selectionStart;
-                        const end = el.selectionEnd;
-                        const text = el.value;
-                        const selected = text.substring(start, end);
-
-                        let newText;
-                        if (selected) {
-                            newText = text.substring(0, start) + `**${selected}**` + text.substring(end);
-                        } else {
-                            newText = text + ' ****';
-                        }
-
-                        const newData = tableData.map(r => [...r]);
-                        newData[focused.r][focused.c] = newText;
-                        updateTable(newData);
+                        applyBoldToTextarea(el, tableData[focused.r][focused.c] || '', (v) => {
+                            const newData = tableData.map(row => [...row]);
+                            newData[focused.r][focused.c] = v;
+                            updateTable(newData);
+                        });
                     }}
                 >
                     In đậm
@@ -195,6 +141,15 @@ const GenericTableEditor = ({ contentData, onChange, nextQNum }: { contentData?:
                                             autoSize={{ minRows: 2, maxRows: 5 }}
                                             placeholder="Nhập nội dung..."
                                             style={{ border: 'none', borderRadius: 0, resize: 'none', boxShadow: 'none' }}
+                                            onKeyDown={e => {
+                                                if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
+                                                    applyBoldToTextarea(e.currentTarget, cell || '', (v) => {
+                                                        const newData = tableData.map(r => [...r]);
+                                                        newData[rIdx][cIdx] = v;
+                                                        updateTable(newData);
+                                                    });
+                                                }
+                                            }}
                                             onChange={e => {
                                                 const newData = tableData.map(r => [...r]);
                                                 newData[rIdx][cIdx] = e.target.value;
@@ -218,25 +173,13 @@ const GenericTableEditor = ({ contentData, onChange, nextQNum }: { contentData?:
     );
 };
 
-const emptySection = (skill: SkillType): CreateSectionDto => {
-    const base: CreateSectionDto = { skillType: skill, title: `${skill} Section`, orderIndex: 0 };
-    if (skill === 'Reading') base.readingPassages = [emptyPassage()];
-    if (skill === 'Listening') base.listeningParts = [emptyListeningPart()];
-    if (skill === 'Writing') base.writingTasks = [emptyWritingTask(1), emptyWritingTask(2)];
-    if (skill === 'Speaking') base.speakingParts = [emptySpeakingPart(1), emptySpeakingPart(2), emptySpeakingPart(3)];
-    return base;
-};
-
-const GROUP_TYPE_OPTIONS: Record<string, { label: string; value: string }[]> = {
-    Reading: READING_QUESTION_TYPE_OPTIONS,
-    Listening: LISTENING_QUESTION_TYPE_OPTIONS,
-};
-
 export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
     const createMutation = useCreateExamMutation();
     const updateMutation = useUpdateExamMutation();
+    const generateListeningTranscriptMutation = useGenerateListeningTranscriptMutation();
     const [uploading, setUploading] = useState(false);
     const [globalAudioUrl, setGlobalAudioUrl] = useState<string | null>(null);
+    const [generatingListeningTranscriptKey, setGeneratingListeningTranscriptKey] = useState<string | null>(null);
 
     const [form, setForm] = useState<CreateExamDto>({
         title: '', description: '', durationMinutes: 60, totalPoints: 0,
@@ -261,11 +204,7 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
             const allAudios = (initialData.sections || [])
                 .flatMap((s: any) => s.listeningParts || [])
                 .map((p: any) => p.audioUrl);
-            if (allAudios.length > 1 && allAudios.every((a: string) => a === allAudios[0] && a !== '')) {
-                setGlobalAudioUrl(allAudios[0]);
-            } else {
-                setGlobalAudioUrl(null);
-            }
+            setGlobalAudioUrl(allAudios.find((audio: string) => !!audio)?.trim() || null);
         } else if (open && !initialData) {
             setForm({
                 title: '', description: '', durationMinutes: 60, totalPoints: 0,
@@ -284,6 +223,32 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
         }));
     };
 
+    const handleGenerateListeningTranscript = async (audioUrl: string, listeningParts?: CreateSectionDto['listeningParts']) => {
+        if (!audioUrl.trim()) {
+            throw new Error('Chưa có audio URL để tạo transcript.');
+        }
+
+        try {
+            const result = await generateListeningTranscriptMutation.mutateAsync({
+                audioUrl: audioUrl.trim(),
+                language: 'en',
+            });
+
+            const partCount = Math.max(1, listeningParts?.length ?? 1);
+            const splitResult = splitListeningTranscriptSegmentsByPart(result.segments, partCount);
+            message.success(
+                splitResult.usedDetectedBoundaries
+                    ? `Đã sinh ${result.segmentCount} transcript segments và chia thành ${partCount} part. AI review sẽ tự suy luận evidence/replay theo part + câu hỏi + đáp án.`
+                    : `Đã sinh ${result.segmentCount} transcript segments. Chưa thấy marker chia part rõ, AI review sẽ fallback suy luận trong transcript audio.`,
+            );
+            return splitResult.segmentsByPart.map((partSegments) => serializeListeningTranscriptData({
+                segments: partSegments,
+            }));
+        } catch (error: any) {
+            throw new Error(error?.response?.data?.message || 'Không thể generate transcript từ audio.');
+        }
+    };
+
     const handleAddSection = (skill: SkillType) => {
         setForm(prev => ({
             ...prev,
@@ -293,12 +258,25 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
 
     const handleSubmit = async () => {
         if (!form.title.trim()) { message.warning('Vui lòng nhập tên đề thi!'); return; }
+        const limitErrors = validateExamStructureLimits(form);
+        if (limitErrors.length > 0) {
+            message.error(limitErrors[0]);
+            return;
+        }
         try {
+            const normalizedForm: CreateExamDto = {
+                ...form,
+                sections: form.sections.map((section) => (
+                    section.skillType === 'Listening'
+                        ? { ...section, listeningParts: normalizeListeningPartsToSharedAudio(section.listeningParts ?? []) }
+                        : section
+                )),
+            };
             if (isEdit && initialData) {
-                await updateMutation.mutateAsync({ id: initialData.id, data: form });
+                await updateMutation.mutateAsync({ id: initialData.id, data: normalizedForm });
                 message.success('Cập nhật đề thi thành công!');
             } else {
-                await createMutation.mutateAsync(form);
+                await createMutation.mutateAsync(normalizedForm);
                 message.success('Tạo đề thi thành công!');
             }
             onClose();
@@ -321,6 +299,67 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
         }
     };
 
+    const hasMultiSelectLayout = (contentData?: string) => {
+        if (!contentData) return false;
+
+        try {
+            const parsed = JSON.parse(contentData) as unknown;
+            return parsed
+                && typeof parsed === 'object'
+                && (parsed as { layout?: unknown }).layout === 'listening_multi_select';
+        } catch {
+            return false;
+        }
+    };
+
+const buildMultiSelectContentData = (prompt = '') => JSON.stringify({
+    layout: 'listening_multi_select',
+    prompt,
+});
+
+const parseGroupAssetsData = (assetsData?: string | null) => {
+    if (!assetsData) return {} as Record<string, unknown>;
+
+    try {
+        const parsed = JSON.parse(assetsData) as unknown;
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+            ? parsed as Record<string, unknown>
+            : {};
+    } catch {
+        return {};
+    }
+};
+
+const getListeningMcqOptionInputMode = (assetsData: string | null | undefined, questionKey: string): 'text' | 'image' => {
+    const parsed = parseGroupAssetsData(assetsData);
+    const rawMap = parsed.optionInputModeByQuestion;
+    if (rawMap && typeof rawMap === 'object' && !Array.isArray(rawMap)) {
+        return (rawMap as Record<string, unknown>)[questionKey] === 'image' ? 'image' : 'text';
+    }
+
+    return 'text';
+};
+
+const setListeningMcqOptionInputMode = (
+    assetsData: string | null | undefined,
+    questionKey: string,
+    mode: 'text' | 'image',
+) => {
+    const parsed = parseGroupAssetsData(assetsData);
+    const nextMap = parsed.optionInputModeByQuestion && typeof parsed.optionInputModeByQuestion === 'object' && !Array.isArray(parsed.optionInputModeByQuestion)
+        ? { ...(parsed.optionInputModeByQuestion as Record<string, unknown>) }
+        : {};
+
+    if (mode === 'image') nextMap[questionKey] = 'image';
+    else delete nextMap[questionKey];
+
+    const nextPayload: Record<string, unknown> = { ...parsed };
+    if (Object.keys(nextMap).length > 0) nextPayload.optionInputModeByQuestion = nextMap;
+    else delete nextPayload.optionInputModeByQuestion;
+
+    return Object.keys(nextPayload).length > 0 ? JSON.stringify(nextPayload) : undefined;
+};
+
     const renderReadingSection = (section: CreateSectionDto, sIdx: number) => {
         const passages = section.readingPassages ?? [];
         let currentQNum = 1;
@@ -336,6 +375,13 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
                             )}
                         </div>
                         <Input value={passage.title ?? ''} placeholder="Tiêu đề Passage"
+                            onPaste={e => {
+                                const newVal = getCleanPastedInputValue(e, passage.title || '');
+                                if (newVal === null) return;
+                                const updated = [...passages];
+                                updated[pIdx] = { ...passage, title: newVal };
+                                updateSection(sIdx, { readingPassages: updated });
+                            }}
                             onChange={e => {
                                 const updated = [...passages];
                                 updated[pIdx] = { ...passage, title: e.target.value };
@@ -350,16 +396,11 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
                                     e.preventDefault();
                                     const el = document.activeElement as HTMLTextAreaElement;
                                     if (!el || el.tagName !== 'TEXTAREA') return;
-                                    const start = el.selectionStart;
-                                    const end = el.selectionEnd;
-                                    const text = el.value;
-                                    const selected = text.substring(start, end);
-                                    if (selected) {
-                                        const newVal = text.substring(0, start) + `**${selected}**` + text.substring(end);
+                                    applyBoldToTextarea(el, passage.paragraphsData || '', (v) => {
                                         const updated = [...passages];
-                                        updated[pIdx] = { ...passage, paragraphsData: newVal };
+                                        updated[pIdx] = { ...passage, paragraphsData: v };
                                         updateSection(sIdx, { readingPassages: updated });
-                                    }
+                                    });
                                 }}
                             >
                                 In đậm
@@ -367,6 +408,15 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
                         </div>
                         <Input.TextArea value={passage.paragraphsData ?? ''} placeholder="Nội dung chi tiết của bài đọc..."
                             autoSize={{ minRows: 8, maxRows: 20 }} size="small" style={{ marginBottom: '10px' }}
+                            onKeyDown={e => {
+                                if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
+                                    applyBoldToTextarea(e.currentTarget, passage.paragraphsData || '', (v) => {
+                                        const updated = [...passages];
+                                        updated[pIdx] = { ...passage, paragraphsData: v };
+                                        updateSection(sIdx, { readingPassages: updated });
+                                    });
+                                }
+                            }}
                             onPaste={(e) => {
                                 e.preventDefault();
                                 const text = e.clipboardData.getData('text');
@@ -393,7 +443,6 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
                             }} />
                         {(() => {
                             const startOfPassage = currentQNum;
-                            const questionsInPassage = passage.questionGroups.reduce((acc: number, g: CreateQuestionGroupDto) => acc + g.questions.length, 0);
                             const result = renderQuestionGroups(passage.questionGroups, 'Reading', (groups) => {
                                 const updated = [...passages];
                                 updated[pIdx] = { ...passage, questionGroups: groups };
@@ -402,132 +451,171 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
                                 let qNum = 1;
                                 const reindexedPassages = updated.map(p => {
                                     const newGroups = reorderQuestionNumbers(p.questionGroups, qNum);
-                                    qNum += newGroups.reduce((acc: number, g: CreateQuestionGroupDto) => acc + (g.questions?.length || 0), 0);
+                                    qNum = Math.max(qNum, getMaxQuestionNumber(newGroups) + 1);
                                     return { ...p, questionGroups: newGroups };
                                 });
 
                                 updateSection(sIdx, { readingPassages: reindexedPassages });
                             }, startOfPassage);
-                            currentQNum += questionsInPassage;
+                            currentQNum = Math.max(currentQNum, getMaxQuestionNumber(passage.questionGroups) + 1);
                             return result;
                         })()}
                     </div>
                 ))}
-                <Button type="dashed" icon={<PlusOutlined />} block
-                    onClick={() => {
-                        const updated = [...passages, { ...emptyPassage(), passageNumber: passages.length + 1 }];
-                        updateSection(sIdx, { readingPassages: updated });
-                    }}>
-                    Thêm Passage
-                </Button>
+                {passages.length < EXAM_LIMITS.Reading.passages && (
+                    <Button type="dashed" icon={<PlusOutlined />} block
+                        onClick={() => {
+                            if (passages.length >= EXAM_LIMITS.Reading.passages) {
+                                message.warning(`Reading chỉ có tối đa ${EXAM_LIMITS.Reading.passages} passages!`);
+                                return;
+                            }
+                            setForm(prev => {
+                                const sec = prev.sections[sIdx];
+                                const current = sec.readingPassages ?? [];
+                                if (current.length >= EXAM_LIMITS.Reading.passages) return prev;
+                                const updated = [...current, { ...emptyPassage(), passageNumber: current.length + 1 }];
+                                return {
+                                    ...prev,
+                                    sections: prev.sections.map((s, i) => i === sIdx ? { ...s, readingPassages: updated } : s)
+                                };
+                            });
+                        }}>
+                        Thêm Passage (Tối đa {EXAM_LIMITS.Reading.passages})
+                    </Button>
+                )}
             </div>
         );
     };
 
     const renderListeningSection = (section: CreateSectionDto, sIdx: number) => {
         const parts = section.listeningParts ?? [];
+        const sharedAudioUrl = globalAudioUrl || getSharedListeningAudioUrl(parts);
         let currentQNum = 1;
         return (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div style={{ padding: '14px', background: '#eef2ff', borderRadius: '12px', border: '1px dashed #6366f1' }}>
+                    <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#3730a3', marginBottom: '8px' }}>
+                        <SoundOutlined /> Audio chung cho toàn bài Listening
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <Upload accept="audio/*" maxCount={1} showUploadList={false}
+                            beforeUpload={async (file) => {
+                                const url = await handleUploadFile(file, 'video');
+                                if (url) {
+                                    setGlobalAudioUrl(url);
+                                    updateSection(sIdx, { listeningParts: applySharedListeningAudioUrl(parts, url) });
+                                }
+                                return false;
+                            }}>
+                            <Button
+                                type="primary"
+                                icon={<SoundOutlined />}
+                                size="small"
+                                loading={uploading}
+                                style={{ background: SKILL_COLORS.Listening, borderColor: SKILL_COLORS.Listening }}
+                            >
+                                Tải audio toàn bài
+                            </Button>
+                        </Upload>
+                        <Input
+                            value={sharedAudioUrl}
+                            readOnly
+                            placeholder="Chưa có file audio dùng chung"
+                            size="small"
+                            style={{ flex: 1, background: '#f8fafc', color: '#475569' }}
+                            suffix={sharedAudioUrl ? (
+                                <CloseOutlined
+                                    style={{ color: '#ef4444', cursor: 'pointer' }}
+                                    onClick={() => {
+                                        setGlobalAudioUrl('');
+                                        updateSection(sIdx, { listeningParts: applySharedListeningAudioUrl(parts, '') });
+                                    }}
+                                />
+                            ) : null}
+                        />
+                    </div>
+                    <div style={{ marginTop: '8px', fontSize: '0.75rem', color: '#4338ca', lineHeight: 1.6 }}>
+                        Listening giờ chỉ dùng một file audio cho toàn bộ bài. Các Part bên dưới chỉ còn để chia nhóm câu hỏi và nội dung hiển thị.
+                    </div>
+                </div>
                 {parts.map((part, pIdx) => (
                     <div key={pIdx} style={{ background: '#fff', borderRadius: '12px', padding: '16px', border: '1px solid #e2e8f0' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                             <span style={{ fontWeight: 700, color: SKILL_COLORS.Listening }}>Part {pIdx + 1}</span>
-                            {parts.length > 1 && (
-                                <Button type="text" danger icon={<MinusCircleOutlined />} size="small"
-                                    onClick={() => updateSection(sIdx, { listeningParts: parts.filter((_, i) => i !== pIdx) })} />
-                            )}
-                        </div>
-                        <div style={{ padding: '12px', background: '#eef2ff', borderRadius: '8px', border: '1px dashed #6366f1', marginBottom: '10px' }}>
-                            <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#3730a3', marginBottom: '6px' }}>
-                                <SoundOutlined /> Audio
-                            </div>
-                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px' }}>
-                                <Upload accept="audio/*" maxCount={1} showUploadList={false}
-                                    disabled={globalAudioUrl !== null && pIdx !== 0}
-                                    beforeUpload={async (file) => {
-                                        const url = await handleUploadFile(file, 'video');
-                                        if (url) {
-                                            if (globalAudioUrl !== null) {
-                                                setGlobalAudioUrl(url);
-                                                const updated = parts.map(p => ({ ...p, audioUrl: url }));
-                                                updateSection(sIdx, { listeningParts: updated });
-                                            } else {
-                                                const updated = [...parts];
-                                                updated[pIdx] = { ...part, audioUrl: url };
-                                                updateSection(sIdx, { listeningParts: updated });
-                                            }
-                                        }
-                                        return false;
-                                    }}>
-                                    <Button
-                                        type="primary"
-                                        icon={<SoundOutlined />}
-                                        size="small"
-                                        loading={uploading}
-                                        disabled={globalAudioUrl !== null && pIdx !== 0}
-                                        style={{ background: SKILL_COLORS.Listening, borderColor: SKILL_COLORS.Listening }}
-                                    >
-                                        Tải Audio {globalAudioUrl !== null && pIdx !== 0 ? '(Khoá)' : ''}
-                                    </Button>
-                                </Upload>
-                                <Input
-                                    value={globalAudioUrl || part.audioUrl}
-                                    readOnly
-                                    placeholder={pIdx === 0 ? "Chưa có file audio nào" : "Dùng chung audio với Part 1"}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <Button
                                     size="small"
-                                    style={{ flex: 1, background: '#f8fafc', color: '#475569' }}
-                                    suffix={(globalAudioUrl || part.audioUrl) && !(globalAudioUrl !== null && pIdx !== 0) ? (
-                                        <CloseOutlined
-                                            style={{ color: '#ef4444', cursor: 'pointer' }}
-                                            onClick={() => {
-                                                if (globalAudioUrl !== null) {
-                                                    setGlobalAudioUrl('');
-                                                    const updated = parts.map(p => ({ ...p, audioUrl: '' }));
-                                                    updateSection(sIdx, { listeningParts: updated });
-                                                } else {
-                                                    const updated = [...parts];
-                                                    updated[pIdx] = { ...part, audioUrl: '' };
-                                                    updateSection(sIdx, { listeningParts: updated });
-                                                }
-                                            }}
-                                        />
-                                    ) : null}
-                                />
-                            </div>
-                            <div style={{ display: 'flex', gap: '8px', marginBottom: '6px' }}>
-                                {globalAudioUrl === null && parts.length > 1 && part.audioUrl && (
-                                    <Button size="small" type="link" onClick={() => {
-                                        setGlobalAudioUrl(part.audioUrl);
-                                        const updated = parts.map(p => ({ ...p, audioUrl: part.audioUrl }));
-                                        updateSection(sIdx, { listeningParts: updated });
-                                        message.success('Đã bật chế độ Audio chung cho đề thi!');
-                                    }}>
-                                        Áp dụng cho tất cả Parts
-                                    </Button>
-                                )}
+                                    type="default"
+                                    icon={<SoundOutlined />}
+                                    loading={generatingListeningTranscriptKey === `${sIdx}-${pIdx}`}
+                                    disabled={!sharedAudioUrl}
+                                    onClick={async () => {
+                                        if (!sharedAudioUrl) {
+                                            return;
+                                        }
 
-                                {globalAudioUrl !== null && pIdx === 0 && (
-                                    <Button size="small" type="link" danger onClick={() => {
-                                        setGlobalAudioUrl(null);
-                                        message.info('Đã tắt chế độ Audio chung. Bạn có thể chỉnh audio riêng cho từng part.');
-                                    }}>
-                                        Tắt Audio chung
-                                    </Button>
+                                        const loadingKey = `${sIdx}-${pIdx}`;
+                                        setGeneratingListeningTranscriptKey(loadingKey);
+                                        try {
+                                            const transcriptDataByPart = await handleGenerateListeningTranscript(sharedAudioUrl, parts);
+                                            const updated = parts.map((item, index) => ({
+                                                ...item,
+                                                transcriptData: transcriptDataByPart[index] ?? transcriptDataByPart[0] ?? '',
+                                            }));
+                                            updateSection(sIdx, { listeningParts: updated });
+                                        } catch (error) {
+                                            message.error(
+                                                error instanceof Error
+                                                    ? error.message
+                                                    : 'Không thể generate transcript cho audio này.',
+                                            );
+                                        } finally {
+                                            setGeneratingListeningTranscriptKey((current) => current === loadingKey ? null : current);
+                                        }
+                                    }}
+                                >
+                                    Generate transcript
+                                </Button>
+                                {parts.length > 1 && (
+                                    <Button type="text" danger icon={<MinusCircleOutlined />} size="small"
+                                        onClick={() => updateSection(sIdx, { listeningParts: parts.filter((_, i) => i !== pIdx) })} />
                                 )}
                             </div>
                         </div>
-                        <Input.TextArea value={part.contextDescription ?? ''} placeholder="Mô tả context / transcript..."
+                        <Input.TextArea value={part.contextDescription ?? ''} placeholder="Nội dung hiển thị của part: note/form/map/instruction..."
                             autoSize={{ minRows: 3, maxRows: 10 }} style={{ marginBottom: '12px' }}
+                            onPaste={e => {
+                                const newVal = getCleanPastedInputValue(e, part.contextDescription || '');
+                                if (newVal === null) return;
+                                const updated = [...parts];
+                                updated[pIdx] = { ...part, contextDescription: newVal };
+                                updateSection(sIdx, { listeningParts: updated });
+                            }}
                             onChange={e => {
                                 const updated = [...parts];
                                 updated[pIdx] = { ...part, contextDescription: e.target.value };
                                 updateSection(sIdx, { listeningParts: updated });
                             }} />
+                        <Input.TextArea value={part.transcriptData ?? ''} placeholder='Transcript JSON cho AI replay, ví dụ: {"schemaVersion":3,"segments":[{"startTime":115,"endTime":125,"text":"..."}]}'
+                            autoSize={{ minRows: 4, maxRows: 12 }} style={{ marginBottom: '12px' }}
+                            onPaste={e => {
+                                const newVal = getCleanPastedInputValue(e, part.transcriptData || '');
+                                if (newVal === null) return;
+                                const updated = [...parts];
+                                updated[pIdx] = { ...part, transcriptData: newVal };
+                                updateSection(sIdx, { listeningParts: updated });
+                            }}
+                            onChange={e => {
+                                const updated = [...parts];
+                                updated[pIdx] = { ...part, transcriptData: e.target.value };
+                                updateSection(sIdx, { listeningParts: updated });
+                            }} />
+                        <div style={{ marginTop: '-4px', marginBottom: '12px', fontSize: '0.75rem', color: '#475569', lineHeight: 1.6 }}>
+                            Field này dùng riêng cho AI gia sư tìm timestamp audio và trích transcript. Nội dung hiển thị trên đề vẫn lấy từ `contextDescription`. Schema mới chỉ cần `segments` có `startTime`, `endTime`, `text`; AI review tự suy luận evidence/replay theo part + câu hỏi + đáp án.
+                        </div>
                         {(() => {
                             const startOfPart = currentQNum;
                             // Pre-calculate questions in this part to update global currentQNum
-                            const questionsInPart = part.questionGroups.reduce((acc: number, g: CreateQuestionGroupDto) => acc + g.questions.length, 0);
                             const result = renderQuestionGroups(part.questionGroups, 'Listening', (groups) => {
                                 const updated = [...parts];
                                 updated[pIdx] = { ...part, questionGroups: groups };
@@ -536,25 +624,40 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
                                 let qNum = 1;
                                 const reindexedParts = updated.map(p => {
                                     const newGroups = reorderQuestionNumbers(p.questionGroups, qNum);
-                                    qNum += newGroups.reduce((acc: number, g: CreateQuestionGroupDto) => acc + (g.questions?.length || 0), 0);
+                                    qNum = Math.max(qNum, getMaxQuestionNumber(newGroups) + 1);
                                     return { ...p, questionGroups: newGroups };
                                 });
 
                                 updateSection(sIdx, { listeningParts: reindexedParts });
                             }, startOfPart);
-                            currentQNum += questionsInPart;
+                            currentQNum = Math.max(currentQNum, getMaxQuestionNumber(part.questionGroups) + 1);
                             return result;
                         })()}
                     </div>
                 ))}
-                <Button type="dashed" icon={<PlusOutlined />} block
-                    onClick={() => {
-                        const newPart = { ...emptyListeningPart(), partNumber: parts.length + 1 };
-                        if (globalAudioUrl) newPart.audioUrl = globalAudioUrl;
-                        updateSection(sIdx, { listeningParts: [...parts, newPart] });
-                    }}>
-                    Thêm Part
-                </Button>
+                {parts.length < EXAM_LIMITS.Listening.parts && (
+                    <Button type="dashed" icon={<PlusOutlined />} block
+                        onClick={() => {
+                            if (parts.length >= EXAM_LIMITS.Listening.parts) {
+                                message.warning(`Listening chỉ có tối đa ${EXAM_LIMITS.Listening.parts} parts!`);
+                                return;
+                            }
+                            setForm(prev => {
+                                const sec = prev.sections[sIdx];
+                                const current = sec.listeningParts ?? [];
+                                if (current.length >= EXAM_LIMITS.Listening.parts) return prev;
+                                const newPart = { ...emptyListeningPart(), partNumber: current.length + 1 };
+                                if (sharedAudioUrl) newPart.audioUrl = sharedAudioUrl;
+                                const updated = [...current, newPart];
+                                return {
+                                    ...prev,
+                                    sections: prev.sections.map((s, i) => i === sIdx ? { ...s, listeningParts: updated } : s)
+                                };
+                            });
+                        }}>
+                        Thêm Part (Tối đa {EXAM_LIMITS.Listening.parts})
+                    </Button>
+                )}
             </div>
         );
     };
@@ -563,7 +666,10 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
         const tasks = section.writingTasks ?? [];
         return (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                {tasks.map((task, tIdx) => (
+                {tasks.map((task, tIdx) => {
+                    const writingAssets = parseWritingTaskAssetsData(task.assetsData);
+
+                    return (
                     <div key={tIdx} style={{ background: '#fff', borderRadius: '12px', padding: '16px', border: '1px solid #e2e8f0' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                             <span style={{ fontWeight: 700, color: SKILL_COLORS.Writing }}>Task {task.taskNumber ?? tIdx + 1}</span>
@@ -574,6 +680,13 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
                         </div>
                         <Input.TextArea value={task.promptText} placeholder="Đề bài Writing (mô tả task, yêu cầu...)"
                             autoSize={{ minRows: 4, maxRows: 15 }} style={{ marginBottom: '10px' }}
+                            onPaste={e => {
+                                const newVal = getCleanPastedInputValue(e, task.promptText || '');
+                                if (newVal === null) return;
+                                const updated = [...tasks];
+                                updated[tIdx] = { ...task, promptText: newVal };
+                                updateSection(sIdx, { writingTasks: updated });
+                            }}
                             onChange={e => {
                                 const updated = [...tasks];
                                 updated[tIdx] = { ...task, promptText: e.target.value };
@@ -599,7 +712,13 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
                                             const url = await handleUploadFile(file, 'image');
                                             if (url) {
                                                 const updated = [...tasks];
-                                                updated[tIdx] = { ...task, assetsData: url };
+                                                updated[tIdx] = {
+                                                    ...task,
+                                                    assetsData: serializeWritingTaskAssetsData({
+                                                        imageUrl: url,
+                                                        hiddenDataText: writingAssets.hiddenDataText,
+                                                    }),
+                                                };
                                                 updateSection(sIdx, { writingTasks: updated });
                                             }
                                             return false;
@@ -615,31 +734,57 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
                                         </Button>
                                     </Upload>
                                     <Input
-                                        value={task.assetsData ?? ''}
+                                        value={writingAssets.primaryImageUrl ?? ''}
                                         placeholder="Chưa có ảnh biểu đồ"
                                         readOnly
                                         size="small"
                                         style={{ flex: 1, background: '#fffcf0', color: '#92400e' }}
-                                        suffix={task.assetsData ? (
+                                        suffix={writingAssets.primaryImageUrl ? (
                                             <CloseOutlined
                                                 style={{ color: '#ef4444', cursor: 'pointer' }}
                                                 onClick={() => {
                                                     const updated = [...tasks];
-                                                    updated[tIdx] = { ...task, assetsData: '' };
+                                                    updated[tIdx] = {
+                                                        ...task,
+                                                        assetsData: serializeWritingTaskAssetsData({
+                                                            imageUrl: '',
+                                                            hiddenDataText: writingAssets.hiddenDataText,
+                                                        }),
+                                                    };
                                                     updateSection(sIdx, { writingTasks: updated });
                                                 }}
                                             />
                                         ) : null}
                                     />
                                 </div>
+                                <div style={{ marginTop: '10px', fontSize: '0.75rem', color: '#a16207', lineHeight: 1.6 }}>
+                                    Khi lưu đề, hệ thống sẽ tự đọc ảnh biểu đồ ở nền để chuẩn bị dữ liệu cho AI chấm và AI gia sư.
+                                </div>
                             </div>
                         )}
                     </div>
-                ))}
-                <Button type="dashed" icon={<PlusOutlined />} block
-                    onClick={() => updateSection(sIdx, { writingTasks: [...tasks, emptyWritingTask(tasks.length + 1)] })}>
-                    Thêm Task
-                </Button>
+                )})}
+                {tasks.length < EXAM_LIMITS.Writing.tasks && (
+                    <Button type="dashed" icon={<PlusOutlined />} block
+                        onClick={() => {
+                            if (tasks.length >= EXAM_LIMITS.Writing.tasks) {
+                                message.warning(`Writing chỉ có tối đa ${EXAM_LIMITS.Writing.tasks} tasks!`);
+                                return;
+                            }
+                            setForm(prev => {
+                                const sec = prev.sections[sIdx];
+                                const current = sec.writingTasks ?? [];
+                                if (current.length >= EXAM_LIMITS.Writing.tasks) return prev;
+                                const updated = [...current, emptyWritingTask(current.length + 1)];
+                                return {
+                                    ...prev,
+                                    sections: prev.sections.map((s, i) => i === sIdx ? { ...s, writingTasks: updated } : s)
+                                };
+                            });
+                        }}>
+                        Thêm Task (Tối đa {EXAM_LIMITS.Writing.tasks})
+                    </Button>
+                )}
             </div>
         );
     };
@@ -659,6 +804,13 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
                         </div>
                         <Input.TextArea value={part.description ?? ''} placeholder="Mô tả chủ đề Part..."
                             autoSize={{ minRows: 2, maxRows: 6 }} style={{ marginBottom: '10px' }}
+                            onPaste={e => {
+                                const newVal = getCleanPastedInputValue(e, part.description || '');
+                                if (newVal === null) return;
+                                const updated = [...parts];
+                                updated[pIdx] = { ...part, description: newVal };
+                                updateSection(sIdx, { speakingParts: updated });
+                            }}
                             onChange={e => {
                                 const updated = [...parts];
                                 updated[pIdx] = { ...part, description: e.target.value };
@@ -679,6 +831,15 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
                                 </div>
                                 <Input.TextArea value={sq.content} placeholder="Câu hỏi Speaking..."
                                     autoSize={{ minRows: 2, maxRows: 5 }}
+                                    onPaste={e => {
+                                        const newVal = getCleanPastedInputValue(e, sq.content || '');
+                                        if (newVal === null) return;
+                                        const updated = [...parts];
+                                        const qs = [...part.questions];
+                                        qs[sqIdx] = { ...sq, content: newVal };
+                                        updated[pIdx] = { ...part, questions: qs };
+                                        updateSection(sIdx, { speakingParts: updated });
+                                    }}
                                     onChange={e => {
                                         const updated = [...parts];
                                         const qs = [...part.questions];
@@ -689,6 +850,15 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
                                 {(part.partNumber === 2) && (
                                     <Input.TextArea value={sq.cueCardPoints ?? ''} placeholder="Cue Card gợi ý..."
                                         autoSize={{ minRows: 2, maxRows: 5 }} style={{ marginTop: '6px' }}
+                                        onPaste={e => {
+                                            const newVal = getCleanPastedInputValue(e, sq.cueCardPoints || '');
+                                            if (newVal === null) return;
+                                            const updated = [...parts];
+                                            const qs = [...part.questions];
+                                            qs[sqIdx] = { ...sq, cueCardPoints: newVal };
+                                            updated[pIdx] = { ...part, questions: qs };
+                                            updateSection(sIdx, { speakingParts: updated });
+                                        }}
                                         onChange={e => {
                                             const updated = [...parts];
                                             const qs = [...part.questions];
@@ -709,10 +879,27 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
                         </Button>
                     </div>
                 ))}
-                <Button type="dashed" icon={<PlusOutlined />} block
-                    onClick={() => updateSection(sIdx, { speakingParts: [...parts, emptySpeakingPart(parts.length + 1)] })}>
-                    Thêm Part
-                </Button>
+                {parts.length < EXAM_LIMITS.Speaking.parts && (
+                    <Button type="dashed" icon={<PlusOutlined />} block
+                        onClick={() => {
+                            if (parts.length >= EXAM_LIMITS.Speaking.parts) {
+                                message.warning(`Speaking chỉ có tối đa ${EXAM_LIMITS.Speaking.parts} parts!`);
+                                return;
+                            }
+                            setForm(prev => {
+                                const sec = prev.sections[sIdx];
+                                const current = sec.speakingParts ?? [];
+                                if (current.length >= EXAM_LIMITS.Speaking.parts) return prev;
+                                const updated = [...current, emptySpeakingPart(current.length + 1)];
+                                return {
+                                    ...prev,
+                                    sections: prev.sections.map((s, i) => i === sIdx ? { ...s, speakingParts: updated } : s)
+                                };
+                            });
+                        }}>
+                        Thêm Part (Tối đa {EXAM_LIMITS.Speaking.parts})
+                    </Button>
+                )}
             </div>
         );
     };
@@ -729,15 +916,46 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {groups.map((group, fIdx) => {
                     const gIdx = fIdx;
+                    const groupStartNum = runningQNum;
                     runningQNum += group.questions.length;
                     const isComplexLayout = [
                         'TABLE_COMPLETION', 'MATCHING_TABLE', 'NOTE_COMPLETION', 'FORM_COMPLETION', 'MAP_LABELLING', 'DIAGRAM_LABELLING',
-                        'SUMMARY_COMPLETION', 'SENTENCE_COMPLETION', 'FLOWCHART_COMPLETION'
+                        'SUMMARY_COMPLETION', 'SENTENCE_COMPLETION'
                     ].includes(group.groupType ?? '');
                     const isMatchingType = MATCHING_TYPES.has(group.groupType ?? '');
+                    const isMatchingHeadingsType = group.groupType === QUESTION_TYPES.MATCHING_HEADINGS;
+                    const isClassificationMatchingType = group.groupType === QUESTION_TYPES.MATCHING_CLASSIFICATION;
                     const isSummaryType = group.groupType === 'SUMMARY_COMPLETION';
                     const isTableType = ['TABLE_COMPLETION', 'MATCHING_TABLE'].includes(group.groupType ?? '');
-                    const showOptionsBox = isMatchingType || isSummaryType;
+                    const isFlowchartType = group.groupType === QUESTION_TYPES.FLOWCHART_COMPLETION;
+                    const isVisualMatchingType = group.groupType === QUESTION_TYPES.MATCHING_VISUALS;
+                    const usesLegacySharedMultiSelectLayout =
+                        group.groupType === QUESTION_TYPES.MCQ_CHOOSE_N
+                        || (group.groupType === QUESTION_TYPES.MCQ_MULTIPLE && hasMultiSelectLayout(group.contentData));
+                    const showOptionsBox = (isMatchingType && !isMatchingHeadingsType) || isSummaryType;
+                    const matchingHeadingOptionCount = Math.max(1, group.questions[0]?.options?.length || 4);
+                    const matchingHeadingAnswerOptions = Array.from({ length: matchingHeadingOptionCount }, (_, index) => {
+                        const label = getOptionLabel(index, group.optionLabelType || 'alpha');
+                        return { label, value: label };
+                    });
+                    const updateSharedOptionCount = (countValue?: number | null) => {
+                        const nextCount = Math.max(1, Math.min(26, countValue ?? matchingHeadingOptionCount));
+                        const existingOptions = group.questions[0]?.options ?? [];
+                        const nextOptions = buildBlankOptions(nextCount, existingOptions);
+                        const allowedAnswers = new Set(nextOptions.map((_, index) => getOptionLabel(index, group.optionLabelType || 'alpha')));
+                        const updated = [...groups];
+                        updated[gIdx] = {
+                            ...group,
+                            questions: group.questions.map((question) => ({
+                                ...question,
+                                options: nextOptions,
+                                correctAnswer: question.correctAnswer && allowedAnswers.has(question.correctAnswer)
+                                    ? question.correctAnswer
+                                    : undefined,
+                            })),
+                        };
+                        onUpdate(updated);
+                    };
 
                     // Auto-sync questions array based on [Qx] in contentData
                     const handleContentChange = (newContent: string) => {
@@ -799,10 +1017,112 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
                                     options={typeOptions}
                                     placeholder="Chọn dạng bài..."
                                     onChange={v => {
+                                        const previousType = group.groupType ?? '';
+                                        const previousIsMapLabelling = previousType === QUESTION_TYPES.MAP_LABELLING;
+                                        const nextIsMapLabelling = v === QUESTION_TYPES.MAP_LABELLING;
+                                        const previousIsFlowchart = previousType === QUESTION_TYPES.FLOWCHART_COMPLETION;
+                                        const nextIsFlowchart = v === QUESTION_TYPES.FLOWCHART_COMPLETION;
+                                        const nextIsSharedMultiSelect = v === QUESTION_TYPES.MCQ_CHOOSE_N;
+                                        const nextIsMultiQuestionMulti = v === QUESTION_TYPES.MCQ_MULTIPLE;
+                                        let nextAssetsData = group.assetsData;
+
+                                        if (nextIsMapLabelling) {
+                                            nextAssetsData = previousIsMapLabelling ? group.assetsData : undefined;
+                                        }
+
+                                        if (nextIsFlowchart) {
+                                            nextAssetsData = previousIsFlowchart ? group.assetsData : undefined;
+                                        }
+
+                                        if (!nextIsMapLabelling && previousIsMapLabelling) {
+                                            nextAssetsData = undefined;
+                                        }
+
+                                        if (!nextIsFlowchart && previousIsFlowchart) {
+                                            nextAssetsData = undefined;
+                                        }
+
+                                        let nextQuestions = nextIsFlowchart
+                                            ? (group.questions.length > 0
+                                                ? group.questions.map((q, index) => ({
+                                                    ...q,
+                                                    questionNumber: q.questionNumber ?? groupStartNum + index,
+                                                    options: [],
+                                                }))
+                                                : Array.from({ length: 5 }, (_, index) => ({
+                                                    ...emptyQuestion(),
+                                                    questionNumber: groupStartNum + index,
+                                                })))
+                                                : group.questions.map(q => ({ ...q, options: q.options.length > 0 ? q.options : getOptionsForType(v) }));
+                                        let nextContentData = group.contentData;
+
+                                        if (v === QUESTION_TYPES.MATCHING_CLASSIFICATION && previousType !== v) {
+                                            const classificationOptions = getOptionsForType(v);
+                                            const baseQuestions = nextQuestions.length > 0
+                                                ? nextQuestions
+                                                : [{ ...emptyQuestion(), questionNumber: groupStartNum, options: classificationOptions }];
+                                            nextQuestions = baseQuestions.map((question, index) => ({
+                                                ...question,
+                                                questionNumber: question.questionNumber ?? groupStartNum + index,
+                                                options: classificationOptions.map((option) => ({ ...option })),
+                                            }));
+                                        }
+
+                                        if (nextIsMultiQuestionMulti) {
+                                            const baseQuestions = nextQuestions.length > 0
+                                                ? nextQuestions
+                                                : [{ ...emptyQuestion(), questionNumber: groupStartNum, options: getOptionsForType(v) }];
+                                            nextQuestions = baseQuestions.map((question, index) => ({
+                                                ...question,
+                                                questionNumber: question.questionNumber ?? groupStartNum + index,
+                                                options: question.options.length > 0 ? question.options : getOptionsForType(v),
+                                            }));
+                                            nextContentData = undefined;
+                                        }
+
+                                        if (nextIsSharedMultiSelect) {
+                                            const baseQuestions = nextQuestions.length > 0
+                                                ? nextQuestions
+                                                : [{ ...emptyQuestion(), questionNumber: groupStartNum, options: getOptionsForType(v) }];
+                                            nextQuestions = baseQuestions.map((question, index) => ({
+                                                ...question,
+                                                content: '',
+                                                questionNumber: question.questionNumber ?? groupStartNum + index,
+                                                options: question.options.length > 0 ? question.options : getOptionsForType(v),
+                                            }));
+                                            nextContentData = hasMultiSelectLayout(group.contentData)
+                                                ? group.contentData
+                                                : buildMultiSelectContentData('');
+                                        }
+
                                         const updated = [...groups];
-                                        updated[gIdx] = { ...group, groupType: v, questions: group.questions.map(q => ({ ...q, options: getOptionsForType(v) })) };
+                                        updated[gIdx] = {
+                                            ...group,
+                                            groupType: v,
+                                            assetsData: nextAssetsData,
+                                            optionLabelType: nextIsFlowchart
+                                                ? (previousIsFlowchart ? (group.optionLabelType || 'alpha') : 'alpha')
+                                                : group.optionLabelType,
+                                            contentData: (nextIsFlowchart || nextIsMapLabelling)
+                                                ? undefined
+                                                : nextContentData,
+                                            questions: nextQuestions,
+                                        };
                                         onUpdate(updated);
                                     }} />
+                                {isMatchingHeadingsType && (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8 }}>
+                                        <span style={{ fontSize: 11, fontWeight: 600, color: '#64748b' }}>Số đáp án:</span>
+                                        <InputNumber
+                                            size="small"
+                                            min={1}
+                                            max={26}
+                                            value={matchingHeadingOptionCount}
+                                            onChange={updateSharedOptionCount}
+                                            style={{ width: 72 }}
+                                        />
+                                    </div>
+                                )}
                             </div>
                             <Input.TextArea value={group.instruction ?? ''} placeholder="Instruction / hướng dẫn nhóm câu hỏi"
                                 autoSize={{ minRows: 1, maxRows: 3 }} size="small" style={{ marginBottom: '8px' }}
@@ -825,6 +1145,7 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
                                     updated[gIdx] = { ...group, instruction: e.target.value };
                                     onUpdate(updated);
                                 }} />
+                            <TruthValueDefinitionTable groupType={group.groupType} />
 
                             {isComplexLayout && (
                                 <div style={{ border: '1px solid #d9d9d9', borderRadius: '6px', padding: '10px', background: '#fff', marginBottom: '10px' }}>
@@ -851,14 +1172,7 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
                                                         e.preventDefault();
                                                         const el = document.activeElement as HTMLTextAreaElement;
                                                         if (!el || el.tagName !== 'TEXTAREA') return;
-                                                        const start = el.selectionStart;
-                                                        const end = el.selectionEnd;
-                                                        const text = el.value;
-                                                        const selected = text.substring(start, end);
-                                                        const newText = selected
-                                                            ? text.substring(0, start) + `**${selected}**` + text.substring(end)
-                                                            : text + ' ****';
-                                                        handleContentChange(newText);
+                                                        applyBoldToTextarea(el, group.contentData || '', handleContentChange);
                                                     }}
                                                 >
                                                     In đậm
@@ -866,6 +1180,11 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
                                             </div>
                                             <Input.TextArea value={group.contentData ?? ''} placeholder={`Ví dụ: <p>Name: [Q1]</p>\n<p>Age: [Q2]</p>`}
                                                 autoSize={{ minRows: 8, maxRows: 15 }} size="small" style={{ marginBottom: '8px', fontFamily: 'monospace' }}
+                                                onKeyDown={e => {
+                                                    if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
+                                                        applyBoldToTextarea(e.currentTarget, group.contentData || '', handleContentChange);
+                                                    }
+                                                }}
                                                 onPaste={e => {
                                                     e.preventDefault();
                                                     const text = e.clipboardData.getData('text');
@@ -927,6 +1246,28 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
                                 </div>
                             )}
 
+                            {isFlowchartType && (
+                                <FlowchartCompletionEditor
+                                    group={group}
+                                    groups={groups}
+                                    groupIdx={gIdx}
+                                    groupStartNum={groupStartNum}
+                                    onUpdate={onUpdate}
+                                    uploading={uploading}
+                                    handleUploadFile={handleUploadFile}
+                                />
+                            )}
+
+                            {usesLegacySharedMultiSelectLayout && (
+                                <ListeningMultiSelectEditor
+                                    group={group}
+                                    groups={groups}
+                                    groupIdx={gIdx}
+                                    groupStartNum={groupStartNum}
+                                    onUpdate={onUpdate}
+                                />
+                            )}
+
                             {/* Layout-specific components (Matching, Table, Summary Box, etc.) */}
                             {(isMatchingType || isComplexLayout) && (
                                 <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-start', background: '#f0f9ff', padding: '12px', borderRadius: '12px', marginTop: '10px', border: '1px solid #bae6fd', flexDirection: (isComplexLayout && !isMatchingType && !isSummaryType) ? 'column' : 'row', flexWrap: 'wrap' }}>
@@ -940,14 +1281,22 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
                                                     {group.questions.map((q, qIdx) => (
                                                         <div key={q.questionNumber} style={{ background: '#fff', padding: '10px', borderRadius: '8px', border: '1px solid #bae6fd', display: 'flex', gap: '8px', alignItems: 'center' }}>
                                                             <span style={{ fontWeight: 'bold', fontSize: '0.8125rem', minWidth: '35px' }}>Q{q.questionNumber}:</span>
-                                                            {group.questions[0]?.options?.length > 0 ? (
-                                                                <Select size="small" style={{ flex: 1 }} value={q.correctAnswer} placeholder="Chọn A-Z"
-                                                                    options={(group.questions[0]?.options || []).map((_, i) => ({ label: String.fromCharCode(65 + i), value: String.fromCharCode(65 + i) }))}
+                                                            {group.questions[0]?.options?.length > 0 && !isSummaryType ? (
+                                                                <Select
+                                                                    size="small"
+                                                                    style={{ flex: 1 }}
+                                                                    value={q.correctAnswer}
+                                                                    placeholder={`Chọn ${group.optionLabelType === 'roman' ? 'i-viii' : 'A-Z'}`}
+                                                                    options={(group.questions[0]?.options || []).map((_, i) => ({
+                                                                        label: getOptionLabel(i, group.optionLabelType || 'alpha'),
+                                                                        value: getOptionLabel(i, group.optionLabelType || 'alpha'),
+                                                                    }))}
                                                                     onChange={v => {
                                                                         const updated = [...groups];
                                                                         updated[gIdx].questions[qIdx] = { ...q, correctAnswer: v };
                                                                         onUpdate(updated);
-                                                                    }} />
+                                                                    }}
+                                                                />
                                                             ) : (
                                                                 <Input size="small" placeholder="Đáp án (vd|vd2)..." value={q.correctAnswer ?? ''} style={{ flex: 1, borderColor: '#10b981' }} onChange={e => {
                                                                     const updated = [...groups];
@@ -971,16 +1320,49 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
                                                 {group.questions.map((q, qIdx) => (
                                                     <div key={q.questionNumber || qIdx} style={{ background: '#fff', padding: '8px', borderRadius: '8px', border: '1px solid #bae6fd', display: 'flex', gap: '8px', alignItems: 'center' }}>
                                                         <span style={{ fontWeight: 'bold', fontSize: '0.8125rem', minWidth: '35px' }}>Q{q.questionNumber}:</span>
-                                                        <Input size="small" placeholder="Ví dụ: Simon, Liz..." value={q.content ?? ''} style={{ flex: 1 }} onChange={e => {
+                                                        <Input size="small" placeholder={isClassificationMatchingType ? 'Ví dụ: The Mayor, shopkeeper...' : 'Ví dụ: Simon, Liz...'} value={q.content ?? ''} style={{ flex: 1 }} onChange={e => {
                                                             const updated = [...groups];
                                                             updated[gIdx].questions[qIdx] = { ...q, content: e.target.value };
                                                             onUpdate(updated);
                                                         }} />
-                                                        <Input size="small" placeholder="Đáp án (A-Z)" value={q.correctAnswer ?? ''} style={{ width: '100px', borderColor: '#10b981' }} onChange={e => {
-                                                            const updated = [...groups];
-                                                            updated[gIdx].questions[qIdx] = { ...q, correctAnswer: e.target.value };
-                                                            onUpdate(updated);
-                                                        }} />
+                                                        {isMatchingHeadingsType ? (
+                                                            <Select
+                                                                size="small"
+                                                                placeholder="Đáp án"
+                                                                value={q.correctAnswer || undefined}
+                                                                style={{ width: 100, border: '1px solid #10b981', borderRadius: 4 }}
+                                                                options={matchingHeadingAnswerOptions}
+                                                                onChange={value => {
+                                                                    const updated = [...groups];
+                                                                    updated[gIdx].questions[qIdx] = { ...q, correctAnswer: value };
+                                                                    onUpdate(updated);
+                                                                    closeActiveSelectDropdown();
+                                                                }}
+                                                            />
+                                                        ) : isClassificationMatchingType ? (
+                                                            <Select
+                                                                size="small"
+                                                                placeholder="Đáp án"
+                                                                value={q.correctAnswer || undefined}
+                                                                style={{ width: 120, border: '1px solid #10b981', borderRadius: 4 }}
+                                                                options={(group.questions[0]?.options || []).map((_, i) => ({
+                                                                    label: getOptionLabel(i, group.optionLabelType || 'alpha'),
+                                                                    value: getOptionLabel(i, group.optionLabelType || 'alpha'),
+                                                                }))}
+                                                                onChange={value => {
+                                                                    const updated = [...groups];
+                                                                    updated[gIdx].questions[qIdx] = { ...q, correctAnswer: value };
+                                                                    onUpdate(updated);
+                                                                    closeActiveSelectDropdown();
+                                                                }}
+                                                            />
+                                                        ) : (
+                                                            <Input size="small" placeholder={`Đáp án (${group.optionLabelType === 'roman' ? 'i-viii' : 'A-Z'})`} value={q.correctAnswer ?? ''} style={{ width: isSummaryType ? '220px' : '100px', borderColor: '#10b981' }} onChange={e => {
+                                                                const updated = [...groups];
+                                                                updated[gIdx].questions[qIdx] = { ...q, correctAnswer: e.target.value };
+                                                                onUpdate(updated);
+                                                            }} />
+                                                        )}
                                                         <InputNumber size="small" value={q.points} min={1} style={{ width: '55px' }} onChange={v => {
                                                             const updated = [...groups];
                                                             updated[gIdx].questions[qIdx] = { ...q, points: v || 1 };
@@ -996,7 +1378,7 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
                                                 ))}
                                                 <Button type="dashed" size="small" icon={<PlusOutlined />} block onClick={() => {
                                                     const updated = [...groups];
-                                                    const newQ = { ...emptyQuestion(), questionNumber: runningQNum, options: group.questions[0]?.options || [] };
+                                                    const newQ = { ...emptyQuestion(), questionNumber: runningQNum, options: group.questions[0]?.options || buildBlankOptions(matchingHeadingOptionCount) };
                                                     updated[gIdx] = { ...group, questions: [...group.questions, newQ] };
                                                     onUpdate(updated);
                                                 }}>Thêm Item</Button>
@@ -1013,30 +1395,119 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
                                             </div>
                                             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                                 {(group.questions[0]?.options || []).map((opt, oIdx) => (
-                                                    <div key={oIdx} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                                        <b style={{ color: '#0ea5e9', width: '20px', textAlign: 'center' }}>{String.fromCharCode(65 + oIdx)}</b>
-                                                        <Input size="small" value={opt.optionText} placeholder="Nội dung..." style={{ flex: 1 }}
-                                                            onChange={e => {
-                                                                const updated = [...groups];
-                                                                const newOpts = [...(group.questions[0]?.options || [])];
-                                                                newOpts[oIdx] = { ...opt, optionText: e.target.value };
-                                                                updated[gIdx].questions = group.questions.map(q => ({ ...q, options: newOpts }));
-                                                                onUpdate(updated);
-                                                            }} />
-                                                        <Button type="text" danger icon={<MinusCircleOutlined />} size="small" onClick={() => {
+                                                    <div
+                                                        key={oIdx}
+                                                        style={{
+                                                            display: 'flex',
+                                                            gap: '8px',
+                                                            alignItems: 'center',
+                                                            padding: isVisualMatchingType ? '10px' : 0,
+                                                            border: isVisualMatchingType ? '1px solid #e2e8f0' : 'none',
+                                                            borderRadius: isVisualMatchingType ? '10px' : 0,
+                                                            background: isVisualMatchingType ? '#f8fafc' : 'transparent',
+                                                        }}
+                                                    >
+                                                        <b style={{ color: '#0ea5e9', width: '20px', textAlign: 'center' }}>{getOptionLabel(oIdx, group.optionLabelType || 'alpha')}</b>
+                                                        {isVisualMatchingType ? (
+                                                            <>
+                                                                <div
+                                                                    style={{
+                                                                        width: 120,
+                                                                        height: 90,
+                                                                        borderRadius: '8px',
+                                                                        border: '1px dashed #cbd5e1',
+                                                                        background: '#fff',
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        justifyContent: 'center',
+                                                                        overflow: 'hidden',
+                                                                        flexShrink: 0,
+                                                                    }}
+                                                                >
+                                                                    {opt.optionText ? (
+                                                                        <img
+                                                                            src={opt.optionText}
+                                                                            alt={`Option ${getOptionLabel(oIdx, group.optionLabelType || 'alpha')}`}
+                                                                            style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                                                                        />
+                                                                    ) : (
+                                                                        <span style={{ fontSize: '11px', color: '#94a3b8', textAlign: 'center', padding: '0 8px' }}>
+                                                                            Chưa có ảnh
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                <Upload
+                                                                    accept="image/*"
+                                                                    showUploadList={false}
+                                                                    beforeUpload={async (file) => {
+                                                                        const url = await handleUploadFile(file, 'image');
+                                                                        if (!url) return false;
+
+                                                                        const updated = [...groups];
+                                                                        const newOpts = [...(group.questions[0]?.options || [])];
+                                                                        newOpts[oIdx] = { ...opt, optionText: url };
+                                                                        updated[gIdx].questions = group.questions.map(q => ({ ...q, options: newOpts }));
+                                                                        onUpdate(updated);
+                                                                        return false;
+                                                                    }}
+                                                                >
+                                                                    <Button size="small" loading={uploading}>Upload ảnh</Button>
+                                                                </Upload>
+                                                                {opt.optionText ? (
+                                                                    <Button
+                                                                        size="small"
+                                                                        onClick={() => {
+                                                                            const updated = [...groups];
+                                                                            const newOpts = [...(group.questions[0]?.options || [])];
+                                                                            newOpts[oIdx] = { ...opt, optionText: '' };
+                                                                            updated[gIdx].questions = group.questions.map(q => ({ ...q, options: newOpts }));
+                                                                            onUpdate(updated);
+                                                                        }}
+                                                                    >
+                                                                        Xóa ảnh
+                                                                    </Button>
+                                                                ) : null}
+                                                            </>
+                                                        ) : (
+                                                            <Input size="small" value={opt.optionText} placeholder="Nội dung..." style={{ flex: 1 }}
+                                                                onChange={e => {
+                                                                    const updated = [...groups];
+                                                                    const newOpts = [...(group.questions[0]?.options || [])];
+                                                                    newOpts[oIdx] = { ...opt, optionText: e.target.value };
+                                                                    updated[gIdx].questions = group.questions.map(q => ({ ...q, options: newOpts }));
+                                                                    onUpdate(updated);
+                                                                }} />
+                                                        )}
+                                                        <Button
+                                                            type="text"
+                                                            danger
+                                                            icon={<MinusCircleOutlined />}
+                                                            size="small"
+                                                            disabled={isClassificationMatchingType && (group.questions[0]?.options?.length ?? 0) <= 2}
+                                                            onClick={() => {
                                                             const updated = [...groups];
                                                             const newOpts = (group.questions[0]?.options || []).filter((_, i) => i !== oIdx);
                                                             updated[gIdx].questions = group.questions.map(q => ({ ...q, options: newOpts }));
                                                             onUpdate(updated);
-                                                        }} />
+                                                        }}
+                                                        />
                                                     </div>
                                                 ))}
-                                                <Button type="dashed" size="small" icon={<PlusOutlined />} block onClick={() => {
+                                                <Button
+                                                    type="dashed"
+                                                    size="small"
+                                                    icon={<PlusOutlined />}
+                                                    block
+                                                    disabled={FIXED_OPTION_MATCHING_TYPES.has(group.groupType ?? '')}
+                                                    onClick={() => {
                                                     const updated = [...groups];
                                                     const newOpts = [...(group.questions[0]?.options || []), emptyOption(group.questions[0]?.options?.length || 0)];
                                                     updated[gIdx].questions = group.questions.map(q => ({ ...q, options: newOpts }));
                                                     onUpdate(updated);
-                                                }}>Thêm lựa chọn (A, B, C...)</Button>
+                                                }}
+                                                >
+                                                    {isClassificationMatchingType ? 'Dạng này dùng cố định 2 cột A/B' : 'Thêm lựa chọn'}
+                                                </Button>
                                             </div>
                                         </div>
                                     )}
@@ -1044,16 +1515,18 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
                             )}
 
                             {/* Standard Question List (for non-complex non-matching types) */}
-                            {!isComplexLayout && !isMatchingType && (
+                            {!isComplexLayout && !isMatchingType && !isFlowchartType && !usesLegacySharedMultiSelectLayout && (
                                 <div style={{ marginTop: '10px' }}>
-                                    {group.questions.map((q, qIdx) => renderQuestion(q, qIdx, group, gIdx, groups, onUpdate))}
-                                    <Button type="dashed" icon={<PlusOutlined />} block size="small" style={{ marginTop: '8px' }}
-                                        onClick={() => {
-                                            const updated = [...groups];
-                                            const newQ = { ...emptyQuestion(), questionNumber: runningQNum, options: getOptionsForType(group.groupType) };
-                                            updated[gIdx] = { ...group, questions: [...group.questions, newQ] };
-                                            onUpdate(updated);
-                                        }}>Thêm câu hỏi</Button>
+                                    {group.questions.map((q, qIdx) => renderQuestion(q, qIdx, group, gIdx, groups, onUpdate, groupStartNum))}
+                                    {group.groupType !== QUESTION_TYPES.MCQ_CHOOSE_N && (
+                                        <Button type="dashed" icon={<PlusOutlined />} block size="small" style={{ marginTop: '8px' }}
+                                            onClick={() => {
+                                                const updated = [...groups];
+                                                const newQ = { ...emptyQuestion(), questionNumber: runningQNum, options: getOptionsForType(group.groupType) };
+                                                updated[gIdx] = { ...group, questions: [...group.questions, newQ] };
+                                                onUpdate(updated);
+                                            }}>Thêm câu hỏi</Button>
+                                    )}
                                 </div>
                             )}
                         </div>
@@ -1067,27 +1540,22 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
         );
     };
 
-    const getOptionsForType = (groupType?: string): CreateQuestionOptionDto[] => {
-        if (!groupType) return [];
-        if (groupType === QUESTION_TYPES.TFNG) return TFNG_OPTIONS.map(o => ({ ...o }));
-        if (groupType === QUESTION_TYPES.YNNG) return YNNG_OPTIONS.map(o => ({ ...o }));
-        if (groupType === QUESTION_TYPES.MATCHING_TABLE || MATCHING_TYPES.has(groupType))
-            return [emptyOption(0), emptyOption(1), emptyOption(2), emptyOption(3)];
-        if (SINGLE_CHOICE_TYPES.has(groupType) || MULTI_CHOICE_TYPES.has(groupType))
-            return [emptyOption(0), emptyOption(1), emptyOption(2), emptyOption(3)];
-        return [];
-    };
-
     const renderQuestion = (
         q: CreateQuestionDto, qIdx: number,
         group: CreateQuestionGroupDto, gIdx: number,
         groups: CreateQuestionGroupDto[],
         onUpdate: (groups: CreateQuestionGroupDto[]) => void,
+        groupStartNum: number,
     ) => {
         const gType = group.groupType ?? '';
         const hasOpts = SINGLE_CHOICE_TYPES.has(gType) || MULTI_CHOICE_TYPES.has(gType) || MATCHING_TYPES.has(gType);
         const isFill = FILL_TYPES.has(gType) || gType === QUESTION_TYPES.SUMMARY_COMPLETION;
         const isTFNG = gType === QUESTION_TYPES.TFNG || gType === QUESTION_TYPES.YNNG;
+        const isShortAnswerTemplateType = gType === QUESTION_TYPES.SHORT_ANSWER;
+        const supportsOptionImageUpload = skill === 'Listening' && gType === QUESTION_TYPES.MCQ_SINGLE && !isTFNG;
+        const displayQuestionNumber = q.questionNumber ?? groupStartNum + qIdx;
+        const optionInputMode = supportsOptionImageUpload ? getListeningMcqOptionInputMode(group.assetsData, String(displayQuestionNumber)) : 'text';
+        const textareaKey = `short-answer-${gIdx}-${qIdx}-${displayQuestionNumber}`;
 
         const updateQ = (partial: Partial<CreateQuestionDto>) => {
             const updated = [...groups];
@@ -1097,10 +1565,58 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
             onUpdate(updated);
         };
 
+        const insertShortAnswerToken = () => {
+            if (hasQuestionToken(q.content)) return;
+
+            const token = `[Q${displayQuestionNumber}]`;
+            const activeElement = document.activeElement as HTMLTextAreaElement | null;
+            const currentContent = q.content ?? '';
+
+            if (activeElement?.tagName === 'TEXTAREA' && activeElement.dataset.shortAnswerKey === textareaKey) {
+                const start = activeElement.selectionStart ?? currentContent.length;
+                const end = activeElement.selectionEnd ?? currentContent.length;
+                updateQ({
+                    content: normalizeSingleQuestionToken(
+                        `${currentContent.slice(0, start)}${token}${currentContent.slice(end)}`,
+                        displayQuestionNumber,
+                    ),
+                });
+                return;
+            }
+
+            updateQ({
+                content: normalizeSingleQuestionToken(
+                    currentContent ? `${currentContent} ${token}` : token,
+                    displayQuestionNumber,
+                ),
+            });
+        };
+
         return (
             <div key={qIdx} style={{ padding: '10px', background: '#fff', borderRadius: '8px', marginBottom: '6px', border: '1px solid #f1f5f9' }}>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '6px' }}>
-                    <span style={{ fontWeight: 600, fontSize: '0.8125rem', color: '#64748b', minWidth: 45 }}>Câu {q.questionNumber || qIdx + 1}</span>
+                    <span style={{ fontWeight: 600, fontSize: '0.8125rem', color: '#64748b', minWidth: 45 }}>Câu {displayQuestionNumber}</span>
+                    {supportsOptionImageUpload && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 10px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
+                            <span style={{ fontSize: '11px', fontWeight: 600, color: '#64748b' }}>Kiểu đáp án:</span>
+                            <Radio.Group
+                                size="small"
+                                value={optionInputMode}
+                                onChange={(event) => {
+                                    const nextMode = event.target.value as 'text' | 'image';
+                                    const updated = [...groups];
+                                    updated[gIdx] = {
+                                        ...group,
+                                        assetsData: setListeningMcqOptionInputMode(group.assetsData, String(displayQuestionNumber), nextMode),
+                                    };
+                                    onUpdate(updated);
+                                }}
+                            >
+                                <Radio.Button value="text">Text</Radio.Button>
+                                <Radio.Button value="image">Image</Radio.Button>
+                            </Radio.Group>
+                        </div>
+                    )}
                     <InputNumber value={q.points} min={0} size="small" style={{ width: 70 }} placeholder="Điểm"
                         onChange={v => updateQ({ points: v ?? 1 })} />
                     {group.questions.length > 1 && (
@@ -1110,11 +1626,39 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
                                 updated[gIdx] = { ...group, questions: group.questions.filter((_, i) => i !== qIdx) };
                                 onUpdate(updated);
                             }} />
-                    )}
+                        )}
                 </div>
-                <Input.TextArea value={q.content ?? ''} placeholder={isFill ? 'Nội dung (dùng ___ cho chỗ trống)' : 'Nội dung câu hỏi'}
-                    autoSize={{ minRows: 1, maxRows: 4 }} size="small" style={{ marginBottom: '6px' }}
-                    onChange={e => updateQ({ content: e.target.value })} />
+                {isShortAnswerTemplateType && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', marginBottom: 6 }}>
+                        <span style={{ fontSize: '0.75rem', color: '#0369a1', fontWeight: 700 }}>
+                            Chèn [Qx] vào đúng vị trí cần điền
+                        </span>
+                        <Button
+                            size="small"
+                            type={hasQuestionToken(q.content) ? 'default' : 'primary'}
+                            disabled={hasQuestionToken(q.content)}
+                            onMouseDown={(event) => {
+                                event.preventDefault();
+                                insertShortAnswerToken();
+                            }}
+                        >
+                            {hasQuestionToken(q.content) ? `Đã có [Q${displayQuestionNumber}]` : `Thêm [Q${displayQuestionNumber}]`}
+                        </Button>
+                    </div>
+                )}
+                <Input.TextArea
+                    data-short-answer-key={textareaKey}
+                    value={q.content ?? ''}
+                    placeholder={isShortAnswerTemplateType ? `Nhập câu hỏi và chèn [Q${displayQuestionNumber}] tại chỗ trống` : 'Nội dung câu hỏi'}
+                    autoSize={{ minRows: 1, maxRows: 4 }}
+                    size="small"
+                    style={{ marginBottom: '6px' }}
+                    onChange={e => updateQ({
+                        content: isShortAnswerTemplateType
+                            ? normalizeSingleQuestionToken(e.target.value, displayQuestionNumber)
+                            : e.target.value,
+                    })}
+                />
 
                 {isFill && (
                     <Input value={q.correctAnswer ?? ''} placeholder="Đáp án đúng (dùng | phân cách nhiều đáp án)"
@@ -1125,8 +1669,20 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
                 {hasOpts && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                         {q.options.map((opt, oIdx) => (
-                            <div key={oIdx} style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                            <div
+                                key={oIdx}
+                                style={{
+                                    display: 'flex',
+                                    gap: '6px',
+                                    alignItems: supportsOptionImageUpload ? 'flex-start' : 'center',
+                                    padding: supportsOptionImageUpload ? '8px' : 0,
+                                    border: supportsOptionImageUpload ? '1px solid #e2e8f0' : 'none',
+                                    borderRadius: supportsOptionImageUpload ? '10px' : 0,
+                                    background: supportsOptionImageUpload ? '#f8fafc' : 'transparent',
+                                }}
+                            >
                                 <input type="checkbox" checked={opt.isCorrect}
+                                    style={{ marginTop: supportsOptionImageUpload ? '8px' : 0 }}
                                     onChange={e => {
                                         const isChecked = e.target.checked;
                                         let opts = [...q.options];
@@ -1138,16 +1694,79 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
                                         }
                                         updateQ({ options: opts });
                                     }} />
-                                <Input value={opt.optionText} disabled={isTFNG}
-                                    placeholder={isTFNG ? opt.optionText : `Lựa chọn ${String.fromCharCode(65 + oIdx)}`}
-                                    size="small" style={{ flex: 1 }}
-                                    onChange={e => {
-                                        const opts = [...q.options];
-                                        opts[oIdx] = { ...opt, optionText: e.target.value };
-                                        updateQ({ options: opts });
-                                    }} />
+                                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                    {!supportsOptionImageUpload || optionInputMode === 'text' ? (
+                                        <Input value={opt.optionText} disabled={isTFNG}
+                                            placeholder={isTFNG ? opt.optionText : `Lựa chọn ${getOptionLabel(oIdx, group.optionLabelType || 'alpha')}`}
+                                            size="small" style={{ flex: 1 }}
+                                            onChange={e => {
+                                                const opts = [...q.options];
+                                                opts[oIdx] = { ...opt, optionText: e.target.value };
+                                                updateQ({ options: opts });
+                                            }} />
+                                    ) : null}
+                                    {supportsOptionImageUpload && optionInputMode === 'image' && (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                            <div
+                                                style={{
+                                                    width: 140,
+                                                    height: 100,
+                                                    borderRadius: '8px',
+                                                    border: '1px dashed #cbd5e1',
+                                                    background: '#fff',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    overflow: 'hidden',
+                                                }}
+                                            >
+                                                {opt.imageUrl ? (
+                                                    <img
+                                                        src={opt.imageUrl}
+                                                        alt={`Option ${getOptionLabel(oIdx, group.optionLabelType || 'alpha')}`}
+                                                        style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                                                    />
+                                                ) : (
+                                                    <span style={{ fontSize: '11px', color: '#94a3b8', textAlign: 'center', padding: '0 8px' }}>
+                                                        Chưa có ảnh
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                                <Upload
+                                                    accept="image/*"
+                                                    showUploadList={false}
+                                                    beforeUpload={async (file) => {
+                                                        const url = await handleUploadFile(file, 'image');
+                                                        if (!url) return false;
+
+                                                        const opts = [...q.options];
+                                                        opts[oIdx] = { ...opt, imageUrl: url };
+                                                        updateQ({ options: opts });
+                                                        return false;
+                                                    }}
+                                                >
+                                                    <Button size="small" loading={uploading}>Upload ảnh</Button>
+                                                </Upload>
+                                                {opt.imageUrl ? (
+                                                    <Button
+                                                        size="small"
+                                                        onClick={() => {
+                                                            const opts = [...q.options];
+                                                            opts[oIdx] = { ...opt, imageUrl: '' };
+                                                            updateQ({ options: opts });
+                                                        }}
+                                                    >
+                                                        Xóa ảnh
+                                                    </Button>
+                                                ) : null}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
                                 {!isTFNG && q.options.length > 1 && (
                                     <Button type="text" danger icon={<MinusCircleOutlined />} size="small"
+                                        style={{ marginTop: supportsOptionImageUpload ? '4px' : 0 }}
                                         onClick={() => updateQ({ options: q.options.filter((_, i) => i !== oIdx) })} />
                                 )}
                             </div>
@@ -1195,7 +1814,11 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                     <div>
                         <label style={{ fontWeight: 600, fontSize: '0.8125rem', color: '#334155', display: 'block', marginBottom: '4px' }}>Tên đề thi *</label>
-                        <Input value={form.title} onChange={e => updateForm({ title: e.target.value })} placeholder="VD: IELTS Mock Test 2026" />
+                        <Input value={form.title} onPaste={e => {
+                            const newVal = getCleanPastedInputValue(e, form.title || '');
+                            if (newVal === null) return;
+                            updateForm({ title: newVal });
+                        }} onChange={e => updateForm({ title: e.target.value })} placeholder="VD: IELTS Mock Test 2026" />
                     </div>
                     <div>
                         <label style={{ fontWeight: 600, fontSize: '0.8125rem', color: '#334155', display: 'block', marginBottom: '4px' }}>Loại đề</label>
@@ -1203,7 +1826,11 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
                             options={[{ label: 'IELTS', value: 'IELTS' }, { label: 'TOEIC', value: 'TOEIC' }]} />
                     </div>
                 </div>
-                <Input.TextArea value={form.description} onChange={e => updateForm({ description: e.target.value })}
+                <Input.TextArea value={form.description} onPaste={e => {
+                    const newVal = getCleanPastedInputValue(e, form.description || '');
+                    if (newVal === null) return;
+                    updateForm({ description: newVal });
+                }} onChange={e => updateForm({ description: e.target.value })}
                     placeholder="Mô tả đề thi..." autoSize={{ minRows: 2, maxRows: 4 }} />
                 <div style={{ display: 'flex', gap: '12px' }}>
                     <div>
@@ -1242,12 +1869,17 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
                                                     setForm(prev => ({ ...prev, sections: updated }));
                                                 }}
                                                 options={[
-                                                    { label: '📖 Reading', value: 'Reading' },
-                                                    { label: '🎧 Listening', value: 'Listening' },
-                                                    { label: '✍️ Writing', value: 'Writing' },
-                                                    { label: '🎤 Speaking', value: 'Speaking' },
-                                                ]} />
+                                                    { label: 'Reading', value: 'Reading', disabled: form.sections.some((sec, i) => sec.skillType === 'Reading' && i !== sIdx) },
+                                                    { label: 'Listening', value: 'Listening', disabled: form.sections.some((sec, i) => sec.skillType === 'Listening' && i !== sIdx) },
+                                                    { label: 'Writing', value: 'Writing', disabled: form.sections.some((sec, i) => sec.skillType === 'Writing' && i !== sIdx) },
+                                                    { label: 'Speaking', value: 'Speaking', disabled: form.sections.some((sec, i) => sec.skillType === 'Speaking' && i !== sIdx) },
+                                                ].map(o => ({ ...o, label: (o.value === 'Reading' ? '📖 ' : o.value === 'Listening' ? '🎧 ' : o.value === 'Writing' ? '✍️ ' : '🎤 ') + o.label + (o.disabled ? ' (Đã có)' : '') }))} />
                                             <Input value={section.title ?? ''} style={{ flex: 1 }} placeholder="Tiêu đề section"
+                                                onPaste={e => {
+                                                    const newVal = getCleanPastedInputValue(e, section.title || '');
+                                                    if (newVal === null) return;
+                                                    updateSection(sIdx, { title: newVal });
+                                                }}
                                                 onChange={e => updateSection(sIdx, { title: e.target.value })} />
                                         </div>
                                         {renderSectionContent(section, sIdx)}
@@ -1259,13 +1891,20 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
                 />
 
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                    {(['Reading', 'Listening', 'Writing', 'Speaking'] as SkillType[]).map(s => (
-                        <Button key={s} type="dashed" size="small" icon={<PlusOutlined />}
-                            onClick={() => handleAddSection(s)}
-                            style={{ borderColor: SKILL_COLORS[s], color: SKILL_COLORS[s] }}>
-                            + {s}
-                        </Button>
-                    ))}
+                    {(['Reading', 'Listening', 'Writing', 'Speaking'] as SkillType[]).map(s => {
+                        const isAdded = form.sections.some(sec => sec.skillType === s);
+                        if (isAdded) return null;
+                        return (
+                            <Button key={s} type="dashed" size="small" icon={<PlusOutlined />}
+                                onClick={() => handleAddSection(s)}
+                                style={{
+                                    borderColor: SKILL_COLORS[s],
+                                    color: SKILL_COLORS[s]
+                                }}>
+                                + {s}
+                            </Button>
+                        );
+                    })}
                 </div>
             </div>
         </Modal>

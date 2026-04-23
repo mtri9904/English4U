@@ -28,8 +28,9 @@ export function GoogleLoginButton({ requiredRole, redirectTo = '/' }: GoogleLogi
                     message.success('Đăng nhập Google thành công!');
                     navigate(redirectTo);
                 },
-                onError: () => {
-                    message.error('Đăng nhập Google thất bại!');
+                onError: (error: any) => {
+                    const errorMsg = error.response?.data?.message || 'Đăng nhập Google thất bại!';
+                    message.error(errorMsg);
                 },
             });
         },

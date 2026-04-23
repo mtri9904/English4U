@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Card, Avatar, Button, Tabs, Form, Input, Row, Col, Divider, message, Tag, Typography, Spin, Upload } from 'antd';
+import { Card, Avatar, Button, Tabs, Form, Input, Row, Col, Divider, message, Tag, Typography, Spin, Upload, Modal } from 'antd';
 import {
     UserOutlined,
     LockOutlined,
@@ -12,15 +12,18 @@ import {
     IdcardOutlined
 } from '@ant-design/icons';
 import { motion } from 'framer-motion';
-import { useUserProfileQuery, useUpdateProfileMutation, useChangePasswordMutation } from '../api/user.api';
+import { useUserProfileQuery, useUpdateProfileMutation, useChangePasswordMutation, useDeleteSelfAccountMutation } from '../api/user.api';
 import { uploadToCloudinary } from '@/shared/lib/cloudinary';
+import { formatDateTimeToMinute } from '@/shared/lib/dateTime';
 
 const { Title, Text } = Typography;
+const { confirm } = Modal;
 
 export const ProfilePage: React.FC = () => {
     const { data: profile, isLoading } = useUserProfileQuery();
     const updateProfileMutation = useUpdateProfileMutation();
     const changePasswordMutation = useChangePasswordMutation();
+    const deleteSelfMutation = useDeleteSelfAccountMutation();
     const [form] = Form.useForm();
     const [passwordForm] = Form.useForm();
 
@@ -157,11 +160,11 @@ export const ProfilePage: React.FC = () => {
                             </div>
                             <div style={{ marginBottom: 16 }}>
                                 <Text strong style={{ display: 'block', color: '#94a3b8', fontSize: '12px', textTransform: 'uppercase' }}>Ngày tham gia</Text>
-                                <Text style={{ color: '#334155' }}>{profile?.createdAt ? new Date(profile.createdAt).toLocaleDateString('vi-VN') : 'N/A'}</Text>
+                                <Text style={{ color: '#334155' }}>{formatDateTimeToMinute(profile?.createdAt) || 'N/A'}</Text>
                             </div>
                             <div style={{ marginBottom: 16 }}>
                                 <Text strong style={{ display: 'block', color: '#94a3b8', fontSize: '12px', textTransform: 'uppercase' }}>Lần đăng nhập cuối</Text>
-                                <Text style={{ color: '#334155' }}>{profile?.lastLoginAt ? new Date(profile.lastLoginAt).toLocaleString('vi-VN') : 'N/A'}</Text>
+                                <Text style={{ color: '#334155' }}>{formatDateTimeToMinute(profile?.lastLoginAt) || 'N/A'}</Text>
                             </div>
                         </div>
                     </Card>
@@ -277,6 +280,50 @@ export const ProfilePage: React.FC = () => {
                                                     Cập nhật mật khẩu
                                                 </Button>
                                             </Form>
+                                        </div>
+                                    ),
+                                },
+                                {
+                                    key: '3',
+                                    label: (
+                                        <span style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#ef4444' }}>
+                                            Bảo mật nâng cao
+                                        </span>
+                                    ),
+                                    children: (
+                                        <div style={{ paddingTop: 12 }}>
+                                            <div style={{ padding: '16px', borderRadius: 12, border: '1px solid #fee2e2', background: '#fef2f2' }}>
+                                                <Title level={5} style={{ color: '#991b1b', margin: 0 }}>Xóa tài khoản vĩnh viễn</Title>
+                                                <Text style={{ color: '#b91c1c', display: 'block', margin: '8px 0 16px' }}>
+                                                    Khi bạn xóa tài khoản, tất cả dữ liệu (kết quả thi, lịch sử học tập, thông tin cá nhân) sẽ bị xóa vĩnh viễn và không thể khôi phục.
+                                                </Text>
+                                                <Button
+                                                    danger
+                                                    type="primary"
+                                                    onClick={() => {
+                                                        confirm({
+                                                            title: 'Xác nhận xóa tài khoản?',
+                                                            content: 'Hành động này sẽ xóa toàn bộ dữ liệu của bạn. Bạn có chắc chắn muốn tiếp tục?',
+                                                            okText: 'Xóa vĩnh viễn',
+                                                            okType: 'danger',
+                                                            cancelText: 'Hủy',
+                                                            onOk: async () => {
+                                                                try {
+                                                                    await deleteSelfMutation.mutateAsync();
+                                                                    message.success('Tài khoản của bạn đã được xóa.');
+                                                                    localStorage.removeItem('token');
+                                                                    localStorage.removeItem('userId');
+                                                                    window.location.href = '/login';
+                                                                } catch (error) {
+                                                                    message.error('Có lỗi xảy ra khi xóa tài khoản.');
+                                                                }
+                                                            }
+                                                        });
+                                                    }}
+                                                >
+                                                    Xóa tài khoản của tôi
+                                                </Button>
+                                            </div>
                                         </div>
                                     ),
                                 },

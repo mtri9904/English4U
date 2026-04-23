@@ -51,7 +51,19 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             entity.Property(e => e.PasswordHash).HasColumnName("passwordHash").HasMaxLength(255).IsRequired();
             entity.Property(e => e.DisplayName).HasColumnName("displayName").HasMaxLength(255);
             entity.Property(e => e.AvatarUrl).HasColumnName("avatarUrl").HasMaxLength(500);
+            entity.Property(e => e.Provider).HasColumnName("Provider").HasMaxLength(50).HasDefaultValue("local");
+            entity.Property(e => e.Phone).HasColumnName("Phone").HasMaxLength(20);
+            entity.Property(e => e.Department).HasColumnName("Department").HasMaxLength(100);
+            entity.Property(e => e.Position).HasColumnName("Position").HasMaxLength(100);
+            entity.Property(e => e.Notes).HasColumnName("Notes");
+            entity.Property(e => e.LastLoginAt).HasColumnName("LastLoginAt");
+            entity.Property(e => e.LastSeenAt).HasColumnName("LastSeenAt");
+            entity.Property(e => e.IsOnline).HasColumnName("IsOnline").HasDefaultValue(false);
             entity.Property(e => e.IsActive).HasColumnName("isActive").HasDefaultValue(true);
+            entity.Property(e => e.IsEmailConfirmed).HasColumnName("IsEmailConfirmed").HasDefaultValue(false);
+            entity.Property(e => e.ActivationToken).HasColumnName("ActivationToken");
+            entity.Property(e => e.ResetPasswordToken).HasColumnName("ResetPasswordToken");
+            entity.Property(e => e.TokenExpiry).HasColumnName("TokenExpiry");
             entity.Property(e => e.CreatedAt).HasColumnName("createdAt").HasDefaultValueSql("GETDATE()");
             entity.Property(e => e.UpdatedAt).HasColumnName("updatedAt").HasDefaultValueSql("GETDATE()");
         });
@@ -166,6 +178,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             entity.Property(e => e.PartNumber).HasColumnName("partNumber");
             entity.Property(e => e.AudioUrl).HasColumnName("audioUrl").HasMaxLength(500).IsRequired();
             entity.Property(e => e.ContextDescription).HasColumnName("contextDescription");
+            entity.Property(e => e.TranscriptData).HasColumnName("transcriptData");
             entity.HasOne(e => e.Section).WithMany(s => s.ListeningParts).HasForeignKey(e => e.SectionId).OnDelete(DeleteBehavior.Cascade);
         });
 
@@ -246,6 +259,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             entity.Property(e => e.Id).HasColumnName("id").HasMaxLength(36);
             entity.Property(e => e.QuestionId).HasColumnName("questionId").HasMaxLength(36);
             entity.Property(e => e.OptionText).HasColumnName("optionText").IsRequired();
+            entity.Property(e => e.ImageUrl).HasColumnName("imageUrl").HasMaxLength(500);
             entity.Property(e => e.IsCorrect).HasColumnName("isCorrect").HasDefaultValue(false);
             entity.Property(e => e.OrderIndex).HasColumnName("orderIndex");
             entity.HasOne(e => e.Question).WithMany(q => q.QuestionOptions).HasForeignKey(e => e.QuestionId).OnDelete(DeleteBehavior.Cascade);

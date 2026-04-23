@@ -13,8 +13,14 @@ public class User
     public string? Position { get; set; }
     public string? Notes { get; set; }
     public DateTime? LastLoginAt { get; set; }
+    public DateTime? LastSeenAt { get; set; }
+    public bool IsOnline { get; set; } = false;
     public Guid? CreatedById { get; set; }
     public bool IsActive { get; set; } = true;
+    public bool IsEmailConfirmed { get; set; } = false;
+    public string? ActivationToken { get; set; }
+    public string? ResetPasswordToken { get; set; }
+    public DateTime? TokenExpiry { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 

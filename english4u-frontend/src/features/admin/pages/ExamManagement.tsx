@@ -1,25 +1,52 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Table, Button, Tag, Modal, Input, Select, Space, message, Tooltip, Empty, Switch } from 'antd';
 import {
-    PlusOutlined,
-    SearchOutlined,
+    Button,
+    Card,
+    Empty,
+    Input,
+    Modal,
+    Select,
+    Space,
+    Switch,
+    Table,
+    Tag,
+    Tooltip,
+    Upload,
+    message,
+} from 'antd';
+import {
+    CheckCircleOutlined,
+    ClockCircleOutlined,
     DeleteOutlined,
-    EyeOutlined,
     EditOutlined,
-    CloudUploadOutlined,
     ExclamationCircleFilled,
+    EyeOutlined,
     FileTextOutlined,
+    InboxOutlined,
+    PlusOutlined,
+    ReloadOutlined,
+    SearchOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useNavigate } from 'react-router-dom';
-import { useExamsQuery, useDeleteExamMutation, useUpdateExamStatusMutation } from '../api/exam.api';
+import {
+    useDeleteExamMutation,
+    useExamsQuery,
+    useGenerateExamFromPdfMutation,
+    useUpdateExamStatusMutation,
+} from '../api/exam.api';
 import type { ExamDto } from '../types/exam.types';
-import { UploadPdfModal } from '../components/UploadPdfModal';
+import { pdfGenerationJobStore, usePdfGenerationJobStore } from '../stores/pdfGenerationJob.store';
+
+type PublishFilter = 'ALL' | 'PUBLISHED' | 'DRAFT';
 
 const containerVariants = {
     hidden: { opacity: 0 },
-    visible: { opacity: 1, transition: { staggerChildren: 0.08 } },
+    visible: {
+        opacity: 1,
+        transition: { staggerChildren: 0.08 },
+    },
 };
 
 const itemVariants = {
@@ -27,32 +54,207 @@ const itemVariants = {
     visible: { opacity: 1, y: 0 },
 };
 
+const examTypeColorMap: Record<string, { bg: string; color: string }> = {
+    IELTS: { bg: '#ede9fe', color: '#7c3aed' },
+    TOEIC: { bg: '#dbeafe', color: '#2563eb' },
+};
+
+const skillColors: Record<string, string> = {
+    Reading: '#10b981',
+    Listening: '#6366f1',
+    Writing: '#f59e0b',
+    Speaking: '#ef4444',
+};
+
+const formatSkillLabel = (value?: string | null) => {
+    const normalized = (value ?? '').trim().toLowerCase();
+    if (!normalized) return '';
+    return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+};
+
+const getPrimarySkill = (exam: ExamDto) => {
+    const firstSkill = exam.skillTypes?.find((skill) => skill?.trim());
+    if (firstSkill) return formatSkillLabel(firstSkill);
+    return formatSkillLabel(exam.sections?.[0]?.skillType);
+};
+
+const iconButtonStyle = {
+    borderRadius: 10,
+    width: 34,
+    height: 34,
+    border: '1px solid #e2e8f0',
+    background: '#fff',
+};
+
+const { Dragger } = Upload;
+
 export const ExamManagement = () => {
     const navigate = useNavigate();
     const [searchText, setSearchText] = useState('');
-    const [filterType, setFilterType] = useState<string | null>(null);
-    const [isUploadOpen, setIsUploadOpen] = useState(false);
+    const [filterType, setFilterType] = useState<string>('ALL');
+    const [filterSkill, setFilterSkill] = useState<string>('ALL');
+    const [publishFilter, setPublishFilter] = useState<PublishFilter>('ALL');
+    const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
+    const [selectedPdfFile, setSelectedPdfFile] = useState<File | null>(null);
+    const { job: pdfGenerationJob } = usePdfGenerationJobStore();
 
     const { data: exams = [], isLoading } = useExamsQuery();
     const deleteMutation = useDeleteExamMutation();
     const updateStatusMutation = useUpdateExamStatusMutation();
+    const generateFromPdfMutation = useGenerateExamFromPdfMutation();
+    const isPdfGenerationLocked = pdfGenerationJob?.status === 'processing';
+    const pdfJobPercent = Math.round(pdfGenerationJob?.progressPercent ?? 0);
+
+    const examOverview = useMemo(() => {
+        const total = exams.length;
+        const published = exams.filter((exam) => exam.isPublished).length;
+        const draft = total - published;
+        const totalDuration = exams.reduce((sum, exam) => sum + (exam.durationMinutes ?? 0), 0);
+        const avgDuration = total > 0 ? Math.round(totalDuration / total) : 0;
+
+        return {
+            total,
+            published,
+            draft,
+            avgDuration,
+        };
+    }, [exams]);
+
+    const skillFilterOptions = useMemo(
+        () =>
+            Array.from(
+                new Set(
+                    exams
+                        .map((exam) => getPrimarySkill(exam))
+                        .filter((skill) => !!skill)
+                )
+            ).sort((left, right) => left.localeCompare(right)),
+        [exams]
+    );
+
+    const filteredExams = useMemo(() => {
+        const normalizedSearch = searchText.trim().toLowerCase();
+
+        return exams.filter((exam) => {
+            const examTitle = (exam.title ?? '').toLowerCase();
+            const description = exam.description?.toLowerCase() ?? '';
+            const matchSearch =
+                !normalizedSearch ||
+                examTitle.includes(normalizedSearch) ||
+                description.includes(normalizedSearch);
+
+            const matchType = filterType === 'ALL' || exam.examType === filterType;
+            const matchSkill = filterSkill === 'ALL' || getPrimarySkill(exam) === filterSkill;
+            const matchPublish =
+                publishFilter === 'ALL' ||
+                (publishFilter === 'PUBLISHED' && exam.isPublished) ||
+                (publishFilter === 'DRAFT' && !exam.isPublished);
+
+            return matchSearch && matchType && matchSkill && matchPublish;
+        });
+    }, [exams, filterSkill, filterType, publishFilter, searchText]);
+
+    const hasActiveFilter =
+        searchText.trim().length > 0 || filterType !== 'ALL' || filterSkill !== 'ALL' || publishFilter !== 'ALL';
+
+    const resetFilters = () => {
+        setSearchText('');
+        setFilterType('ALL');
+        setFilterSkill('ALL');
+        setPublishFilter('ALL');
+    };
+
+    const resetPdfForm = () => {
+        setSelectedPdfFile(null);
+        setIsPdfModalOpen(false);
+    };
+
+    const handleOpenPdfModal = () => {
+        if (isPdfGenerationLocked) {
+            message.warning('PDF đang được generate. Chỉ có thể upload file mới sau khi tiến trình hoàn tất hoặc thất bại.');
+            return;
+        }
+
+        setIsPdfModalOpen(true);
+    };
+
+    const handleStartGenerateFromPdf = () => {
+        if (isPdfGenerationLocked) {
+            message.warning('Đang có một tiến trình generate PDF chạy. Vui lòng chờ hoàn tất hoặc thất bại rồi thử lại.');
+            return;
+        }
+
+        if (!selectedPdfFile) {
+            message.warning('Vui lòng chọn file PDF trước khi bắt đầu.');
+            return;
+        }
+
+        const fileToUpload = selectedPdfFile;
+        const clientRequestId = crypto.randomUUID();
+        pdfGenerationJobStore.setJob({
+            clientRequestId,
+            uploadId: null,
+            fileName: fileToUpload.name,
+            status: 'processing',
+            progressPercent: 1,
+            stage: 'uploading',
+            message: 'Đang upload file và khởi tạo tiến trình.',
+            examId: null,
+            passageNumber: null,
+            totalPassages: null,
+        });
+
+        resetPdfForm();
+
+        generateFromPdfMutation.mutate({ file: fileToUpload, clientRequestId }, {
+            onSuccess: (result) => {
+                pdfGenerationJobStore.updateJob((previous) => ({
+                    clientRequestId: previous?.clientRequestId ?? clientRequestId,
+                    uploadId: result.uploadId,
+                    fileName: previous?.fileName ?? fileToUpload.name,
+                    status: 'completed',
+                    progressPercent: 100,
+                    stage: 'completed',
+                    message: `Hoàn tất tạo đề với ${result.questionCount} câu hỏi.`,
+                    examId: result.examId,
+                    passageNumber: previous?.passageNumber ?? null,
+                    totalPassages: result.passageCount,
+                }));
+                message.success('Tạo đề từ PDF thành công.');
+            },
+            onError: (error: any) => {
+                const apiMessage = error?.response?.data?.message;
+                const fallbackMessage = typeof apiMessage === 'string' ? apiMessage : 'Tạo đề từ PDF thất bại.';
+                pdfGenerationJobStore.updateJob((previous) => ({
+                    clientRequestId: previous?.clientRequestId ?? clientRequestId,
+                    uploadId: previous?.uploadId ?? null,
+                    fileName: previous?.fileName ?? fileToUpload.name,
+                    status: 'failed',
+                    progressPercent: previous?.progressPercent ?? 0,
+                    stage: 'failed',
+                    message: fallbackMessage,
+                    examId: previous?.examId ?? null,
+                    passageNumber: previous?.passageNumber ?? null,
+                    totalPassages: previous?.totalPassages ?? null,
+                }));
+                message.error(fallbackMessage);
+            },
+        });
+    };
 
     const handleEdit = (id: string) => {
         navigate(`/admin/exams/edit/${id}`);
     };
 
     const handleToggleStatus = (id: string, isPublished: boolean) => {
-        updateStatusMutation.mutate({ id, isPublished }, {
-            onSuccess: () => message.success('Cập nhật trạng thái thành công!'),
-            onError: () => message.error('Cập nhật trạng thái thất bại!'),
-        });
+        updateStatusMutation.mutate(
+            { id, isPublished },
+            {
+                onSuccess: () => message.success('Cập nhật trạng thái thành công.'),
+                onError: () => message.error('Cập nhật trạng thái thất bại.'),
+            }
+        );
     };
-
-    const filteredExams = exams.filter(exam => {
-        const matchSearch = exam.title.toLowerCase().includes(searchText.toLowerCase());
-        const matchType = !filterType || exam.examType === filterType;
-        return matchSearch && matchType;
-    });
 
     const handleDelete = (exam: ExamDto) => {
         Modal.confirm({
@@ -66,10 +268,23 @@ export const ExamManagement = () => {
             okText: 'Xóa',
             okType: 'danger',
             cancelText: 'Hủy',
-            onOk: () =>
-                deleteMutation.mutateAsync(exam.id).then(() => {
-                    message.success('Đã xóa đề thi thành công!');
-                }),
+            onOk: async () => {
+                try {
+                    await deleteMutation.mutateAsync(exam.id);
+                    message.success('Đã xóa đề thi thành công.');
+                } catch (error: any) {
+                    const apiMessage =
+                        error?.response?.data?.message ||
+                        error?.response?.data?.detail ||
+                        error?.response?.data?.title;
+                    const fallbackMessage = error?.code === 'ECONNABORTED'
+                        ? 'Xóa đề thi bị timeout.'
+                        : typeof apiMessage === 'string'
+                            ? apiMessage
+                            : 'Xóa đề thi thất bại.';
+                    message.error(fallbackMessage);
+                }
+            },
         });
     };
 
@@ -78,8 +293,24 @@ export const ExamManagement = () => {
             title: 'Tên đề thi',
             dataIndex: 'title',
             key: 'title',
-            render: (text: string) => (
-                <span style={{ fontWeight: 600, color: '#0f172a' }}>{text}</span>
+            width: 360,
+            render: (_: string, record) => (
+                <div style={{ minWidth: 280 }}>
+                    <div style={{ fontWeight: 700, color: '#0f172a' }}>{record.title}</div>
+                    <div
+                        style={{
+                            marginTop: 3,
+                            color: '#64748b',
+                            fontSize: '0.78rem',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            maxWidth: 350,
+                        }}
+                    >
+                        {record.description?.trim() || 'Chưa có mô tả đề thi.'}
+                    </div>
+                </div>
             ),
         },
         {
@@ -87,14 +318,19 @@ export const ExamManagement = () => {
             dataIndex: 'examType',
             key: 'examType',
             width: 120,
-            render: (type: string) => {
-                const colorMap: Record<string, { bg: string; color: string }> = {
-                    IELTS: { bg: '#ede9fe', color: '#7c3aed' },
-                    TOEIC: { bg: '#dbeafe', color: '#2563eb' },
-                };
-                const style = colorMap[type] || { bg: '#f1f5f9', color: '#475569' };
+            render: (type: string | null) => {
+                const style = (type && examTypeColorMap[type]) || { bg: '#f1f5f9', color: '#475569' };
                 return (
-                    <Tag style={{ background: style.bg, color: style.color, border: 'none', fontWeight: 600, borderRadius: '8px', padding: '2px 12px' }}>
+                    <Tag
+                        style={{
+                            background: style.bg,
+                            color: style.color,
+                            border: 'none',
+                            borderRadius: 999,
+                            padding: '2px 12px',
+                            fontWeight: 700,
+                        }}
+                    >
                         {type || 'N/A'}
                     </Tag>
                 );
@@ -103,22 +339,21 @@ export const ExamManagement = () => {
         {
             title: 'Kỹ năng',
             key: 'skills',
+            width: 150,
             render: (_, record: ExamDto) => {
-                const skills = Array.from(new Set(record.skillTypes || []));
-                const skillColors: Record<string, string> = {
-                    Reading: '#10b981',
-                    Listening: '#6366f1',
-                    Writing: '#f59e0b',
-                    Speaking: '#ef4444',
-                };
+                const skill = getPrimarySkill(record);
+
+                if (!skill) {
+                    return <Tag style={{ borderRadius: 8, color: '#64748b' }}>Chưa có</Tag>;
+                }
+
                 return (
-                    <div style={{ display: 'flex', gap: '4px', flexWrap: 'nowrap' }}>
-                        {skills.map(skill => (
-                            <Tag key={skill} color={skillColors[skill]} style={{ borderRadius: '6px', margin: 0 }}>
-                                {skill}
-                            </Tag>
-                        ))}
-                    </div>
+                    <Tag
+                        color={skillColors[skill] || 'default'}
+                        style={{ borderRadius: 8, margin: 0, fontWeight: 700 }}
+                    >
+                        {skill}
+                    </Tag>
                 );
             },
         },
@@ -126,31 +361,26 @@ export const ExamManagement = () => {
             title: 'Thời gian',
             dataIndex: 'durationMinutes',
             key: 'durationMinutes',
-            width: 110,
-            render: (val: number | null) => (
-                <span style={{ color: '#64748b' }}>{val ? `${val} phút` : '—'}</span>
-            ),
-        },
-        {
-            title: 'Tổng điểm',
-            dataIndex: 'totalPoints',
-            key: 'totalPoints',
-            width: 110,
-            render: (val: number | null) => (
-                <span style={{ fontWeight: 600, color: '#0ea5e9' }}>{val ?? '—'}</span>
+            width: 115,
+            render: (value: number | null) => (
+                <span style={{ color: '#475569' }}>{value ? `${value} phút` : '—'}</span>
             ),
         },
         {
             title: 'Trạng thái',
             dataIndex: 'isPublished',
             key: 'isPublished',
-            width: 140,
+            width: 195,
             render: (published: boolean, record: ExamDto) => (
                 <Switch
                     checked={published}
                     checkedChildren="Xuất bản"
                     unCheckedChildren="Nháp"
                     onChange={(checked) => handleToggleStatus(record.id, checked)}
+                    loading={
+                        updateStatusMutation.isPending &&
+                        updateStatusMutation.variables?.id === record.id
+                    }
                 />
             ),
         },
@@ -170,29 +400,28 @@ export const ExamManagement = () => {
             key: 'actions',
             width: 140,
             render: (_: unknown, record: ExamDto) => (
-                <Space>
+                <Space size={8}>
                     <Tooltip title="Xem chi tiết">
                         <Button
-                            type="text"
                             icon={<EyeOutlined />}
                             onClick={() => navigate(`/admin/exams/${record.id}`)}
-                            style={{ color: '#0ea5e9' }}
+                            style={{ ...iconButtonStyle, color: '#0ea5e9' }}
                         />
                     </Tooltip>
                     <Tooltip title="Chỉnh sửa">
                         <Button
-                            type="text"
                             icon={<EditOutlined />}
                             onClick={() => handleEdit(record.id)}
-                            style={{ color: '#f59e0b' }}
+                            style={{ ...iconButtonStyle, color: '#f59e0b' }}
                         />
                     </Tooltip>
                     <Tooltip title="Xóa">
                         <Button
-                            type="text"
+                            danger
                             icon={<DeleteOutlined />}
                             onClick={() => handleDelete(record)}
-                            style={{ color: '#ef4444' }}
+                            loading={deleteMutation.isPending && deleteMutation.variables === record.id}
+                            style={iconButtonStyle}
                         />
                     </Tooltip>
                 </Space>
@@ -201,116 +430,292 @@ export const ExamManagement = () => {
     ];
 
     return (
-        <motion.div
+        <>
+            <motion.div
             variants={containerVariants}
             initial="hidden"
             animate="visible"
-            style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}
-        >
-            <motion.div variants={itemVariants} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-                <div>
-                    <h2 style={{ fontSize: '1.75rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
-                        Quản lý Đề thi
-                    </h2>
-                    <p style={{ color: '#64748b', marginTop: '4px' }}>
-                        Tạo, chỉnh sửa và quản lý tất cả đề thi trong hệ thống
-                    </p>
+            style={{ display: 'flex', flexDirection: 'column', gap: 18 }}
+            >
+            <motion.div variants={itemVariants}>
+                <div
+                    style={{
+                        borderRadius: 18,
+                        padding: 22,
+                        background: 'radial-gradient(circle at 0% 0%, #0ea5e9 0%, #1d4ed8 52%, #0f172a 100%)',
+                        border: '1px solid rgba(148, 163, 184, 0.35)',
+                        color: '#fff',
+                    }}
+                >
+                    <div
+                        style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            gap: 12,
+                            flexWrap: 'wrap',
+                        }}
+                    >
+                        <div>
+                            <div style={{ fontSize: '1.55rem', fontWeight: 800, marginBottom: 6 }}>
+                                Quản lý Đề thi
+                            </div>
+                            <div style={{ color: 'rgba(226, 232, 240, 0.92)' }}>
+                                Theo dõi, xuất bản và quản lý kho đề theo từng kỹ năng trong CMS.
+                            </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                            <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+                                <Button
+                                    icon={<InboxOutlined />}
+                                    onClick={handleOpenPdfModal}
+                                    disabled={isPdfGenerationLocked}
+                                    style={{
+                                        borderRadius: 10,
+                                        border: isPdfGenerationLocked
+                                            ? '1px solid rgba(148, 163, 184, 0.35)'
+                                            : '1px solid rgba(255, 255, 255, 0.45)',
+                                        height: 40,
+                                        paddingInline: 16,
+                                        fontWeight: 700,
+                                        color: isPdfGenerationLocked ? 'rgba(226, 232, 240, 0.6)' : '#e2e8f0',
+                                        background: isPdfGenerationLocked
+                                            ? 'rgba(15, 23, 42, 0.18)'
+                                            : 'rgba(15, 23, 42, 0.35)',
+                                    }}
+                                >
+                                    {isPdfGenerationLocked ? `Đang generate ${pdfJobPercent}%` : 'Gen đề từ PDF'}
+                                </Button>
+                            </motion.div>
+                            <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+                                <Button
+                                    icon={<EyeOutlined />}
+                                    onClick={() => navigate('/admin/exams/raw-preview')}
+                                    style={{
+                                        borderRadius: 10,
+                                        border: '1px solid rgba(255, 255, 255, 0.45)',
+                                        height: 40,
+                                        paddingInline: 16,
+                                        fontWeight: 700,
+                                        color: '#e2e8f0',
+                                        background: 'rgba(15, 23, 42, 0.35)',
+                                    }}
+                                >
+                                    Demo text thô
+                                </Button>
+                            </motion.div>
+                            <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+                                <Button
+                                    icon={<PlusOutlined />}
+                                    onClick={() => navigate('/admin/exams/create')}
+                                    style={{
+                                        borderRadius: 10,
+                                        border: 'none',
+                                        height: 40,
+                                        paddingInline: 16,
+                                        fontWeight: 700,
+                                        color: '#fff',
+                                        background: 'linear-gradient(135deg, #22d3ee 0%, #2563eb 58%, #4338ca 100%)',
+                                        boxShadow: '0 8px 20px rgba(37, 99, 235, 0.35)',
+                                    }}
+                                >
+                                    Tạo đề thi mới
+                                </Button>
+                            </motion.div>
+                        </div>
+                    </div>
                 </div>
-                <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-                    <Button
-                        icon={<CloudUploadOutlined />}
-                        size="large"
-                        onClick={() => setIsUploadOpen(true)}
-                        style={{
-                            background: 'linear-gradient(135deg, #f59e0b 0%, #ef4444 100%)',
-                            border: 'none',
-                            borderRadius: '12px',
-                            height: '44px',
-                            fontWeight: 600,
-                            color: '#fff',
-                            boxShadow: '0 4px 14px rgba(245, 158, 11, 0.3)',
-                        }}
-                    >
-                        AI từ PDF
-                    </Button>
-                </motion.div>
-                <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-                    <Button
-                        type="primary"
-                        icon={<PlusOutlined />}
-                        size="large"
-                        onClick={() => navigate('/admin/exams/create')}
-                        style={{
-                            background: 'linear-gradient(135deg, #0ea5e9 0%, #6366f1 100%)',
-                            border: 'none',
-                            borderRadius: '12px',
-                            height: '44px',
-                            fontWeight: 600,
-                            boxShadow: '0 4px 14px rgba(14, 165, 233, 0.3)',
-                        }}
-                    >
-                        Tạo đề thi mới
-                    </Button>
-                </motion.div>
             </motion.div>
 
             <motion.div
                 variants={itemVariants}
                 style={{
-                    background: '#fff',
-                    borderRadius: '16px',
-                    border: '1px solid #f1f5f9',
-                    overflow: 'hidden',
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
+                    gap: 12,
                 }}
             >
-                <div style={{ padding: '20px 24px', borderBottom: '1px solid #f1f5f9', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-                    <Input
-                        placeholder="Tìm kiếm đề thi..."
-                        prefix={<SearchOutlined style={{ color: '#94a3b8' }} />}
-                        value={searchText}
-                        onChange={e => setSearchText(e.target.value)}
-                        style={{ maxWidth: 320, borderRadius: '10px' }}
-                        allowClear
-                    />
-                    <Select
-                        placeholder="Lọc theo loại"
-                        value={filterType}
-                        onChange={setFilterType}
-                        allowClear
-                        style={{ minWidth: 160 }}
-                        options={[
-                            { label: 'IELTS', value: 'IELTS' },
-                            { label: 'TOEIC', value: 'TOEIC' },
-                        ]}
-                    />
-                </div>
-
-                <Table
-                    columns={columns}
-                    dataSource={filteredExams}
-                    rowKey="id"
-                    loading={isLoading}
-                    scroll={{ x: 'max-content' }}
-                    pagination={{
-                        pageSize: 10,
-                        showSizeChanger: true,
-                        showTotal: (total) => `Tổng ${total} đề thi`,
-                    }}
-                    locale={{
-                        emptyText: (
-                            <Empty
-                                image={<FileTextOutlined style={{ fontSize: 48, color: '#cbd5e1' }} />}
-                                description={
-                                    <span style={{ color: '#94a3b8' }}>Chưa có đề thi nào</span>
-                                }
-                            />
-                        ),
-                    }}
-                    style={{ borderRadius: 0 }}
-                />
+                <Card style={{ borderRadius: 14, border: '1px solid #dbeafe' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                            <div style={{ color: '#64748b', fontSize: '0.82rem' }}>Tổng đề thi</div>
+                            <div style={{ color: '#0f172a', fontWeight: 800, fontSize: '1.55rem' }}>
+                                {examOverview.total}
+                            </div>
+                        </div>
+                        <FileTextOutlined style={{ color: '#2563eb', fontSize: 20 }} />
+                    </div>
+                </Card>
+                <Card style={{ borderRadius: 14, border: '1px solid #dcfce7' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                            <div style={{ color: '#64748b', fontSize: '0.82rem' }}>Đang xuất bản</div>
+                            <div style={{ color: '#0f172a', fontWeight: 800, fontSize: '1.55rem' }}>
+                                {examOverview.published}
+                            </div>
+                        </div>
+                        <CheckCircleOutlined style={{ color: '#16a34a', fontSize: 20 }} />
+                    </div>
+                </Card>
+                <Card style={{ borderRadius: 14, border: '1px solid #fee2e2' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                            <div style={{ color: '#64748b', fontSize: '0.82rem' }}>Đề nháp</div>
+                            <div style={{ color: '#0f172a', fontWeight: 800, fontSize: '1.55rem' }}>
+                                {examOverview.draft}
+                            </div>
+                        </div>
+                        <EditOutlined style={{ color: '#dc2626', fontSize: 20 }} />
+                    </div>
+                </Card>
+                <Card style={{ borderRadius: 14, border: '1px solid #ede9fe' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                            <div style={{ color: '#64748b', fontSize: '0.82rem' }}>Thời gian TB</div>
+                            <div style={{ color: '#0f172a', fontWeight: 800, fontSize: '1.55rem' }}>
+                                {examOverview.avgDuration} phút
+                            </div>
+                        </div>
+                        <ClockCircleOutlined style={{ color: '#7c3aed', fontSize: 20 }} />
+                    </div>
+                </Card>
             </motion.div>
 
-            <UploadPdfModal open={isUploadOpen} onClose={() => setIsUploadOpen(false)} />
-        </motion.div>
+            <motion.div variants={itemVariants}>
+                <Card
+                    title="Danh sách đề thi"
+                    style={{ borderRadius: 14, border: '1px solid #e2e8f0' }}
+                    headStyle={{
+                        borderBottom: '1px solid #e2e8f0',
+                        fontWeight: 700,
+                    }}
+                >
+                    <div
+                        style={{
+                            marginBottom: 14,
+                            display: 'flex',
+                            gap: 10,
+                            flexWrap: 'wrap',
+                            alignItems: 'center',
+                        }}
+                    >
+                        <Input
+                            value={searchText}
+                            onChange={(event) => setSearchText(event.target.value)}
+                            allowClear
+                            prefix={<SearchOutlined style={{ color: '#94a3b8' }} />}
+                            placeholder="Tìm theo tên đề hoặc mô tả..."
+                            style={{ minWidth: 250, flex: 2, borderRadius: 10 }}
+                        />
+                        <Select
+                            value={filterType}
+                            onChange={setFilterType}
+                            style={{ minWidth: 150, flex: 1 }}
+                            options={[
+                                { value: 'ALL', label: 'Tất cả loại' },
+                                { value: 'IELTS', label: 'IELTS' },
+                                { value: 'TOEIC', label: 'TOEIC' },
+                            ]}
+                        />
+                        <Select
+                            value={filterSkill}
+                            onChange={setFilterSkill}
+                            style={{ minWidth: 150, flex: 1 }}
+                            options={[
+                                { value: 'ALL', label: 'Tất cả kỹ năng' },
+                                ...skillFilterOptions.map((skill) => ({
+                                    value: skill,
+                                    label: skill,
+                                })),
+                            ]}
+                        />
+                        <Select
+                            value={publishFilter}
+                            onChange={(value: PublishFilter) => setPublishFilter(value)}
+                            style={{ minWidth: 160, flex: 1 }}
+                            options={[
+                                { value: 'ALL', label: 'Tất cả trạng thái' },
+                                { value: 'PUBLISHED', label: 'Đang xuất bản' },
+                                { value: 'DRAFT', label: 'Đề nháp' },
+                            ]}
+                        />
+                        <Button
+                            icon={<ReloadOutlined />}
+                            onClick={resetFilters}
+                            disabled={!hasActiveFilter}
+                            style={{ borderRadius: 10 }}
+                        >
+                            Xóa lọc
+                        </Button>
+                    </div>
+
+                    <Table
+                        rowKey="id"
+                        columns={columns}
+                        dataSource={filteredExams}
+                        loading={isLoading}
+                        scroll={{ x: 'max-content' }}
+                        pagination={{
+                            pageSize: 10,
+                            showSizeChanger: true,
+                            pageSizeOptions: ['10', '20', '50'],
+                        }}
+                        locale={{
+                            emptyText: (
+                                <Empty
+                                    image={<FileTextOutlined style={{ fontSize: 48, color: '#cbd5e1' }} />}
+                                    description={<span style={{ color: '#94a3b8' }}>Chưa có đề thi phù hợp bộ lọc.</span>}
+                                />
+                            ),
+                        }}
+                    />
+                </Card>
+            </motion.div>
+            </motion.div>
+
+            <Modal
+                title="Generate đề Reading từ PDF"
+                open={isPdfModalOpen}
+                onCancel={resetPdfForm}
+                okText="Bắt đầu generate"
+                cancelText="Hủy"
+                onOk={handleStartGenerateFromPdf}
+                okButtonProps={{ disabled: !selectedPdfFile || generateFromPdfMutation.isPending || isPdfGenerationLocked }}
+                cancelButtonProps={{ disabled: generateFromPdfMutation.isPending }}
+                destroyOnClose
+            >
+                <div style={{ color: '#475569', marginBottom: 12 }}>
+                    {isPdfGenerationLocked
+                        ? 'Hệ thống đang generate một file PDF khác. Chỉ có thể upload file mới sau khi tiến trình hiện tại hoàn tất hoặc thất bại.'
+                        : 'Upload file PDF đề IELTS Reading, hệ thống sẽ tự tách passage, gọi Gemma và tạo đề mới.'}
+                </div>
+                <Dragger
+                    accept=".pdf"
+                    multiple={false}
+                    maxCount={1}
+                    beforeUpload={(file) => {
+                        setSelectedPdfFile(file);
+                        return false;
+                    }}
+                    showUploadList={false}
+                    disabled={generateFromPdfMutation.isPending || isPdfGenerationLocked}
+                >
+                    <p style={{ marginBottom: 8 }}>
+                        <InboxOutlined style={{ fontSize: 30, color: isPdfGenerationLocked ? '#94a3b8' : '#2563eb' }} />
+                    </p>
+                    <p style={{ fontWeight: 700, color: '#0f172a', marginBottom: 2 }}>
+                        {isPdfGenerationLocked ? 'Đang khóa upload trong lúc generate' : 'Bấm hoặc kéo file PDF vào đây'}
+                    </p>
+                    <p style={{ color: '#64748b', margin: 0 }}>
+                        {isPdfGenerationLocked ? 'Hoàn tất hoặc thất bại rồi mới được upload tiếp' : 'Chỉ hỗ trợ định dạng `.pdf`'}
+                    </p>
+                </Dragger>
+                {selectedPdfFile ? (
+                    <div style={{ marginTop: 12, fontSize: '0.82rem', color: '#0f172a' }}>
+                        File đã chọn: <strong>{selectedPdfFile.name}</strong>
+                    </div>
+                ) : null}
+            </Modal>
+        </>
     );
 };

@@ -1,4 +1,6 @@
+using EnglishExamApp.API.Realtime;
 using EnglishExamApp.Application.DTOs.Exams;
+using EnglishExamApp.Application.Interfaces;
 using EnglishExamApp.Application.Services;
 using Microsoft.AspNetCore.Mvc;
 
@@ -6,22 +8,15 @@ namespace EnglishExamApp.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class ExamController(IExamService examService, IGenerateExamService generateExamService) : ControllerBase
+public class ExamController(
+    IExamService examService,
+    IExamPdfGenerationService examPdfGenerationService,
+    IAiIntegrationService aiIntegrationService,
+    IWritingVisualExtractionService writingVisualExtractionService,
+    IPdfGenerationProgressTracker pdfGenerationProgressTracker,
+    IRealtimeEventDispatcher realtimeDispatcher,
+    ILogger<ExamController> logger) : ControllerBase
 {
-    [HttpPost("upload-pdf")]
-    [RequestSizeLimit(20 * 1024 * 1024)]
-    public async Task<IResult> UploadPdf(
-        IFormFile file,
-        [FromHeader(Name = "X-User-Id")] Guid userId,
-        CancellationToken cancellationToken)
-    {
-        if (file.Length == 0 || !file.FileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
-            return TypedResults.BadRequest(new { message = "Please upload a valid PDF file." });
-
-        var examId = await generateExamService.ProcessPdfFileAsync(file, userId, cancellationToken);
-
-        return TypedResults.Created($"/api/exam/{examId}", new { examId, message = "Exam generated from PDF successfully." });
-    }
     [HttpGet]
     public async Task<IResult> GetAll(CancellationToken cancellationToken)
     {
@@ -45,9 +40,294 @@ public class ExamController(IExamService examService, IGenerateExamService gener
         [FromHeader(Name = "X-User-Id")] Guid createdBy,
         CancellationToken cancellationToken)
     {
-        var examId = await examService.CreateExamAsync(dto, createdBy, cancellationToken);
+        Guid examId;
+        try
+        {
+            examId = await examService.CreateExamAsync(dto, createdBy, cancellationToken);
+            await PublishExamChangedAsync(cancellationToken);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return TypedResults.BadRequest(new { message = ex.Message });
+        }
 
         return TypedResults.Created($"/api/exam/{examId}", new { id = examId });
+    }
+
+    [HttpPost("extract-writing-visual-data")]
+    public async Task<IResult> ExtractWritingVisualData(
+        [FromBody] ExtractWritingVisualDataRequestDto dto,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await writingVisualExtractionService.ExtractAsync(dto, cancellationToken);
+            return TypedResults.Ok(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return TypedResults.BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpPost("generate-listening-transcript")]
+    public async Task<IResult> GenerateListeningTranscript(
+        [FromBody] GenerateListeningTranscriptRequestDto dto,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await aiIntegrationService.GenerateListeningTranscriptAsync(dto, cancellationToken);
+            return TypedResults.Ok(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return TypedResults.BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpPost("align-listening-transcript")]
+    public async Task<IResult> AlignListeningTranscript(
+        [FromBody] AlignListeningTranscriptRequestDto dto,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await aiIntegrationService.AlignListeningTranscriptAsync(dto, cancellationToken);
+            return TypedResults.Ok(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return TypedResults.BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpPost("generate-from-pdf")]
+    [RequestFormLimits(MultipartBodyLengthLimit = 50 * 1024 * 1024)]
+    public async Task<IResult> GenerateExamFromPdf(
+        [FromForm(Name = "file")] IFormFile? file,
+        [FromHeader(Name = "X-User-Id")] Guid createdBy,
+        [FromHeader(Name = "X-Client-Request-Id")] string? clientRequestId,
+        CancellationToken cancellationToken)
+    {
+        if (createdBy == Guid.Empty)
+        {
+            return TypedResults.Unauthorized();
+        }
+
+        if (file is null || file.Length == 0)
+        {
+            return TypedResults.BadRequest(new { message = "PDF file is required." });
+        }
+
+        if (!file.FileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+        {
+            return TypedResults.BadRequest(new { message = "Only PDF files are supported." });
+        }
+
+        try
+        {
+            await using var stream = file.OpenReadStream();
+            var result = await examPdfGenerationService.GenerateFromPdfAsync(
+                stream,
+                file.FileName,
+                createdBy,
+                clientRequestId,
+                cancellationToken);
+
+            await PublishExamChangedAsync(cancellationToken);
+            return TypedResults.Created(
+                $"/api/exam/{result.ExamId}",
+                new
+                {
+                    examId = result.ExamId,
+                    uploadId = result.UploadId,
+                    passageCount = result.PassageCount,
+                    questionCount = result.QuestionCount
+                });
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (InvalidOperationException ex)
+        {
+            logger.LogWarning(ex, "Generate exam from PDF failed with validation error for file {FileName}", file.FileName);
+            return TypedResults.BadRequest(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Generate exam from PDF failed unexpectedly for file {FileName}", file.FileName);
+            return TypedResults.Problem(
+                title: "Failed to generate exam from uploaded PDF.",
+                detail: "Unexpected server error while processing the uploaded PDF.",
+                statusCode: StatusCodes.Status500InternalServerError);
+        }
+    }
+
+    [HttpPost("preview-pdf-raw")]
+    [RequestFormLimits(MultipartBodyLengthLimit = 50 * 1024 * 1024)]
+    public async Task<IResult> PreviewPdfRawExtraction(
+        [FromForm(Name = "file")] IFormFile? file,
+        CancellationToken cancellationToken)
+    {
+        if (file is null || file.Length == 0)
+        {
+            return TypedResults.BadRequest(new { message = "PDF file is required." });
+        }
+
+        if (!file.FileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+        {
+            return TypedResults.BadRequest(new { message = "Only PDF files are supported." });
+        }
+
+        try
+        {
+            await using var stream = file.OpenReadStream();
+            var preview = await examPdfGenerationService.PreviewPdfExtractionAsync(
+                stream,
+                file.FileName,
+                cancellationToken);
+
+            return TypedResults.Ok(preview);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (InvalidOperationException ex)
+        {
+            logger.LogWarning(ex, "Preview PDF raw extraction failed with validation error for file {FileName}", file.FileName);
+            return TypedResults.BadRequest(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Preview PDF raw extraction failed unexpectedly for file {FileName}", file.FileName);
+            return TypedResults.Problem(
+                title: "Failed to preview PDF extraction.",
+                detail: "Unexpected server error while reading the uploaded PDF.",
+                statusCode: StatusCodes.Status500InternalServerError);
+        }
+    }
+
+    [HttpPost("preview-pdf-question-groups")]
+    [RequestFormLimits(MultipartBodyLengthLimit = 50 * 1024 * 1024)]
+    public async Task<IResult> PreviewPdfQuestionGroups(
+        [FromForm(Name = "file")] IFormFile? file,
+        CancellationToken cancellationToken)
+    {
+        if (file is null || file.Length == 0)
+        {
+            return TypedResults.BadRequest(new { message = "PDF file is required." });
+        }
+
+        if (!file.FileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+        {
+            return TypedResults.BadRequest(new { message = "Only PDF files are supported." });
+        }
+
+        try
+        {
+            await using var stream = file.OpenReadStream();
+            var preview = await examPdfGenerationService.PreviewPdfQuestionGroupsAsync(
+                stream,
+                file.FileName,
+                cancellationToken);
+
+            return TypedResults.Ok(preview);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (InvalidOperationException ex)
+        {
+            logger.LogWarning(ex, "Preview PDF question groups failed with validation error for file {FileName}", file.FileName);
+            return TypedResults.BadRequest(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Preview PDF question groups failed unexpectedly for file {FileName}", file.FileName);
+            return TypedResults.Problem(
+                title: "Failed to preview PDF question groups.",
+                detail: "Unexpected server error while reading the uploaded PDF.",
+                statusCode: StatusCodes.Status500InternalServerError);
+        }
+    }
+
+    [HttpPost("review-pdf-raw")]
+    [RequestFormLimits(MultipartBodyLengthLimit = 50 * 1024 * 1024)]
+    public async Task<IResult> ReviewPdfRaw(
+        [FromForm(Name = "file")] IFormFile? file,
+        CancellationToken cancellationToken)
+    {
+        if (file is null || file.Length == 0)
+        {
+            return TypedResults.BadRequest(new { message = "PDF file is required." });
+        }
+
+        if (!file.FileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+        {
+            return TypedResults.BadRequest(new { message = "Only PDF files are supported." });
+        }
+
+        try
+        {
+            await using var stream = file.OpenReadStream();
+            var review = await examPdfGenerationService.ReviewPdfRawAsync(
+                stream,
+                file.FileName,
+                cancellationToken);
+
+            return TypedResults.Ok(review);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (InvalidOperationException ex)
+        {
+            logger.LogWarning(ex, "Review PDF raw failed with validation error for file {FileName}", file.FileName);
+            return TypedResults.BadRequest(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Review PDF raw failed unexpectedly for file {FileName}", file.FileName);
+            return TypedResults.Problem(
+                title: "Failed to review raw PDF text.",
+                detail: "Unexpected server error while reading or analyzing the uploaded PDF.",
+                statusCode: StatusCodes.Status500InternalServerError);
+        }
+    }
+
+    [HttpGet("generate-from-pdf/progress")]
+    public IResult GetGenerateExamFromPdfProgress(
+        [FromQuery] string? clientRequestId,
+        [FromQuery] Guid? uploadId,
+        [FromHeader(Name = "X-User-Id")] Guid requestedBy)
+    {
+        if (string.IsNullOrWhiteSpace(clientRequestId) && !uploadId.HasValue)
+        {
+            return TypedResults.BadRequest(new { message = "clientRequestId or uploadId is required." });
+        }
+
+        var snapshot = !string.IsNullOrWhiteSpace(clientRequestId)
+            ? pdfGenerationProgressTracker.GetByClientRequestId(clientRequestId)
+            : uploadId.HasValue
+                ? pdfGenerationProgressTracker.GetByUploadId(uploadId.Value)
+                : null;
+
+        if (snapshot is null)
+        {
+            return TypedResults.NotFound(new { message = "Progress snapshot not found." });
+        }
+
+        if (requestedBy != Guid.Empty && snapshot.UploadedBy != requestedBy)
+        {
+            return TypedResults.Forbid();
+        }
+
+        return TypedResults.Ok(snapshot);
     }
 
     [HttpPut("{examId}")]
@@ -56,7 +336,20 @@ public class ExamController(IExamService examService, IGenerateExamService gener
         [FromBody] CreateExamDto dto,
         CancellationToken cancellationToken)
     {
-        var updated = await examService.UpdateExamAsync(examId, dto, cancellationToken);
+        bool updated;
+        try
+        {
+            updated = await examService.UpdateExamAsync(examId, dto, cancellationToken);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return TypedResults.BadRequest(new { message = ex.Message });
+        }
+
+        if (updated)
+        {
+            await PublishExamChangedAsync(cancellationToken);
+        }
         return updated
             ? TypedResults.Ok(new { message = "Exam updated successfully." })
             : TypedResults.NotFound(new { message = "Exam not found." });
@@ -66,6 +359,10 @@ public class ExamController(IExamService examService, IGenerateExamService gener
     public async Task<IResult> Delete(Guid examId, CancellationToken cancellationToken)
     {
         var deleted = await examService.DeleteAsync(examId, cancellationToken);
+        if (deleted)
+        {
+            await PublishExamChangedAsync(cancellationToken);
+        }
 
         return deleted
             ? TypedResults.Ok(new { message = "Exam deleted." })
@@ -79,11 +376,18 @@ public class ExamController(IExamService examService, IGenerateExamService gener
         CancellationToken cancellationToken)
     {
         var updated = await examService.UpdateStatusAsync(examId, request.IsPublished, cancellationToken);
+        if (updated)
+        {
+            await PublishExamChangedAsync(cancellationToken);
+        }
         
         return updated
             ? TypedResults.Ok(new { message = "Status updated successfully." })
             : TypedResults.NotFound(new { message = "Exam not found." });
     }
+
+    private Task PublishExamChangedAsync(CancellationToken cancellationToken) =>
+        realtimeDispatcher.PublishAsync(RealtimeEventTypes.ExamsChanged, cancellationToken: cancellationToken);
 }
 
 public record UpdateExamStatusRequest(bool IsPublished);

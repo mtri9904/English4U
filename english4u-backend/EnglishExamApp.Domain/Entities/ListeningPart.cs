@@ -7,6 +7,7 @@ public class ListeningPart
     public int? PartNumber { get; set; }
     public string AudioUrl { get; set; } = string.Empty;
     public string? ContextDescription { get; set; }
+    public string? TranscriptData { get; set; }
 
     public ExamSection Section { get; set; } = null!;
     public ICollection<QuestionGroup> QuestionGroups { get; set; } = [];

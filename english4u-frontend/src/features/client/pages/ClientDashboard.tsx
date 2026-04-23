@@ -2,15 +2,15 @@ import React from 'react';
 import { Row, Col, Card, Typography, Progress, Tag, Avatar, Button, Statistic } from 'antd';
 import {
     ReadOutlined,
-    ClockCircleOutlined,
     TrophyOutlined,
     FireOutlined,
     RightOutlined,
+    ClockCircleOutlined,
     BookOutlined,
     BarChartOutlined,
     ThunderboltOutlined,
     CheckCircleOutlined,
-    StarFilled
+    StarFilled,
 } from '@ant-design/icons';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
@@ -25,9 +25,9 @@ const fadeUp = (delay = 0) => ({
 });
 
 const MOCK_RECENT_EXAMS = [
-    { id: 1, title: 'IELTS Reading Test 1', type: 'Reading', score: 7.5, total: 9, date: '03/03/2026', color: '#137dc5' },
-    { id: 2, title: 'IELTS Listening Test 2', type: 'Listening', score: 6.5, total: 9, date: '02/03/2026', color: '#7c3aed' },
-    { id: 3, title: 'Grammar Practice', type: 'Grammar', score: 85, total: 100, date: '01/03/2026', color: '#16a34a' },
+    { id: 1, title: 'IELTS Mock Test - Reading', type: 'Reading', score: 7.5, total: 9, date: '03/03/2026', color: '#137dc5' },
+    { id: 2, title: 'IELTS Mock Test - Listening', type: 'Listening', score: 6.5, total: 9, date: '02/03/2026', color: '#7c3aed' },
+    { id: 3, title: 'IELTS Mock Test - Writing', type: 'Writing', score: 6.0, total: 9, date: '01/03/2026', color: '#d97706' },
 ];
 
 const SKILL_DATA = [
@@ -39,32 +39,32 @@ const SKILL_DATA = [
 
 const QUICK_ACTIONS = [
     {
-        title: 'Luyện Reading',
+        title: 'Reading',
         desc: 'Đọc hiểu đoạn văn IELTS',
         icon: <ReadOutlined style={{ fontSize: 24 }} />,
         gradient: 'linear-gradient(135deg, #137dc5, #0ea5e9)',
-        path: '/app/practice?skill=reading',
+        path: '/app/practice?skill=READING',
     },
     {
-        title: 'Luyện Listening',
+        title: 'Listening',
         desc: 'Nghe và trả lời câu hỏi',
         icon: <BookOutlined style={{ fontSize: 24 }} />,
         gradient: 'linear-gradient(135deg, #7c3aed, #a78bfa)',
-        path: '/app/practice?skill=listening',
+        path: '/app/practice?skill=LISTENING',
     },
     {
-        title: 'Flashcards',
-        desc: 'Ôn từ vựng thông minh',
-        icon: <StarFilled style={{ fontSize: 24 }} />,
+        title: 'Writing',
+        desc: 'Task 1 và Task 2 mô phỏng thi thật',
+        icon: <BarChartOutlined style={{ fontSize: 24 }} />,
         gradient: 'linear-gradient(135deg, #d97706, #f59e0b)',
-        path: '/app/flashcards',
+        path: '/app/practice?skill=WRITING',
     },
     {
-        title: 'Bài thi thử',
-        desc: 'Mô phỏng bài thi thật',
-        icon: <TrophyOutlined style={{ fontSize: 24 }} />,
+        title: 'Speaking',
+        desc: 'Part 1, Part 2 và Part 3 theo đề thật',
+        icon: <ThunderboltOutlined style={{ fontSize: 24 }} />,
         gradient: 'linear-gradient(135deg, #16a34a, #22c55e)',
-        path: '/app/practice?type=mock',
+        path: '/app/practice?skill=SPEAKING',
     },
 ];
 
@@ -118,7 +118,7 @@ export const ClientDashboard: React.FC = () => {
                                 {profile?.displayName || 'Học viên'}
                             </Title>
                             <Paragraph type="secondary" style={{ marginTop: 8, marginBottom: 0, maxWidth: 500, fontSize: 14 }}>
-                                Hãy tiếp tục hành trình chinh phục IELTS. Mỗi ngày luyện tập đều đưa bạn gần hơn mục tiêu!
+                                Chọn đúng kỹ năng cần luyện, làm đề đều đặn và theo dõi band mục tiêu của bạn rõ ràng hơn sau từng lần thi thử.
                             </Paragraph>
                         </Col>
                         <Col>
@@ -371,7 +371,7 @@ export const ClientDashboard: React.FC = () => {
                                 </Col>
                                 <Col span={12}>
                                     <Statistic
-                                        title={<Text type="secondary" style={{ fontSize: 12 }}>Giờ học</Text>}
+                                        title={<Text type="secondary" style={{ fontSize: 12 }}>Giờ luyện thi</Text>}
                                         value={0}
                                         prefix={<ClockCircleOutlined />}
                                         valueStyle={{ fontSize: 24, fontWeight: 700, color: '#d97706' }}

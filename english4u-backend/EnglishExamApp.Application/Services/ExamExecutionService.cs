@@ -2,21 +2,558 @@ using EnglishExamApp.Application.DTOs.ExamExecution;
 using EnglishExamApp.Application.Interfaces;
 using EnglishExamApp.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using System.Text.RegularExpressions;
 
 namespace EnglishExamApp.Application.Services;
 
 public sealed class ExamExecutionService(
     IApplicationDbContext context,
-    IAiIntegrationService aiIntegrationService) : IExamExecutionService
+    IAiIntegrationService aiIntegrationService,
+    ILogger<ExamExecutionService> logger) : IExamExecutionService
 {
+    private const int WritingSubmitMinWords = 10;
+
+    private static readonly string[] RomanOptionLabels =
+    [
+        "i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x",
+        "xi", "xii", "xiii", "xiv", "xv", "xvi", "xvii", "xviii", "xix", "xx",
+        "xxi", "xxii", "xxiii", "xxiv", "xxv", "xxvi"
+    ];
+
+    private sealed record SessionHeader(
+        Guid SessionId,
+        Guid UserId,
+        Guid ExamId,
+        string ExamTitle,
+        string? ExamDescription,
+        string? ExamType,
+        int? DurationMinutes,
+        string SkillType,
+        string Status,
+        DateTime StartedAt,
+        DateTime? EndedAt,
+        int? TimeRemaining,
+        bool IsPublished);
+
+    private sealed record ObjectiveQuestionBlueprint(
+        Guid QuestionId,
+        int? QuestionNumber,
+        double Points,
+        string? GroupType,
+        string SkillType);
+
+    private static bool IsFlexibleFillBlankGroupType(string? groupType) =>
+        groupType is "SENTENCE_COMPLETION" or "SUMMARY_COMPLETION" or "TABLE_COMPLETION" or "FLOWCHART_COMPLETION" or "SHORT_ANSWER" or "SHORT_ANSWER_QUESTIONS";
+
+    private static bool IsAlternativeSingleSelectionMatchingGroupType(string? groupType)
+    {
+        var normalized = (groupType ?? string.Empty).Trim().ToUpperInvariant();
+        return normalized is "MATCHING_INFO" or "MATCHING_INFORMATION" or "MATCHING_FEATURES" or "MATCHING_CLASSIFICATION" or "MATCHING_OPINION";
+    }
+
+    private static string NormalizeSessionStatus(string? status) =>
+        status?.Trim() switch
+        {
+            null or "" => "NotStarted",
+            "Scored" => "Completed",
+            _ => status!.Trim(),
+        };
+
+    private static bool IsFinalizedStatus(string? status)
+    {
+        var normalized = NormalizeSessionStatus(status);
+        return normalized is "Submitted" or "Completed";
+    }
+
+    private static string NormalizeSkillType(string? skillType) =>
+        (skillType ?? string.Empty).Trim().ToUpperInvariant();
+
+    private static int CountWords(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return 0;
+        }
+
+        return Regex.Matches(value.Trim(), @"\S+").Count;
+    }
+
+    private static string ToAlphaOptionLabel(int index) =>
+        index >= 0 && index < 26 ? ((char)('A' + index)).ToString() : string.Empty;
+
+    private static string ToRomanOptionLabel(int index) =>
+        index >= 0 && index < RomanOptionLabels.Length ? RomanOptionLabels[index] : string.Empty;
+
+    private static string NormalizeFlexibleAnswerText(string value)
+    {
+        var normalized = value
+            .Replace("\r\n", " ", StringComparison.Ordinal)
+            .Replace('\r', ' ')
+            .Replace('\n', ' ')
+            .Trim();
+
+        normalized = Regex.Replace(normalized, @"[ \t]+", " ");
+        normalized = normalized.Trim(' ', '.', ',', ';', ':', '"', '\'', '`');
+        return normalized;
+    }
+
+    private static IEnumerable<string> ExpandHyphenAndSpacingVariants(string answer)
+    {
+        var candidate = NormalizeFlexibleAnswerText(answer);
+        if (string.IsNullOrWhiteSpace(candidate))
+        {
+            yield break;
+        }
+
+        yield return candidate;
+
+        if (!candidate.Contains('-', StringComparison.Ordinal))
+        {
+            yield break;
+        }
+
+        yield return NormalizeFlexibleAnswerText(candidate.Replace("-", " ", StringComparison.Ordinal));
+        yield return NormalizeFlexibleAnswerText(candidate.Replace("-", string.Empty, StringComparison.Ordinal));
+    }
+
+    private static List<string> SplitFillBlankAlternatives(string answer) =>
+        Regex.Split(answer, @"(?i)\s*(?:/|;|\bor\b)\s*")
+            .Where(part => !string.IsNullOrWhiteSpace(part))
+            .Select(NormalizeFlexibleAnswerText)
+            .Where(part => !string.IsNullOrWhiteSpace(part))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+    private static List<string> BuildOptionalModifierVariants(string rawOptionalContent)
+    {
+        var tokens = Regex.Split(rawOptionalContent, @"\s*,\s*|\s+and\s+|\s*&\s*", RegexOptions.IgnoreCase)
+            .Where(token => !string.IsNullOrWhiteSpace(token))
+            .Select(NormalizeFlexibleAnswerText)
+            .Where(token => !string.IsNullOrWhiteSpace(token))
+            .ToList();
+
+        if (tokens.Count == 0)
+        {
+            return [string.Empty];
+        }
+
+        var variants = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { string.Empty };
+        var combinationCount = 1 << tokens.Count;
+        for (var mask = 1; mask < combinationCount; mask++)
+        {
+            var selected = new List<string>(tokens.Count);
+            for (var index = 0; index < tokens.Count; index++)
+            {
+                if ((mask & (1 << index)) != 0)
+                {
+                    selected.Add(tokens[index]);
+                }
+            }
+
+            if (selected.Count > 0)
+            {
+                variants.Add(string.Join(" ", selected));
+            }
+        }
+
+        return variants.ToList();
+    }
+
+    private static IReadOnlyCollection<string> ExpandFlexibleFillBlankAcceptedAnswerCore(string rawAnswer)
+    {
+        var candidate = NormalizeFlexibleAnswerText(rawAnswer);
+        if (string.IsNullOrWhiteSpace(candidate))
+        {
+            return [];
+        }
+
+        var leadingOptionalMatch = Regex.Match(candidate, @"^\((?<optional>[^()]+)\)\s*(?<rest>.+)$");
+        if (leadingOptionalMatch.Success)
+        {
+            var optionalVariants = BuildOptionalModifierVariants(leadingOptionalMatch.Groups["optional"].Value);
+            var alternatives = SplitFillBlankAlternatives(leadingOptionalMatch.Groups["rest"].Value);
+            if (alternatives.Count > 0)
+            {
+                var expanded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var alternative in alternatives)
+                {
+                    var cleanedAlternative = NormalizeFlexibleAnswerText(alternative);
+                    if (string.IsNullOrWhiteSpace(cleanedAlternative))
+                    {
+                        continue;
+                    }
+
+                    foreach (var optionalVariant in optionalVariants)
+                    {
+                        expanded.Add(string.IsNullOrWhiteSpace(optionalVariant)
+                            ? cleanedAlternative
+                            : NormalizeFlexibleAnswerText($"{optionalVariant} {cleanedAlternative}"));
+                    }
+                }
+
+                if (expanded.Count > 0)
+                {
+                    return expanded.ToList();
+                }
+            }
+        }
+
+        var splitAlternatives = SplitFillBlankAlternatives(candidate);
+        if (splitAlternatives.Count > 1)
+        {
+            return splitAlternatives
+                .SelectMany(ExpandFlexibleFillBlankAcceptedAnswerCore)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        return [candidate];
+    }
+
+    private static IReadOnlyCollection<string> ExpandFlexibleFillBlankAcceptedAnswers(string rawAnswer)
+    {
+        var variants = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var variant in ExpandFlexibleFillBlankAcceptedAnswerCore(rawAnswer))
+        {
+            foreach (var normalizedVariant in ExpandHyphenAndSpacingVariants(variant))
+            {
+                var cleaned = NormalizeFlexibleAnswerText(normalizedVariant);
+                if (!string.IsNullOrWhiteSpace(cleaned))
+                {
+                    variants.Add(cleaned);
+                }
+            }
+        }
+
+        return variants;
+    }
+
+    private static HashSet<string> BuildFlexibleComparisonForms(string value)
+    {
+        var normalized = NormalizeFlexibleAnswerText(value).ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            return [];
+        }
+
+        var spacingNormalized = Regex.Replace(normalized, @"[-‐‑‒–—]+", " ");
+        spacingNormalized = Regex.Replace(spacingNormalized, @"[.,;:()""'`]+", " ");
+        spacingNormalized = Regex.Replace(spacingNormalized, @"\s+", " ").Trim();
+
+        var forms = new HashSet<string>(StringComparer.Ordinal);
+        if (!string.IsNullOrWhiteSpace(spacingNormalized))
+        {
+            forms.Add(spacingNormalized);
+            forms.Add(Regex.Replace(spacingNormalized, @"\s+", string.Empty));
+        }
+
+        var alphanumericOnly = Regex.Replace(spacingNormalized, @"[^a-z0-9]+", string.Empty);
+        if (!string.IsNullOrWhiteSpace(alphanumericOnly))
+        {
+            forms.Add(alphanumericOnly);
+        }
+
+        return forms;
+    }
+
+    private static HashSet<string> BuildDiscreteAnswerTokenSet(string answer) =>
+        answer
+            .Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(NormalizeFlexibleAnswerText)
+            .Where(token => !string.IsNullOrWhiteSpace(token))
+            .Select(token => token.ToUpperInvariant())
+            .ToHashSet(StringComparer.Ordinal);
+
+    private static bool HasMultipleDiscreteTokens(string value) =>
+        value.Contains('|', StringComparison.Ordinal);
+
+    private static List<string> BuildAcceptedAnswers(string correctAnswer, string? groupType)
+    {
+        if (!IsFlexibleFillBlankGroupType(groupType))
+        {
+            return correctAnswer
+                .Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(item => !string.IsNullOrWhiteSpace(item))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        var acceptedAnswers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var token in correctAnswer.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            foreach (var variant in ExpandFlexibleFillBlankAcceptedAnswers(token))
+            {
+                acceptedAnswers.Add(variant);
+            }
+        }
+
+        return acceptedAnswers.ToList();
+    }
+
+    private static List<string> BuildAcceptedAnswersFromCorrectOptions(Question question)
+    {
+        var orderedOptions = question.QuestionOptions
+            .OrderBy(option => option.OrderIndex ?? int.MaxValue)
+            .ThenBy(option => option.Id)
+            .ToList();
+
+        var correctOptions = orderedOptions
+            .Select((option, index) => new { option, index })
+            .Where(item => item.option.IsCorrect)
+            .ToList();
+
+        if (correctOptions.Count == 0)
+        {
+            return [];
+        }
+
+        var acceptedAnswers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var groupType = question.Group?.GroupType;
+
+        if (IsAlternativeSingleSelectionMatchingGroupType(groupType))
+        {
+            void AddAlternatives(IEnumerable<string> values)
+            {
+                foreach (var value in values)
+                {
+                    var token = NormalizeFlexibleAnswerText(value);
+                    if (!string.IsNullOrWhiteSpace(token))
+                    {
+                        acceptedAnswers.Add(token);
+                    }
+                }
+            }
+
+            AddAlternatives(correctOptions.Select(item => item.option.OptionText ?? string.Empty));
+            AddAlternatives(correctOptions.Select(item => ToAlphaOptionLabel(item.index)));
+            AddAlternatives(correctOptions.Select(item => ToRomanOptionLabel(item.index)));
+
+            return acceptedAnswers.ToList();
+        }
+
+        void AddJoined(IEnumerable<string> values)
+        {
+            var tokens = values
+                .Select(NormalizeFlexibleAnswerText)
+                .Where(token => !string.IsNullOrWhiteSpace(token))
+                .ToList();
+
+            if (tokens.Count == 0)
+            {
+                return;
+            }
+
+            acceptedAnswers.Add(string.Join("|", tokens));
+            if (tokens.Count == 1)
+            {
+                acceptedAnswers.Add(tokens[0]);
+            }
+        }
+
+        AddJoined(correctOptions.Select(item => item.option.OptionText ?? string.Empty));
+        AddJoined(correctOptions.Select(item => ToAlphaOptionLabel(item.index)));
+        AddJoined(correctOptions.Select(item => ToRomanOptionLabel(item.index)));
+
+        return acceptedAnswers.ToList();
+    }
+
+    private static string? BuildCorrectAnswerDisplay(Question question)
+    {
+        if (!string.IsNullOrWhiteSpace(question.CorrectAnswer))
+        {
+            return question.CorrectAnswer;
+        }
+
+        var orderedOptions = question.QuestionOptions
+            .OrderBy(option => option.OrderIndex ?? int.MaxValue)
+            .ThenBy(option => option.Id)
+            .Select((option, index) => new { option, index })
+            .Where(item => item.option.IsCorrect)
+            .ToList();
+
+        if (orderedOptions.Count == 0)
+        {
+            return null;
+        }
+
+        var groupType = question.Group?.GroupType;
+        if (groupType is "TFNG" or "YNNG")
+        {
+            return string.Join("|", orderedOptions.Select(item => item.option.OptionText));
+        }
+
+        return string.Join("|", orderedOptions.Select(item => ToAlphaOptionLabel(item.index)));
+    }
+
+    private static List<string> BuildAcceptedAnswers(Question question)
+    {
+        var groupType = question.Group?.GroupType;
+
+        if (!string.IsNullOrWhiteSpace(question.CorrectAnswer))
+        {
+            return BuildAcceptedAnswers(question.CorrectAnswer, groupType);
+        }
+
+        return BuildAcceptedAnswersFromCorrectOptions(question);
+    }
+
+    private static bool IsAnswerCorrect(string? submittedAnswer, Question question)
+    {
+        var normalizedSubmitted = submittedAnswer?.Trim();
+        if (string.IsNullOrWhiteSpace(normalizedSubmitted))
+        {
+            return false;
+        }
+
+        var groupType = question.Group?.GroupType;
+        var acceptedAnswers = BuildAcceptedAnswers(question);
+        if (acceptedAnswers.Count == 0)
+        {
+            return false;
+        }
+
+        if (IsAlternativeSingleSelectionMatchingGroupType(groupType))
+        {
+            var submittedToken = NormalizeFlexibleAnswerText(normalizedSubmitted).ToUpperInvariant();
+            return acceptedAnswers
+                .SelectMany(answer => BuildDiscreteAnswerTokenSet(answer))
+                .Contains(submittedToken, StringComparer.Ordinal);
+        }
+
+        if (IsFlexibleFillBlankGroupType(groupType))
+        {
+            var submittedForms = BuildFlexibleComparisonForms(normalizedSubmitted);
+            return acceptedAnswers.Any(answer =>
+                submittedForms.Overlaps(BuildFlexibleComparisonForms(answer)));
+        }
+
+        if (HasMultipleDiscreteTokens(normalizedSubmitted) || acceptedAnswers.Any(HasMultipleDiscreteTokens))
+        {
+            var submittedTokens = BuildDiscreteAnswerTokenSet(normalizedSubmitted);
+            return acceptedAnswers.Any(answer =>
+                submittedTokens.SetEquals(BuildDiscreteAnswerTokenSet(answer)));
+        }
+
+        return acceptedAnswers.Any(answer =>
+            string.Equals(normalizedSubmitted, answer, StringComparison.OrdinalIgnoreCase));
+    }
+
     public async Task<Guid> StartSessionAsync(Guid userId, Guid examId, CancellationToken cancellationToken = default)
+    {
+        var session = await StartPracticeSessionAsync(userId, examId, cancellationToken: cancellationToken);
+        return session.SessionId;
+    }
+
+    public async Task AutoSaveAnswerAsync(AutoSaveAnswerDto dto, CancellationToken cancellationToken = default)
+    {
+        var existingAnswer = await context.UserAnswers
+            .FirstOrDefaultAsync(
+                answer => answer.SessionId == dto.SessionId && answer.QuestionId == dto.QuestionId,
+                cancellationToken);
+
+        var normalizedAnswer = string.IsNullOrWhiteSpace(dto.AnswerText) ? null : dto.AnswerText.Trim();
+        if (existingAnswer is not null)
+        {
+            existingAnswer.AnswerText = normalizedAnswer;
+            existingAnswer.ScoreEarned = 0;
+            existingAnswer.SubmittedAt = DateTime.UtcNow;
+        }
+        else
+        {
+            context.UserAnswers.Add(new UserAnswer
+            {
+                Id = Guid.NewGuid(),
+                SessionId = dto.SessionId,
+                QuestionId = dto.QuestionId,
+                AnswerText = normalizedAnswer,
+                SubmittedAt = DateTime.UtcNow
+            });
+        }
+
+        await context.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task<SubmitExamResultDto> SubmitExamAsync(Guid sessionId, CancellationToken cancellationToken = default)
+    {
+        var session = await context.ExamSessions
+            .Include(item => item.Exam)
+            .Include(item => item.ScoringResults)
+            .Include(item => item.UserAnswers)
+                .ThenInclude(answer => answer.Question)
+                    .ThenInclude(question => question!.Group)
+            .Include(item => item.UserAnswers)
+                .ThenInclude(answer => answer.Question)
+                    .ThenInclude(question => question!.QuestionOptions)
+            .FirstOrDefaultAsync(item => item.Id == sessionId, cancellationToken)
+            ?? throw new InvalidOperationException("Session not found.");
+
+        if (IsFinalizedStatus(session.Status))
+        {
+            throw new InvalidOperationException("Session already submitted.");
+        }
+
+        var result = await GradeSessionAsync(session, cancellationToken);
+
+        return new SubmitExamResultDto(
+            sessionId,
+            result.ReadingScore ?? 0,
+            result.ListeningScore ?? 0,
+            result.TotalAutoScore,
+            false,
+            false,
+            result.Status);
+    }
+
+    public async Task<PracticeSessionStartDto> StartPracticeSessionAsync(
+        Guid userId,
+        Guid examId,
+        bool forceNewAttempt = false,
+        CancellationToken cancellationToken = default)
     {
         var exam = await context.Exams
             .AsNoTracking()
-            .Where(e => e.Id == examId)
-            .Select(e => new { e.Id, e.DurationMinutes })
+            .Where(item => item.Id == examId && item.IsPublished)
+            .Select(item => new
+            {
+                item.Id,
+                item.DurationMinutes,
+                SkillType = item.ExamSections
+                    .OrderBy(section => section.OrderIndex)
+                    .Select(section => section.SkillType)
+                    .FirstOrDefault()
+            })
             .FirstOrDefaultAsync(cancellationToken)
-            ?? throw new InvalidOperationException("Exam not found.");
+            ?? throw new InvalidOperationException("Practice exam not found.");
+
+        var existingSession = await context.ExamSessions
+            .Where(item => item.UserId == userId && item.ExamId == examId)
+            .OrderByDescending(item => item.StartedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (existingSession is not null && NormalizeSessionStatus(existingSession.Status) == "InProgress" && !forceNewAttempt)
+        {
+            return new PracticeSessionStartDto(
+                existingSession.Id,
+                existingSession.ExamId,
+                NormalizeSkillType(exam.SkillType),
+                "InProgress",
+                existingSession.TimeRemaining,
+                true);
+        }
+
+        if (forceNewAttempt)
+        {
+            var inProgressSessions = await context.ExamSessions
+                .Where(item => item.UserId == userId && item.ExamId == examId && item.Status == "InProgress")
+                .ToListAsync(cancellationToken);
+
+            foreach (var inProgressSession in inProgressSessions)
+            {
+                inProgressSession.Status = "Abandoned";
+                inProgressSession.EndedAt ??= DateTime.UtcNow;
+            }
+        }
 
         var session = new ExamSession
         {
@@ -33,116 +570,1077 @@ public sealed class ExamExecutionService(
         context.ExamSessions.Add(session);
         await context.SaveChangesAsync(cancellationToken);
 
-        return session.Id;
+        return new PracticeSessionStartDto(
+            session.Id,
+            session.ExamId,
+            NormalizeSkillType(exam.SkillType),
+            "InProgress",
+            session.TimeRemaining,
+            false);
     }
 
-    public async Task AutoSaveAnswerAsync(AutoSaveAnswerDto dto, CancellationToken cancellationToken = default)
+    public async Task<PracticeSessionDto?> GetPracticeSessionAsync(Guid userId, Guid sessionId, CancellationToken cancellationToken = default)
     {
-        var existingAnswer = await context.UserAnswers
-            .FirstOrDefaultAsync(
-                a => a.SessionId == dto.SessionId && a.QuestionId == dto.QuestionId,
-                cancellationToken);
-
-        if (existingAnswer is not null)
+        var header = await GetSessionHeaderAsync(sessionId, cancellationToken);
+        if (header is null || header.UserId != userId)
         {
-            existingAnswer.AnswerText = dto.AnswerText;
-            existingAnswer.SubmittedAt = DateTime.UtcNow;
+            return null;
         }
-        else
+
+        var normalizedStatus = NormalizeSessionStatus(header.Status);
+        var exam = await BuildPracticeSessionExamAsync(
+            header.ExamId,
+            requirePublished: false,
+            includeCorrectAnswers: normalizedStatus == "Completed",
+            cancellationToken);
+        if (exam is null)
         {
+            return null;
+        }
+
+        var answers = await GetSessionAnswersAsync(
+            sessionId,
+            includeCorrectness: normalizedStatus == "Completed",
+            cancellationToken);
+        if (normalizedStatus == "Completed")
+        {
+            answers = await IncludeUnansweredObjectiveReviewAnswersAsync(header.ExamId, answers, cancellationToken);
+        }
+        var blueprints = FlattenObjectiveQuestions(exam);
+        var writingTaskCount = CountWritingTasks(exam);
+        var totalItems = blueprints.Count > 0 ? blueprints.Count : writingTaskCount;
+        var result = await BuildPracticeSessionResultAsync(sessionId, header.ExamId, header.Status, blueprints, answers, cancellationToken);
+        var answerMap = answers
+            .Where(answer => answer.QuestionId != Guid.Empty)
+            .ToDictionary(answer => answer.QuestionId, answer => answer.AnswerText);
+
+        return new PracticeSessionDto(
+            header.SessionId,
+            header.ExamId,
+            header.ExamTitle,
+            header.ExamDescription,
+            header.ExamType,
+            NormalizeSkillType(header.SkillType),
+            NormalizeSessionStatus(header.Status),
+            header.StartedAt,
+            header.EndedAt,
+            header.DurationMinutes,
+            header.TimeRemaining,
+            totalItems,
+            CountAnsweredQuestions(answers),
+            blueprints.Count > 0 ? ComputeResumeQuestionNumber(blueprints, answerMap) : null,
+            exam,
+            answers,
+            result);
+    }
+
+    public async Task<IReadOnlyList<PracticeSessionListItemDto>> GetPracticeSessionsAsync(Guid userId, CancellationToken cancellationToken = default)
+    {
+        var sessions = await context.ExamSessions
+            .AsNoTracking()
+            .Where(item => item.UserId == userId)
+            .OrderByDescending(item => item.StartedAt)
+            .Select(item => new
+            {
+                item.Id,
+                item.ExamId,
+                ExamTitle = item.Exam.Title,
+                item.Exam.ExamType,
+                SkillType = item.Exam.ExamSections
+                    .OrderBy(section => section.OrderIndex)
+                    .Select(section => section.SkillType)
+                    .FirstOrDefault(),
+                item.Status,
+                item.StartedAt,
+                item.EndedAt,
+                item.TimeRemaining,
+                TotalQuestions =
+                    item.Exam.ExamSections
+                        .SelectMany(section => section.ReadingPassages)
+                        .SelectMany(passage => passage.QuestionGroups)
+                        .SelectMany(group => group.Questions)
+                        .Count()
+                    + item.Exam.ExamSections
+                        .SelectMany(section => section.ListeningParts)
+                        .SelectMany(part => part.QuestionGroups)
+                        .SelectMany(group => group.Questions)
+                        .Count()
+                    + item.Exam.ExamSections
+                        .SelectMany(section => section.WritingTasks)
+                        .Count(),
+                AnsweredQuestions = item.UserAnswers
+                    .Count(answer => (answer.QuestionId != null || answer.WritingTaskId != null) && answer.AnswerText != null && answer.AnswerText != ""),
+                ResumeQuestionNumber = item.UserAnswers
+                    .Where(answer => answer.QuestionId != null && answer.AnswerText != null && answer.AnswerText != "")
+                    .Select(answer => answer.Question!.QuestionNumber)
+                    .OrderByDescending(questionNumber => questionNumber)
+                    .FirstOrDefault(),
+                ReadingScore = item.ScoringResults
+                    .OrderByDescending(result => result.ScoredAt)
+                    .Select(result => result.ReadingScore)
+                    .FirstOrDefault(),
+                ListeningScore = item.ScoringResults
+                    .OrderByDescending(result => result.ScoredAt)
+                    .Select(result => result.ListeningScore)
+                    .FirstOrDefault(),
+                WritingScore = item.ScoringResults
+                    .OrderByDescending(result => result.ScoredAt)
+                    .Select(result => result.WritingScore)
+                    .FirstOrDefault()
+            })
+            .ToListAsync(cancellationToken);
+
+        return sessions
+            .Select(item => new PracticeSessionListItemDto(
+                item.Id,
+                item.ExamId,
+                item.ExamTitle,
+                item.ExamType,
+                NormalizeSkillType(item.SkillType),
+                NormalizeSessionStatus(item.Status),
+                item.StartedAt,
+                item.EndedAt,
+                item.TimeRemaining,
+                item.TotalQuestions,
+                item.AnsweredQuestions,
+                item.ResumeQuestionNumber,
+                item.ReadingScore,
+                item.ListeningScore,
+                (item.ReadingScore ?? 0) + (item.ListeningScore ?? 0),
+                item.WritingScore))
+            .ToList();
+    }
+
+    public async Task UpdatePracticeSessionAnswersAsync(
+        Guid userId,
+        Guid sessionId,
+        UpdatePracticeSessionAnswersDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        var session = await context.ExamSessions
+            .FirstOrDefaultAsync(item => item.Id == sessionId && item.UserId == userId, cancellationToken)
+            ?? throw new InvalidOperationException("Session not found.");
+
+        if (NormalizeSessionStatus(session.Status) != "InProgress")
+        {
+            throw new InvalidOperationException("Session is no longer accepting answers.");
+        }
+
+        if (dto.TimeRemaining.HasValue)
+        {
+            session.TimeRemaining = Math.Max(0, dto.TimeRemaining.Value);
+        }
+
+        var inputs = (dto.Answers ?? [])
+            .Where(item => item.QuestionId.HasValue && item.QuestionId.Value != Guid.Empty)
+            .GroupBy(item => item.QuestionId!.Value)
+            .Select(group => group.Last())
+            .ToList();
+        var writingInputs = (dto.Answers ?? [])
+            .Where(item => item.WritingTaskId.HasValue && item.WritingTaskId.Value != Guid.Empty)
+            .GroupBy(item => item.WritingTaskId!.Value)
+            .Select(group => group.Last())
+            .ToList();
+
+        if (inputs.Count == 0 && writingInputs.Count == 0)
+        {
+            await context.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
+        var questionIds = inputs.Select(item => item.QuestionId!.Value).ToList();
+        var validQuestionIds = await context.Questions
+            .AsNoTracking()
+            .Where(question =>
+                questionIds.Contains(question.Id)
+                && ((question.Group.PassageId != null && question.Group.Passage!.Section.ExamId == session.ExamId)
+                    || (question.Group.ListeningPartId != null && question.Group.ListeningPart!.Section.ExamId == session.ExamId)))
+            .Select(question => question.Id)
+            .ToHashSetAsync(cancellationToken);
+
+        var writingTaskIds = writingInputs.Select(item => item.WritingTaskId!.Value).ToList();
+        var validWritingTaskIds = await context.WritingTasks
+            .AsNoTracking()
+            .Where(task => writingTaskIds.Contains(task.Id) && task.Section.ExamId == session.ExamId)
+            .Select(task => task.Id)
+            .ToHashSetAsync(cancellationToken);
+
+        if (validQuestionIds.Count == 0 && validWritingTaskIds.Count == 0)
+        {
+            await context.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
+        var existingAnswers = await context.UserAnswers
+            .Where(answer => answer.SessionId == sessionId && answer.QuestionId != null && validQuestionIds.Contains(answer.QuestionId.Value))
+            .ToDictionaryAsync(answer => answer.QuestionId!.Value, cancellationToken);
+
+        var now = DateTime.UtcNow;
+        foreach (var input in inputs.Where(item => item.QuestionId.HasValue && validQuestionIds.Contains(item.QuestionId.Value)))
+        {
+            var normalizedAnswer = string.IsNullOrWhiteSpace(input.AnswerText) ? null : input.AnswerText.Trim();
+            var questionId = input.QuestionId!.Value;
+            if (existingAnswers.TryGetValue(questionId, out var existingAnswer))
+            {
+                existingAnswer.AnswerText = normalizedAnswer;
+                existingAnswer.ScoreEarned = 0;
+                existingAnswer.SubmittedAt = now;
+                continue;
+            }
+
             context.UserAnswers.Add(new UserAnswer
             {
                 Id = Guid.NewGuid(),
-                SessionId = dto.SessionId,
-                QuestionId = dto.QuestionId,
-                AnswerText = dto.AnswerText,
-                SubmittedAt = DateTime.UtcNow
+                SessionId = sessionId,
+                QuestionId = questionId,
+                AnswerText = normalizedAnswer,
+                ScoreEarned = 0,
+                SubmittedAt = now
+            });
+        }
+
+        var existingWritingAnswers = await context.UserAnswers
+            .Where(answer => answer.SessionId == sessionId && answer.WritingTaskId != null && validWritingTaskIds.Contains(answer.WritingTaskId.Value))
+            .ToDictionaryAsync(answer => answer.WritingTaskId!.Value, cancellationToken);
+
+        foreach (var input in writingInputs.Where(item => item.WritingTaskId.HasValue && validWritingTaskIds.Contains(item.WritingTaskId.Value)))
+        {
+            var normalizedAnswer = string.IsNullOrWhiteSpace(input.AnswerText) ? null : input.AnswerText.Trim();
+            var writingTaskId = input.WritingTaskId!.Value;
+            if (existingWritingAnswers.TryGetValue(writingTaskId, out var existingAnswer))
+            {
+                existingAnswer.AnswerText = normalizedAnswer;
+                existingAnswer.ScoreEarned = 0;
+                existingAnswer.SubmittedAt = now;
+                continue;
+            }
+
+            context.UserAnswers.Add(new UserAnswer
+            {
+                Id = Guid.NewGuid(),
+                SessionId = sessionId,
+                WritingTaskId = writingTaskId,
+                AnswerText = normalizedAnswer,
+                ScoreEarned = 0,
+                SubmittedAt = now
             });
         }
 
         await context.SaveChangesAsync(cancellationToken);
     }
 
-    public async Task<SubmitExamResultDto> SubmitExamAsync(Guid sessionId, CancellationToken cancellationToken = default)
+    public async Task<PracticeSessionResultDto> SubmitReadingListeningAsync(Guid userId, Guid sessionId, CancellationToken cancellationToken = default)
     {
         var session = await context.ExamSessions
-            .FirstOrDefaultAsync(s => s.Id == sessionId, cancellationToken)
+            .Include(item => item.Exam)
+            .Include(item => item.UserAnswers)
+                .ThenInclude(answer => answer.Question)
+                    .ThenInclude(question => question!.Group)
+            .Include(item => item.UserAnswers)
+                .ThenInclude(answer => answer.Question)
+                    .ThenInclude(question => question!.QuestionOptions)
+            .Include(item => item.ScoringResults)
+            .FirstOrDefaultAsync(item => item.Id == sessionId && item.UserId == userId, cancellationToken)
             ?? throw new InvalidOperationException("Session not found.");
 
-        if (session.Status == "Submitted" || session.Status == "Scored")
+        if (IsFinalizedStatus(session.Status))
+        {
+            var blueprints = await GetObjectiveQuestionBlueprintsAsync(session.ExamId, cancellationToken);
+            var answers = await GetSessionAnswersAsync(sessionId, includeCorrectness: true, cancellationToken);
+            return await BuildPracticeSessionResultAsync(sessionId, session.ExamId, session.Status, blueprints, answers, cancellationToken)
+                ?? new PracticeSessionResultDto(sessionId, 0, 0, 0, 0, blueprints.Count, CountAnsweredQuestions(answers), 0, 0, NormalizeSessionStatus(session.Status));
+        }
+
+        var result = await GradeSessionAsync(session, cancellationToken);
+        return result;
+    }
+
+    public async Task<PracticeSessionResultDto> SubmitWritingAsync(Guid userId, Guid sessionId, CancellationToken cancellationToken = default)
+    {
+        var session = await context.ExamSessions
+            .Include(item => item.UserAnswers)
+            .FirstOrDefaultAsync(item => item.Id == sessionId && item.UserId == userId, cancellationToken)
+            ?? throw new InvalidOperationException("Session not found.");
+
+        var writingTasks = await context.WritingTasks
+            .AsNoTracking()
+            .Where(task => task.Section.ExamId == session.ExamId)
+            .OrderBy(task => task.TaskNumber)
+            .Select(task => new { task.Id, task.TaskNumber })
+            .ToListAsync(cancellationToken);
+
+        if (writingTasks.Count == 0)
+        {
+            throw new InvalidOperationException("Session này không có Writing Task.");
+        }
+
+        if (NormalizeSessionStatus(session.Status) == "Completed")
+        {
+            return await BuildWritingSessionResultAsync(sessionId, session.ExamId, session.Status, writingTasks.Count, cancellationToken);
+        }
+
+        var answersByTaskId = session.UserAnswers
+            .Where(answer => answer.WritingTaskId != null)
+            .ToDictionary(answer => answer.WritingTaskId!.Value);
+
+        var invalidTaskNumbers = writingTasks
+            .Where(task =>
+                !answersByTaskId.TryGetValue(task.Id, out var answer)
+                || CountWords(answer.AnswerText) < WritingSubmitMinWords)
+            .Select(task => task.TaskNumber?.ToString() ?? task.Id.ToString())
+            .ToList();
+
+        if (invalidTaskNumbers.Count > 0)
+        {
+            throw new InvalidOperationException($"Mỗi Writing Task cần tối thiểu {WritingSubmitMinWords} từ trước khi nộp. Task chưa đạt: {string.Join(", ", invalidTaskNumbers)}.");
+        }
+
+        if (NormalizeSessionStatus(session.Status) != "Submitted")
+        {
+            session.Status = "Submitted";
+            session.EndedAt = DateTime.UtcNow;
+            session.TimeRemaining = Math.Max(0, session.TimeRemaining ?? 0);
+            await context.SaveChangesAsync(cancellationToken);
+        }
+
+        try
+        {
+            await aiIntegrationService.ScoreWritingAsync(sessionId, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Writing AI scoring failed for session {SessionId}. Submission was saved.", sessionId);
+            throw new InvalidOperationException($"Bài Writing đã được lưu nhưng chấm AI thất bại: {ex.Message}");
+        }
+
+        return await BuildWritingSessionResultAsync(sessionId, session.ExamId, session.Status, writingTasks.Count, cancellationToken);
+    }
+
+    private async Task<PracticeSessionResultDto> BuildWritingSessionResultAsync(
+        Guid sessionId,
+        Guid examId,
+        string? status,
+        int writingTaskCount,
+        CancellationToken cancellationToken)
+    {
+        var submittedAnswerCount = await context.UserAnswers
+            .AsNoTracking()
+            .CountAsync(
+                answer => answer.SessionId == sessionId
+                    && answer.WritingTaskId != null
+                    && !string.IsNullOrWhiteSpace(answer.AnswerText),
+                cancellationToken);
+
+        var scoringResult = await context.ScoringResults
+            .AsNoTracking()
+            .Where(result => result.SessionId == sessionId)
+            .OrderByDescending(result => result.ScoredAt)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var sessionStatus = await context.ExamSessions
+            .AsNoTracking()
+            .Where(session => session.Id == sessionId)
+            .Select(session => session.Status)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return new PracticeSessionResultDto(
+            sessionId,
+            null,
+            null,
+            0,
+            0,
+            writingTaskCount,
+            submittedAnswerCount,
+            0,
+            0,
+            NormalizeSessionStatus(sessionStatus ?? status),
+            WritingScore: scoringResult?.WritingScore,
+            OverallFeedback: scoringResult?.OverallFeedback);
+    }
+
+    public async Task<IReadOnlyList<AdminAttemptListItemDto>> GetAdminAttemptsAsync(
+        AdminAttemptQueryDto query,
+        CancellationToken cancellationToken = default)
+    {
+        var attemptsQuery = context.ExamSessions
+            .AsNoTracking()
+            .Select(item => new
+            {
+                item.Id,
+                item.ExamId,
+                item.UserId,
+                ExamTitle = item.Exam.Title,
+                item.Exam.ExamType,
+                SkillType = item.Exam.ExamSections
+                    .OrderBy(section => section.OrderIndex)
+                    .Select(section => section.SkillType)
+                    .FirstOrDefault(),
+                UserDisplayName = item.User.DisplayName ?? item.User.Email,
+                UserEmail = item.User.Email,
+                item.Status,
+                item.StartedAt,
+                item.EndedAt,
+                item.TimeRemaining,
+                TotalQuestions =
+                    item.Exam.ExamSections
+                        .SelectMany(section => section.ReadingPassages)
+                        .SelectMany(passage => passage.QuestionGroups)
+                        .SelectMany(group => group.Questions)
+                        .Count()
+                    + item.Exam.ExamSections
+                        .SelectMany(section => section.ListeningParts)
+                        .SelectMany(part => part.QuestionGroups)
+                        .SelectMany(group => group.Questions)
+                        .Count()
+                    + item.Exam.ExamSections
+                        .SelectMany(section => section.WritingTasks)
+                        .Count(),
+                AnsweredQuestions = item.UserAnswers
+                    .Count(answer => (answer.QuestionId != null || answer.WritingTaskId != null) && answer.AnswerText != null && answer.AnswerText != ""),
+                ResumeQuestionNumber = item.UserAnswers
+                    .Where(answer => answer.QuestionId != null && answer.AnswerText != null && answer.AnswerText != "")
+                    .Select(answer => answer.Question!.QuestionNumber)
+                    .OrderByDescending(questionNumber => questionNumber)
+                    .FirstOrDefault(),
+                ReadingScore = item.ScoringResults
+                    .OrderByDescending(result => result.ScoredAt)
+                    .Select(result => result.ReadingScore)
+                    .FirstOrDefault(),
+                ListeningScore = item.ScoringResults
+                    .OrderByDescending(result => result.ScoredAt)
+                    .Select(result => result.ListeningScore)
+                    .FirstOrDefault()
+            })
+            .AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(query.Search))
+        {
+            var search = query.Search.Trim().ToLowerInvariant();
+            attemptsQuery = attemptsQuery.Where(item =>
+                item.ExamTitle.ToLower().Contains(search)
+                || item.UserDisplayName.ToLower().Contains(search)
+                || item.UserEmail.ToLower().Contains(search));
+        }
+
+        if (!string.IsNullOrWhiteSpace(query.Status))
+        {
+            var normalizedStatus = query.Status.Trim();
+            attemptsQuery = normalizedStatus switch
+            {
+                "Completed" => attemptsQuery.Where(item => item.Status == "Completed" || item.Status == "Scored"),
+                "NotStarted" => attemptsQuery.Where(_ => false),
+                _ => attemptsQuery.Where(item => item.Status == normalizedStatus),
+            };
+        }
+
+        var attempts = await attemptsQuery
+            .OrderByDescending(item => item.StartedAt)
+            .ToListAsync(cancellationToken);
+
+        return attempts
+            .Select(item => new AdminAttemptListItemDto(
+                item.Id,
+                item.ExamId,
+                item.UserId,
+                item.ExamTitle,
+                item.ExamType,
+                NormalizeSkillType(item.SkillType),
+                item.UserDisplayName,
+                item.UserEmail,
+                NormalizeSessionStatus(item.Status),
+                item.StartedAt,
+                item.EndedAt,
+                item.TimeRemaining,
+                item.TotalQuestions,
+                item.AnsweredQuestions,
+                item.ResumeQuestionNumber,
+                item.ReadingScore,
+                item.ListeningScore,
+                (item.ReadingScore ?? 0) + (item.ListeningScore ?? 0)))
+            .ToList();
+    }
+
+    public async Task<AdminAttemptDetailDto?> GetAdminAttemptDetailAsync(Guid sessionId, CancellationToken cancellationToken = default)
+    {
+        var header = await GetSessionHeaderAsync(sessionId, cancellationToken);
+        if (header is null)
+        {
+            return null;
+        }
+
+        var answers = await context.UserAnswers
+            .AsNoTracking()
+            .Where(item => item.SessionId == sessionId && item.QuestionId != null)
+            .Include(item => item.Question)
+                .ThenInclude(question => question!.Group)
+            .Include(item => item.Question)
+                .ThenInclude(question => question!.QuestionOptions)
+            .OrderBy(item => item.Question!.QuestionNumber)
+            .ToListAsync(cancellationToken);
+
+        var blueprints = await GetObjectiveQuestionBlueprintsAsync(header.ExamId, cancellationToken);
+        var answerDtos = answers
+            .Where(item => item.Question is not null)
+            .Select(item => new AdminAttemptAnswerDto(
+                item.QuestionId!.Value,
+                item.Question!.QuestionNumber,
+                item.Question.Group?.GroupType,
+                item.Question.Content,
+                item.AnswerText,
+                item.ScoreEarned,
+                NormalizeSessionStatus(header.Status) == "Completed"
+                    ? IsAnswerCorrect(item.AnswerText, item.Question)
+                    : null))
+            .ToList();
+
+        var practiceAnswers = answerDtos
+            .Select(item => new PracticeSessionAnswerDto(
+                item.QuestionId,
+                null,
+                item.QuestionNumber,
+                null,
+                item.GroupType,
+                item.SubmittedAnswer,
+                null,
+                item.ScoreEarned,
+                item.IsCorrect))
+            .ToList();
+
+        var result = await BuildPracticeSessionResultAsync(
+            sessionId,
+            header.ExamId,
+            header.Status,
+            blueprints,
+            practiceAnswers,
+            cancellationToken);
+
+        var answerMap = practiceAnswers.ToDictionary(item => item.QuestionId, item => item.AnswerText);
+
+        return new AdminAttemptDetailDto(
+            header.SessionId,
+            header.ExamId,
+            header.UserId,
+            header.ExamTitle,
+            header.ExamType,
+            NormalizeSkillType(header.SkillType),
+            await GetUserDisplayNameAsync(header.UserId, cancellationToken),
+            await GetUserEmailAsync(header.UserId, cancellationToken),
+            NormalizeSessionStatus(header.Status),
+            header.StartedAt,
+            header.EndedAt,
+            header.TimeRemaining,
+            blueprints.Count,
+            CountAnsweredQuestions(practiceAnswers),
+            ComputeResumeQuestionNumber(blueprints, answerMap),
+            result,
+            answerDtos);
+    }
+
+    private async Task<PracticeSessionResultDto> GradeSessionAsync(ExamSession session, CancellationToken cancellationToken)
+    {
+        var normalizedStatus = NormalizeSessionStatus(session.Status);
+        if (normalizedStatus == "Completed")
+        {
             throw new InvalidOperationException("Session already submitted.");
+        }
 
         session.Status = "Submitted";
         session.EndedAt = DateTime.UtcNow;
 
-        var answers = await context.UserAnswers
-            .Where(a => a.SessionId == sessionId)
-            .Include(a => a.Question)
-                .ThenInclude(q => q!.Group)
-            .Include(a => a.WritingTask)
+        var objectiveQuestions = await context.Questions
+            .AsNoTracking()
+            .Where(question =>
+                (question.Group.PassageId != null && question.Group.Passage!.Section.ExamId == session.ExamId)
+                || (question.Group.ListeningPartId != null && question.Group.ListeningPart!.Section.ExamId == session.ExamId))
+            .OrderBy(question => question.QuestionNumber)
+            .Select(question => new ObjectiveQuestionBlueprint(
+                question.Id,
+                question.QuestionNumber,
+                question.Points,
+                question.Group.GroupType,
+                question.Group.PassageId != null ? "READING" : "LISTENING"))
             .ToListAsync(cancellationToken);
+
+        var answersByQuestionId = session.UserAnswers
+            .Where(answer => answer.QuestionId != null && answer.Question is not null)
+            .ToDictionary(answer => answer.QuestionId!.Value);
 
         double readingScore = 0;
         double listeningScore = 0;
-        bool hasWriting = false;
-        bool hasSpeaking = false;
+        var correctQuestions = 0;
 
-        foreach (var answer in answers)
+        foreach (var answer in answersByQuestionId.Values)
         {
-            if (answer.WritingTaskId != null)
+            if (answer.Question is null)
             {
-                hasWriting = true;
                 continue;
             }
 
-            if (answer.Question is null) continue;
-
-            var groupType = answer.Question.Group?.GroupType ?? "";
-
-            if (groupType is "SPEAKING_PART_1" or "SPEAKING_PART_2" or "SPEAKING_PART_3")
-            {
-                hasSpeaking = true;
-                continue;
-            }
-
-            var isCorrect = string.Equals(
-                answer.AnswerText?.Trim(),
-                answer.Question.CorrectAnswer?.Trim(),
-                StringComparison.OrdinalIgnoreCase);
-
+            var isCorrect = IsAnswerCorrect(answer.AnswerText, answer.Question);
             answer.ScoreEarned = isCorrect ? answer.Question.Points : 0;
 
+            if (isCorrect)
+            {
+                correctQuestions += 1;
+            }
+
             if (answer.Question.Group?.PassageId != null)
+            {
                 readingScore += answer.ScoreEarned;
+            }
             else if (answer.Question.Group?.ListeningPartId != null)
+            {
                 listeningScore += answer.ScoreEarned;
+            }
         }
 
-        var scoringResult = new ScoringResult
-        {
-            Id = Guid.NewGuid(),
-            SessionId = sessionId,
-            ReadingScore = readingScore,
-            ListeningScore = listeningScore,
-            ScoredAt = DateTime.UtcNow
-        };
+        var scoringResult = session.ScoringResults
+            .OrderByDescending(item => item.ScoredAt)
+            .FirstOrDefault();
 
-        context.ScoringResults.Add(scoringResult);
+        if (scoringResult is null)
+        {
+            scoringResult = new ScoringResult
+            {
+                Id = Guid.NewGuid(),
+                SessionId = session.Id,
+            };
+            context.ScoringResults.Add(scoringResult);
+        }
+
+        scoringResult.ReadingScore = readingScore;
+        scoringResult.ListeningScore = listeningScore;
+        scoringResult.ScoredAt = DateTime.UtcNow;
+
+        session.Status = "Completed";
         await context.SaveChangesAsync(cancellationToken);
 
-        if (hasWriting)
-            await aiIntegrationService.ScoreWritingAsync(sessionId, cancellationToken);
+        var answerDtos = answersByQuestionId.Values
+            .Where(answer => answer.QuestionId != null)
+            .Select(answer => new PracticeSessionAnswerDto(
+                answer.QuestionId!.Value,
+                null,
+                answer.Question?.QuestionNumber,
+                null,
+                answer.Question?.Group?.GroupType,
+                answer.AnswerText,
+                answer.Question is not null ? BuildCorrectAnswerDisplay(answer.Question) : null,
+                answer.ScoreEarned,
+                answer.Question is not null ? IsAnswerCorrect(answer.AnswerText, answer.Question) : null))
+            .OrderBy(answer => answer.QuestionNumber)
+            .ToList();
 
-        if (hasSpeaking)
-            await aiIntegrationService.ScoreSpeakingAsync(sessionId, cancellationToken);
+        var result = await BuildPracticeSessionResultAsync(
+            session.Id,
+            session.ExamId,
+            session.Status,
+            objectiveQuestions,
+            answerDtos,
+            cancellationToken);
 
-        return new SubmitExamResultDto(
+        if (result is null)
+        {
+            return new PracticeSessionResultDto(
+                session.Id,
+                readingScore,
+                listeningScore,
+                readingScore + listeningScore,
+                objectiveQuestions.Sum(item => item.Points),
+                objectiveQuestions.Count,
+                CountAnsweredQuestions(answerDtos),
+                correctQuestions,
+                objectiveQuestions.Count == 0 ? 0 : Math.Round(correctQuestions * 100d / objectiveQuestions.Count, 1),
+                NormalizeSessionStatus(session.Status));
+        }
+
+        return result;
+    }
+
+    private async Task<SessionHeader?> GetSessionHeaderAsync(Guid sessionId, CancellationToken cancellationToken)
+    {
+        return await context.ExamSessions
+            .AsNoTracking()
+            .Where(item => item.Id == sessionId)
+            .Select(item => new SessionHeader(
+                item.Id,
+                item.UserId,
+                item.ExamId,
+                item.Exam.Title,
+                item.Exam.Description,
+                item.Exam.ExamType,
+                item.Exam.DurationMinutes,
+                item.Exam.ExamSections
+                    .OrderBy(section => section.OrderIndex)
+                    .Select(section => section.SkillType)
+                    .FirstOrDefault() ?? string.Empty,
+                item.Status ?? string.Empty,
+                item.StartedAt,
+                item.EndedAt,
+                item.TimeRemaining,
+                item.Exam.IsPublished))
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    private async Task<string> GetUserDisplayNameAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        var profile = await context.Users
+            .AsNoTracking()
+            .Where(item => item.Id == userId)
+            .Select(item => new { item.DisplayName, item.Email })
+            .FirstAsync(cancellationToken);
+
+        return string.IsNullOrWhiteSpace(profile.DisplayName) ? profile.Email : profile.DisplayName!;
+    }
+
+    private async Task<string> GetUserEmailAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        return await context.Users
+            .AsNoTracking()
+            .Where(item => item.Id == userId)
+            .Select(item => item.Email)
+            .FirstAsync(cancellationToken);
+    }
+
+    private async Task<PracticeSessionExamDto?> BuildPracticeSessionExamAsync(
+        Guid examId,
+        bool requirePublished,
+        bool includeCorrectAnswers,
+        CancellationToken cancellationToken)
+    {
+        return await context.Exams
+            .AsNoTracking()
+            .AsSplitQuery()
+            .Where(item => item.Id == examId && (!requirePublished || item.IsPublished))
+            .Select(item => new PracticeSessionExamDto(
+                item.Id,
+                item.Title,
+                item.Description,
+                item.DurationMinutes,
+                item.ExamType,
+                item.ExamSections
+                    .OrderBy(section => section.OrderIndex)
+                    .Select(section => new PracticeSessionSectionDto(
+                        section.Id,
+                        section.SkillType,
+                        section.Title,
+                        section.OrderIndex,
+                        section.ReadingPassages
+                            .OrderBy(passage => passage.PassageNumber)
+                            .Select(passage => new PracticeSessionReadingPassageDto(
+                                passage.Id,
+                                passage.PassageNumber,
+                                passage.Title,
+                                passage.ParagraphsData,
+                                passage.AssetsData,
+                                passage.QuestionGroups
+                                    .OrderBy(group => group.StartQuestion ?? (group.Questions.Any() ? group.Questions.Min(question => question.QuestionNumber) : 0))
+                                    .Select(group => new PracticeSessionQuestionGroupDto(
+                                        group.Id,
+                                        group.GroupType,
+                                        group.Instruction,
+                                        group.ContentData,
+                                        group.AssetsData,
+                                        group.StartQuestion,
+                                        group.EndQuestion,
+                                        group.Questions
+                                            .OrderBy(question => question.QuestionNumber)
+                                            .Select(question => new PracticeSessionQuestionDto(
+                                                question.Id,
+                                                question.QuestionNumber,
+                                                question.Content,
+                                                question.Points,
+                                                includeCorrectAnswers ? BuildCorrectAnswerDisplay(question) : null,
+                                                question.QuestionOptions
+                                                    .OrderBy(option => option.OrderIndex)
+                                                    .Select(option => new PracticeSessionOptionDto(
+                                                        option.Id,
+                                                        option.OptionText,
+                                                        option.ImageUrl,
+                                                        option.OrderIndex))
+                                                    .ToList()))
+                                            .ToList()))
+                                    .ToList()))
+                            .ToList(),
+                        section.ListeningParts
+                            .OrderBy(part => part.PartNumber)
+                            .Select(part => new PracticeSessionListeningPartDto(
+                                part.Id,
+                                part.PartNumber,
+                                part.AudioUrl,
+                                part.ContextDescription,
+                                part.TranscriptData,
+                                part.QuestionGroups
+                                    .OrderBy(group => group.StartQuestion ?? (group.Questions.Any() ? group.Questions.Min(question => question.QuestionNumber) : 0))
+                                    .Select(group => new PracticeSessionQuestionGroupDto(
+                                        group.Id,
+                                        group.GroupType,
+                                        group.Instruction,
+                                        group.ContentData,
+                                        group.AssetsData,
+                                        group.StartQuestion,
+                                        group.EndQuestion,
+                                        group.Questions
+                                            .OrderBy(question => question.QuestionNumber)
+                                            .Select(question => new PracticeSessionQuestionDto(
+                                                question.Id,
+                                                question.QuestionNumber,
+                                                question.Content,
+                                                question.Points,
+                                                includeCorrectAnswers ? BuildCorrectAnswerDisplay(question) : null,
+                                                question.QuestionOptions
+                                                    .OrderBy(option => option.OrderIndex)
+                                                    .Select(option => new PracticeSessionOptionDto(
+                                                        option.Id,
+                                                        option.OptionText,
+                                                        option.ImageUrl,
+                                                        option.OrderIndex))
+                                                    .ToList()))
+                                            .ToList()))
+                                    .ToList()))
+                            .ToList(),
+                        section.WritingTasks
+                            .OrderBy(task => task.TaskNumber)
+                            .Select(task => new PracticeSessionWritingTaskDto(
+                                task.Id,
+                                task.TaskNumber,
+                                task.PromptText,
+                                task.AssetsData,
+                                task.MinWords))
+                            .ToList()))
+                    .ToList()))
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    private static List<ObjectiveQuestionBlueprint> FlattenObjectiveQuestions(PracticeSessionExamDto exam)
+    {
+        return exam.Sections
+            .SelectMany(section =>
+            {
+                var readingQuestions = section.ReadingPassages
+                    .SelectMany(passage => passage.QuestionGroups)
+                    .SelectMany(group => group.Questions.Select(question => new ObjectiveQuestionBlueprint(
+                        question.Id,
+                        question.QuestionNumber,
+                        question.Points,
+                        group.GroupType,
+                        "READING")));
+
+                var listeningQuestions = section.ListeningParts
+                    .SelectMany(part => part.QuestionGroups)
+                    .SelectMany(group => group.Questions.Select(question => new ObjectiveQuestionBlueprint(
+                        question.Id,
+                        question.QuestionNumber,
+                        question.Points,
+                        group.GroupType,
+                        "LISTENING")));
+
+                return readingQuestions.Concat(listeningQuestions);
+            })
+            .OrderBy(question => question.QuestionNumber)
+            .ThenBy(question => question.QuestionId)
+            .ToList();
+    }
+
+    private static int CountWritingTasks(PracticeSessionExamDto exam) =>
+        exam.Sections.SelectMany(section => section.WritingTasks).Count();
+
+    private async Task<List<ObjectiveQuestionBlueprint>> GetObjectiveQuestionBlueprintsAsync(Guid examId, CancellationToken cancellationToken)
+    {
+        return await context.Questions
+            .AsNoTracking()
+            .Where(question =>
+                (question.Group.PassageId != null && question.Group.Passage!.Section.ExamId == examId)
+                || (question.Group.ListeningPartId != null && question.Group.ListeningPart!.Section.ExamId == examId))
+            .OrderBy(question => question.QuestionNumber)
+            .Select(question => new ObjectiveQuestionBlueprint(
+                question.Id,
+                question.QuestionNumber,
+                question.Points,
+                question.Group.GroupType,
+                question.Group.PassageId != null ? "READING" : "LISTENING"))
+            .ToListAsync(cancellationToken);
+    }
+
+    private async Task<List<PracticeSessionAnswerDto>> GetSessionAnswersAsync(
+        Guid sessionId,
+        bool includeCorrectness,
+        CancellationToken cancellationToken)
+    {
+        var answers = await context.UserAnswers
+            .AsNoTracking()
+            .Where(item => item.SessionId == sessionId && item.QuestionId != null)
+            .Include(item => item.Question)
+                .ThenInclude(question => question!.Group)
+            .Include(item => item.Question)
+                .ThenInclude(question => question!.QuestionOptions)
+            .OrderBy(item => item.Question!.QuestionNumber)
+            .ToListAsync(cancellationToken);
+
+        var objectiveAnswers = answers
+            .Where(item => item.Question is not null)
+            .Select(item => new PracticeSessionAnswerDto(
+                item.QuestionId!.Value,
+                null,
+                item.Question!.QuestionNumber,
+                null,
+                item.Question.Group?.GroupType,
+                item.AnswerText,
+                includeCorrectness ? BuildCorrectAnswerDisplay(item.Question) : null,
+                item.ScoreEarned,
+                includeCorrectness
+                    ? IsAnswerCorrect(item.AnswerText, item.Question)
+                    : null))
+            .ToList();
+
+        var writingAnswers = await context.UserAnswers
+            .AsNoTracking()
+            .Where(item => item.SessionId == sessionId && item.WritingTaskId != null)
+            .Include(item => item.WritingTask)
+            .Include(item => item.AiFeedbacks)
+                .ThenInclude(feedback => feedback.Rubric)
+            .OrderBy(item => item.WritingTask!.TaskNumber)
+            .ToListAsync(cancellationToken);
+
+        var writingAnswerDtos = writingAnswers
+            .Select(item => new PracticeSessionAnswerDto(
+                Guid.Empty,
+                item.WritingTaskId,
+                null,
+                item.WritingTask!.TaskNumber,
+                "WRITING_TASK",
+                item.AnswerText,
+                null,
+                item.ScoreEarned,
+                null,
+                item.AiFeedbacks
+                    .OrderBy(feedback => feedback.Rubric.CriteriaName)
+                    .Select(feedback => new PracticeSessionFeedbackDto(
+                        feedback.Rubric.CriteriaName ?? string.Empty,
+                        feedback.BandScore,
+                        feedback.AiComment,
+                        feedback.Improvements))
+                    .ToList()))
+            .ToList();
+
+        return objectiveAnswers.Concat(writingAnswerDtos).ToList();
+    }
+
+    private async Task<List<PracticeSessionAnswerDto>> IncludeUnansweredObjectiveReviewAnswersAsync(
+        Guid examId,
+        List<PracticeSessionAnswerDto> answers,
+        CancellationToken cancellationToken)
+    {
+        var existingQuestionIds = answers
+            .Where(answer => answer.QuestionId != Guid.Empty)
+            .Select(answer => answer.QuestionId)
+            .ToHashSet();
+
+        var unansweredQuestions = await context.Questions
+            .AsNoTracking()
+            .Where(question =>
+                ((question.Group.PassageId != null && question.Group.Passage!.Section.ExamId == examId)
+                    || (question.Group.ListeningPartId != null && question.Group.ListeningPart!.Section.ExamId == examId))
+                && !existingQuestionIds.Contains(question.Id))
+            .Include(question => question.Group)
+            .Include(question => question.QuestionOptions)
+            .OrderBy(question => question.QuestionNumber)
+            .ToListAsync(cancellationToken);
+
+        if (unansweredQuestions.Count == 0)
+        {
+            return answers;
+        }
+
+        var unansweredAnswerDtos = unansweredQuestions
+            .Select(question => new PracticeSessionAnswerDto(
+                question.Id,
+                null,
+                question.QuestionNumber,
+                null,
+                question.Group?.GroupType,
+                null,
+                BuildCorrectAnswerDisplay(question),
+                0,
+                false))
+            .ToList();
+
+        return answers
+            .Concat(unansweredAnswerDtos)
+            .OrderBy(answer => answer.QuestionNumber ?? int.MaxValue)
+            .ToList();
+    }
+
+    private async Task<PracticeSessionResultDto?> BuildPracticeSessionResultAsync(
+        Guid sessionId,
+        Guid examId,
+        string? status,
+        IReadOnlyList<ObjectiveQuestionBlueprint> blueprints,
+        IReadOnlyList<PracticeSessionAnswerDto> answers,
+        CancellationToken cancellationToken)
+    {
+        var scoringResult = await context.ScoringResults
+            .AsNoTracking()
+            .Where(item => item.SessionId == sessionId)
+            .OrderByDescending(item => item.ScoredAt)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (scoringResult is null && answers.Count == 0)
+        {
+            return null;
+        }
+
+        var answeredQuestions = CountAnsweredQuestions(answers);
+        var correctQuestions = answers.Count(answer => answer.IsCorrect == true);
+        var totalQuestions = blueprints.Count;
+        var maxAutoScore = blueprints.Sum(item => item.Points);
+        var readingScore = scoringResult?.ReadingScore ?? answers
+            .Where(answer => answer.IsCorrect == true)
+            .Join(
+                blueprints.Where(item => item.SkillType == "READING"),
+                answer => answer.QuestionId,
+                question => question.QuestionId,
+                (answer, question) => question.Points)
+            .Sum();
+        var listeningScore = scoringResult?.ListeningScore ?? answers
+            .Where(answer => answer.IsCorrect == true)
+            .Join(
+                blueprints.Where(item => item.SkillType == "LISTENING"),
+                answer => answer.QuestionId,
+                question => question.QuestionId,
+                (answer, question) => question.Points)
+            .Sum();
+        var totalAutoScore = readingScore + listeningScore;
+
+        return new PracticeSessionResultDto(
             sessionId,
             readingScore,
             listeningScore,
-            readingScore + listeningScore,
-            hasWriting,
-            hasSpeaking,
-            session.Status);
+            totalAutoScore,
+            maxAutoScore,
+            totalQuestions,
+            answeredQuestions,
+            correctQuestions,
+            totalQuestions == 0 ? 0 : Math.Round(correctQuestions * 100d / totalQuestions, 1),
+            NormalizeSessionStatus(status),
+            scoringResult?.WritingScore,
+            scoringResult?.OverallFeedback);
+    }
+
+    private static int CountAnsweredQuestions(IReadOnlyList<PracticeSessionAnswerDto> answers) =>
+        answers.Count(answer => !string.IsNullOrWhiteSpace(answer.AnswerText));
+
+    private static int? ComputeResumeQuestionNumber(
+        IReadOnlyList<ObjectiveQuestionBlueprint> blueprints,
+        IReadOnlyDictionary<Guid, string?> answerMap)
+    {
+        foreach (var question in blueprints)
+        {
+            if (!answerMap.TryGetValue(question.QuestionId, out var answerText) || string.IsNullOrWhiteSpace(answerText))
+            {
+                return question.QuestionNumber;
+            }
+        }
+
+        return blueprints.LastOrDefault()?.QuestionNumber;
     }
 }

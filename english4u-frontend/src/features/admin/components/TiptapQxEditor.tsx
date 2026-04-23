@@ -3,7 +3,6 @@ import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import { mergeAttributes } from '@tiptap/core';
 import { forwardRef, useImperativeHandle, useEffect } from 'react';
-import { cleanUpClipboardText } from '../pages/exam-editor/examEditor.helpers';
 
 // Custom Node for [Qx]
 const QxNode = Node.create({
@@ -84,25 +83,47 @@ export const TiptapQxEditor = forwardRef<TiptapQxEditorRef, TiptapQxEditorProps>
     onFocus,
     enableMarkdownBold = false,
 }, ref) => {
+    const normalizeEditorText = (text: string) => text
+        .replace(/\\r\\n/g, '\n')
+        .replace(/\\n/g, '\n')
+        .replace(/\\r/g, '\n')
+        .replace(/\\\*\\\*/g, '**')
+        .replace(/\\_\\_/g, '__');
+
     const escapeHtml = (text: string) => text
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
 
-    const convertMarkdownBoldToHtml = (text: string) => {
-        if (!enableMarkdownBold) return text;
-        return text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-    };
-
-    // Convert text [Q1] to <span data-qx data-label="Q1">[Q1]</span>
-    const parseTextToNodes = (text: string) => {
-        return text.split(/(\[Q\d+\])/g)
+    const convertTextPartToHtml = (text: string) =>
+        escapeHtml(text)
+            .split(/(\[Q\d+\])/g)
             .map((part) => {
                 const match = part.match(/^\[(Q\d+)\]$/);
                 if (match) {
                     return `<span data-qx data-label="${match[1]}">[${match[1]}]</span>`;
                 }
-                return convertMarkdownBoldToHtml(escapeHtml(part));
+                return part.replace(/\n/g, '<br />');
+            })
+            .join('');
+
+    // Convert text [Q1] to <span data-qx data-label="Q1">[Q1]</span>.
+    // Bold markers can wrap plain text and Q tokens, e.g. **[Q14]**.
+    const parseTextToNodes = (text: string) => {
+        const normalizedText = normalizeEditorText(text);
+
+        if (!enableMarkdownBold) {
+            return convertTextPartToHtml(normalizedText);
+        }
+
+        const segments = normalizedText.replace(/__(.+?)__/g, '**$1**').split(/(\*\*[\s\S]+?\*\*)/g);
+        return segments
+            .map((segment) => {
+                const boldMatch = segment.match(/^\*\*([\s\S]+?)\*\*$/);
+                if (boldMatch) {
+                    return `<strong>${convertTextPartToHtml(boldMatch[1])}</strong>`;
+                }
+                return convertTextPartToHtml(segment);
             })
             .join('');
     };
@@ -115,6 +136,10 @@ export const TiptapQxEditor = forwardRef<TiptapQxEditorRef, TiptapQxEditorProps>
         doc.querySelectorAll('span[data-qx]').forEach((node) => {
             const label = node.getAttribute('data-label');
             node.replaceWith(`[${label}]`);
+        });
+
+        doc.querySelectorAll('br').forEach((node) => {
+            node.replaceWith('\n');
         });
 
         if (enableMarkdownBold) {
@@ -166,7 +191,7 @@ export const TiptapQxEditor = forwardRef<TiptapQxEditorRef, TiptapQxEditorProps>
                 if (!pastedText) return false;
 
                 event.preventDefault();
-                const cleaned = cleanUpClipboardText(pastedText);
+                const cleaned = pastedText.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
                 const { from, to } = view.state.selection;
                 view.dispatch(view.state.tr.insertText(cleaned, from, to));
                 return true;
@@ -193,12 +218,13 @@ export const TiptapQxEditor = forwardRef<TiptapQxEditorRef, TiptapQxEditorProps>
 
         const currentHtml = editor.getHTML();
         const currentSerialized = serializeToText(currentHtml);
+        const normalizedValue = normalizeEditorText(value);
         const shouldNormalizeMarkdownBold = enableMarkdownBold
-            && /\*\*[^*]+\*\*/.test(value)
+            && /(\*\*[^*]+\*\*|__[^_]+__)/.test(normalizedValue)
             && !/<(strong|b)\b/i.test(currentHtml);
 
-        if (value !== currentSerialized || shouldNormalizeMarkdownBold) {
-            editor.commands.setContent(parseTextToNodes(value));
+        if (normalizedValue !== currentSerialized || shouldNormalizeMarkdownBold) {
+            editor.commands.setContent(parseTextToNodes(normalizedValue));
         }
     }, [value, editor, enableMarkdownBold]);
 

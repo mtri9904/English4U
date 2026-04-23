@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Mail, Lock, Eye, EyeOff, Check, Loader2 } from 'lucide-react'
 import { SocialLogin } from './SocialLogin'
 import { AuthDivider } from './AuthDivider'
 import { useLoginMutation } from '../api/auth.api'
 import { message } from 'antd'
+import { consumeForcedLogoutReason } from '../lib/sessionSignals'
 
 export function LoginForm() {
     const [email, setEmail] = useState('')
@@ -13,6 +14,13 @@ export function LoginForm() {
     const [keepLogged, setKeepLogged] = useState(false)
     const navigate = useNavigate()
     const loginMutation = useLoginMutation()
+
+    useEffect(() => {
+        const forcedLogoutReason = consumeForcedLogoutReason()
+        if (forcedLogoutReason) {
+            message.warning(forcedLogoutReason)
+        }
+    }, [])
 
     const handleLogin = (e: React.FormEvent) => {
         e.preventDefault()

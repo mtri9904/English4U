@@ -1,6 +1,16 @@
 import re
 from dataclasses import dataclass, field
 
+OPTION_REQUIRED_TYPES = {
+    "MULTIPLE_CHOICE",
+    "MCQ",
+    "MCQ_MULTIPLE",
+    "MATCHING_HEADING",
+    "MATCHING_FEATURES",
+    "MATCHING_INFO",
+    "DIAGRAM_LABELING",
+}
+
 
 @dataclass
 class ParsedOption:
@@ -55,6 +65,23 @@ class ParsedPassage:
                     count += 1
         return count
 
+    @property
+    def missing_option_count(self) -> int:
+        count = 0
+        for g in self.question_groups:
+            for q in g.questions:
+                if q.question_type in OPTION_REQUIRED_TYPES and len(q.options) == 0:
+                    count += 1
+        return count
+
+    @property
+    def has_all_required_options(self) -> bool:
+        for g in self.question_groups:
+            for q in g.questions:
+                if q.question_type in OPTION_REQUIRED_TYPES and len(q.options) == 0:
+                    return False
+        return self.question_count > 0
+
 
 @dataclass
 class ParsedExam:
@@ -74,6 +101,14 @@ class ParsedExam:
     @property
     def total_missing_answers(self) -> int:
         return sum(p.missing_answer_count for p in self.passages)
+
+    @property
+    def has_all_options(self) -> bool:
+        return all(p.has_all_required_options for p in self.passages if p.question_count > 0)
+
+    @property
+    def total_missing_options(self) -> int:
+        return sum(p.missing_option_count for p in self.passages)
 
 
 TRASH_LINE_REGEXES = [
@@ -260,102 +295,330 @@ def parse_ielts_pdf(raw_text: str) -> ParsedExam:
 
 
 def parsed_passage_to_group(passage: ParsedPassage, order_index: int) -> dict:
-    OPTION_TYPES = {
-        "MCQ", "MCQ_SINGLE", "MCQ_MULTIPLE", "MULTIPLE_CHOICE", "MULTIPLE_CHOICE_MULTI",
-        "TFNG", "TRUE_FALSE_NG", "YNNG",
-        "MATCHING_HEADING", "MATCHING_HEADINGS", "MATCHING_FEATURES", "MATCHING_INFO",
+    def normalize_question_type(raw_type: str | None) -> str:
+        key = (raw_type or "").strip().upper().replace("-", "_").replace(" ", "_")
+        alias_map = {
+            "MCQ": "MCQ_SINGLE",
+            "MULTIPLE_CHOICE": "MCQ_SINGLE",
+            "MULTIPLE_CHOICE_SINGLE": "MCQ_SINGLE",
+            "MCQ_SINGLE": "MCQ_SINGLE",
+            "MCQ_MULTIPLE": "MCQ_MULTIPLE",
+            "MULTIPLE_CHOICE_MULTI": "MCQ_MULTIPLE",
+            "MULTIPLE_CHOICE_MULTIPLE": "MCQ_MULTIPLE",
+            "TRUE_FALSE_NG": "TFNG",
+            "TRUE_FALSE_NOT_GIVEN": "TFNG",
+            "TFNG": "TFNG",
+            "YES_NO_NG": "YNNG",
+            "YES_NO_NOT_GIVEN": "YNNG",
+            "YNNG": "YNNG",
+            "MATCHING_HEADING": "MATCHING_HEADINGS",
+            "MATCHING_HEADINGS": "MATCHING_HEADINGS",
+            "MATCHING_INFO": "MATCHING_INFO",
+            "MATCHING_INFORMATION": "MATCHING_INFO",
+            "MATCHING_FEATURES": "MATCHING_FEATURES",
+            "SENTENCE_COMPLETION": "SENTENCE_COMPLETION",
+            "FORM_COMPLETION": "SENTENCE_COMPLETION",
+            "NOTE_COMPLETION": "SENTENCE_COMPLETION",
+            "SUMMARY_COMPLETION": "SUMMARY_COMPLETION",
+            "TABLE_COMPLETION": "TABLE_COMPLETION",
+            "FLOWCHART_COMPLETION": "FLOWCHART_COMPLETION",
+            "FLOW_CHART_COMPLETION": "FLOWCHART_COMPLETION",
+            "SHORT_ANSWER": "SHORT_ANSWER",
+            "DIAGRAM_LABELING": "MAP_LABELLING",
+            "DIAGRAM_LABELLING": "MAP_LABELLING",
+            "MAP_LABELING": "MAP_LABELLING",
+            "MAP_LABELLING": "MAP_LABELLING",
+            "MATCHING_TABLE": "MATCHING_TABLE",
+        }
+        return alias_map.get(key, key if key else "MCQ_SINGLE")
+
+    def split_answer_tokens(answer: str | None) -> list[str]:
+        if not answer:
+            return []
+        return [
+            token.strip().upper()
+            for token in re.split(r"\s*(?:\||,|/|;|&|\band\b)\s*", answer, flags=re.IGNORECASE)
+            if token.strip()
+        ]
+
+    def normalize_token(value: str) -> str:
+        return re.sub(r"\s+", " ", value).strip().upper()
+
+    option_like_types = {
+        "MCQ_SINGLE",
+        "MCQ_MULTIPLE",
+        "TFNG",
+        "YNNG",
+        "MATCHING_HEADINGS",
+        "MATCHING_INFO",
+        "MATCHING_FEATURES",
+        "MATCHING_TABLE",
+        "MAP_LABELLING",
     }
-    FILL_TYPES = {
-        "SENTENCE_COMPLETION", "SUMMARY_COMPLETION", "TABLE_COMPLETION",
-        "FLOWCHART_COMPLETION", "SHORT_ANSWER",
+    fill_like_types = {
+        "SENTENCE_COMPLETION",
+        "SUMMARY_COMPLETION",
+        "TABLE_COMPLETION",
+        "FLOWCHART_COMPLETION",
+        "SHORT_ANSWER",
+    }
+    letter_answer_types = {
+        "MCQ_SINGLE",
+        "MCQ_MULTIPLE",
+        "MATCHING_HEADINGS",
+        "MATCHING_INFO",
+        "MATCHING_FEATURES",
+        "MATCHING_TABLE",
+        "MAP_LABELLING",
     }
 
-    questions_data: list[dict] = []
-    for group in passage.question_groups:
-        for q in group.questions:
-            q_type = q.question_type
+    all_questions_data: list[dict] = []
+    question_groups_data: list[dict] = []
 
-            if q_type in OPTION_TYPES:
-                options_data: list[dict] = []
-                for opt in q.options:
-                    is_correct = False
-                    if q.correct_answer:
-                        if q_type in ("MCQ", "MCQ_SINGLE", "MULTIPLE_CHOICE", "MATCHING_HEADING", "MATCHING_HEADINGS", "MATCHING_FEATURES", "MATCHING_INFO"):
-                            is_correct = opt.label.upper() == q.correct_answer.strip().upper()
-                        elif q_type in ("MCQ_MULTIPLE", "MULTIPLE_CHOICE_MULTI"):
-                            answers = [a.strip().upper() for a in q.correct_answer.split(",")]
-                            is_correct = opt.label.upper() in answers
-                        elif q_type in ("TFNG", "TRUE_FALSE_NG", "YNNG"):
-                            is_correct = (
-                                opt.text.upper().replace(" ", "")
-                                == q.correct_answer.upper().replace(" ", "")
-                            )
+    for parsed_group in passage.question_groups:
+        group_type = normalize_question_type(parsed_group.question_type)
+        group_questions: list[dict] = []
 
-                    options_data.append(
-                        {"optionText": opt.text, "isCorrect": is_correct, "orderIndex": opt.order_index}
-                    )
+        for q in parsed_group.questions:
+            q_type = normalize_question_type(q.question_type or parsed_group.question_type)
+            answer_raw = (q.correct_answer or "").strip() or None
+            answer_tokens = split_answer_tokens(answer_raw)
+            options_data: list[dict] = []
 
-                questions_data.append({
-                    "questionType": q_type,
-                    "content": q.content,
-                    "correctAnswer": None,
-                    "explanation": q.explanation,
-                    "points": 1.0,
-                    "orderIndex": len(questions_data),
-                    "options": options_data,
-                })
+            source_options = list(q.options)
+            if q_type == "TFNG" and not source_options:
+                source_options = [
+                    ParsedOption(text="TRUE", label="TRUE", order_index=0),
+                    ParsedOption(text="FALSE", label="FALSE", order_index=1),
+                    ParsedOption(text="NOT GIVEN", label="NOT GIVEN", order_index=2),
+                ]
+            if q_type == "YNNG" and not source_options:
+                source_options = [
+                    ParsedOption(text="YES", label="YES", order_index=0),
+                    ParsedOption(text="NO", label="NO", order_index=1),
+                    ParsedOption(text="NOT GIVEN", label="NOT GIVEN", order_index=2),
+                ]
 
-            elif q_type in FILL_TYPES:
-                content = q.content
-                if q.correct_answer and "___" not in content:
-                    content = content.replace(q.correct_answer, "___")
+            for idx, opt in enumerate(source_options):
+                option_text = (opt.text or "").strip()
+                option_label = (opt.label or "").strip().upper() or chr(65 + idx)
+                is_correct = False
 
-                questions_data.append({
-                    "questionType": q_type,
-                    "content": content,
-                    "correctAnswer": q.correct_answer,
-                    "explanation": q.explanation,
-                    "points": 1.0,
-                    "orderIndex": len(questions_data),
-                    "options": [],
-                })
+                if answer_tokens:
+                    if q_type in letter_answer_types:
+                        is_correct = option_label in answer_tokens or normalize_token(option_text) in answer_tokens
+                    elif q_type in {"TFNG", "YNNG"}:
+                        normalized_text = normalize_token(option_text)
+                        is_correct = any(normalized_text == normalize_token(token) for token in answer_tokens)
+                    else:
+                        normalized_text = normalize_token(option_text)
+                        is_correct = any(normalized_text == normalize_token(token) for token in answer_tokens)
 
-            else:
-                options_data = []
-                for opt in q.options:
-                    options_data.append(
-                        {"optionText": opt.text, "isCorrect": opt.label.upper() == (q.correct_answer or "").strip().upper(), "orderIndex": opt.order_index}
-                    )
+                options_data.append(
+                    {
+                        "optionText": option_text,
+                        "isCorrect": is_correct,
+                        "orderIndex": opt.order_index if opt.order_index is not None else idx,
+                    }
+                )
 
-                questions_data.append({
-                    "questionType": q_type,
-                    "content": q.content,
-                    "correctAnswer": q.correct_answer if not q.options else None,
-                    "explanation": q.explanation,
-                    "points": 1.0,
-                    "orderIndex": len(questions_data),
-                    "options": options_data,
-                })
+            content = (q.content or "").strip()
+            if q_type in fill_like_types and q_type != "SHORT_ANSWER" and answer_raw and "___" not in content:
+                replacement = answer_raw.split("|")[0].split(",")[0].strip()
+                if replacement:
+                    content = content.replace(replacement, "___")
+
+            question_data = {
+                "questionType": q_type,
+                "questionNumber": q.number,
+                "content": content,
+                "correctAnswer": answer_raw,
+                "explanation": q.explanation,
+                "points": 1.0,
+                "orderIndex": len(all_questions_data),
+                "options": options_data if q_type in option_like_types else [],
+            }
+
+            group_questions.append(question_data)
+            all_questions_data.append(question_data)
+
+        if group_questions:
+            question_numbers = [q.get("questionNumber") for q in group_questions if isinstance(q.get("questionNumber"), int)]
+            question_groups_data.append(
+                {
+                    "groupType": group_type,
+                    "instruction": parsed_group.instruction,
+                    "startQuestion": min(question_numbers) if question_numbers else None,
+                    "endQuestion": max(question_numbers) if question_numbers else None,
+                    "questions": group_questions,
+                }
+            )
+
+    if not question_groups_data and all_questions_data:
+        question_numbers = [q.get("questionNumber") for q in all_questions_data if isinstance(q.get("questionNumber"), int)]
+        question_groups_data.append(
+            {
+                "groupType": normalize_question_type(all_questions_data[0].get("questionType")),
+                "instruction": "",
+                "startQuestion": min(question_numbers) if question_numbers else None,
+                "endQuestion": max(question_numbers) if question_numbers else None,
+                "questions": all_questions_data,
+            }
+        )
 
     return {
         "title": passage.title,
         "content": passage.content,
         "audioUrl": None,
         "orderIndex": order_index,
-        "questions": questions_data,
+        "questionGroups": question_groups_data,
+        "questions": all_questions_data,
     }
 
 
-def _extract_answer_key(raw_text: str) -> tuple[dict[int, str], dict[int, str], str]:
+def _normalize_spaces(text: str) -> str:
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _normalize_answer_token(value: str) -> str:
+    token = _normalize_spaces(value)
+    upper = token.upper()
+
+    normalized_map = {
+        "NOTGIVEN": "NOT GIVEN",
+        "NOT GIVEN": "NOT GIVEN",
+        "TRUE": "TRUE",
+        "FALSE": "FALSE",
+        "YES": "YES",
+        "NO": "NO",
+    }
+    compact = upper.replace(" ", "")
+    if compact in normalized_map:
+        return normalized_map[compact]
+
+    if re.fullmatch(r"[A-Z]", upper):
+        return upper
+
+    if re.fullmatch(r"[IVXLCDM]{1,8}", upper):
+        return upper
+
+    return token
+
+
+def _normalize_answer_list(raw: str) -> str:
+    parts = [
+        _normalize_answer_token(part)
+        for part in re.split(r"\s*(?:,|/|\||;|&|\band\b)\s*", raw, flags=re.IGNORECASE)
+        if part.strip()
+    ]
+    return ",".join(parts)
+
+
+def _is_answer_token(text: str) -> bool:
+    value = _normalize_answer_token(text)
+    upper = value.upper()
+    return (
+        upper in {"TRUE", "FALSE", "NOT GIVEN", "YES", "NO"}
+        or bool(re.fullmatch(r"[A-Z]", upper))
+        or bool(re.fullmatch(r"[IVXLCDM]{1,8}", upper))
+    )
+
+
+def _extract_answer_and_explanation(segment: str) -> tuple[str | None, str | None]:
+    cleaned = _normalize_spaces(segment.strip(" -:–—"))
+    if not cleaned:
+        return None, None
+
+    choice_match = re.match(
+        r"(?i)^((?:[A-Z]|[ivxlcdm]{1,8}|TRUE|FALSE|NOT\s*GIVEN|YES|NO)"
+        r"(?:\s*(?:,|/|\||;|&|\band\b)\s*"
+        r"(?:[A-Z]|[ivxlcdm]{1,8}|TRUE|FALSE|NOT\s*GIVEN|YES|NO))*)\b(.*)$",
+        cleaned,
+    )
+    if choice_match:
+        answer = _normalize_answer_list(choice_match.group(1))
+        remainder = _normalize_spaces(choice_match.group(2).strip(" -:–—"))
+        return answer, remainder if len(remainder) >= 6 else None
+
+    for delimiter in [" - ", " – ", " — ", " : "]:
+        if delimiter in cleaned:
+            left, right = cleaned.split(delimiter, 1)
+            left = _normalize_spaces(left)
+            right = _normalize_spaces(right)
+            if left and right:
+                if _is_answer_token(left):
+                    return _normalize_answer_list(left), right
+                if len(left) <= 80 and len(right) >= 8:
+                    return left, right
+
+    return cleaned, None
+
+
+def _extract_answer_pairs_from_block(answer_block: str) -> tuple[dict[int, str], dict[int, str]]:
     answers: dict[int, str] = {}
     explanations: dict[int, str] = {}
 
-    answer_section_patterns = [
-        r"(?i)(?:ANSWER\s*KEY|ANSWER\s*KEYS?|ANSWERS?\s*:?)\s*\n([\s\S]+?)$",
-        r"(?i)(?:KEY|ĐÁP\s*ÁN|ANSWER\s+SHEET)\s*:?\s*\n([\s\S]+?)$",
-    ]
+    line_pair_pattern = re.compile(
+        r"(?<!\d)(\d{1,3})\s*[.)\]:\-]?\s*"
+        r"(.+?)(?=(?:\s+(?<!\d)\d{1,3}\s*[.)\]:\-]?\s*)|$)",
+        re.IGNORECASE,
+    )
 
-    text_without = raw_text
+    for raw_line in answer_block.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if _is_trash_line(line):
+            continue
+
+        range_line_match = re.match(
+            r"^\s*(\d{1,3})\s*(?:-|–|to)\s*(\d{1,3})\s+(.+)$",
+            line,
+            flags=re.IGNORECASE,
+        )
+        if range_line_match:
+            start_q = int(range_line_match.group(1))
+            end_q = int(range_line_match.group(2))
+            tail = range_line_match.group(3)
+            if 0 < start_q <= end_q <= 80:
+                expected_count = end_q - start_q + 1
+                tokens = [
+                    _normalize_answer_token(token)
+                    for token in re.split(r"[\s,;/|]+", tail)
+                    if token.strip()
+                ]
+                valid_tokens = [token for token in tokens if _is_answer_token(token)]
+                if len(valid_tokens) >= expected_count:
+                    for offset in range(expected_count):
+                        answers[start_q + offset] = valid_tokens[offset]
+                    continue
+
+        pairs = list(line_pair_pattern.finditer(line))
+        if not pairs:
+            continue
+
+        for pair in pairs:
+            q_num = int(pair.group(1))
+            if q_num <= 0 or q_num > 80:
+                continue
+
+            answer_raw, explanation = _extract_answer_and_explanation(pair.group(2))
+            if not answer_raw:
+                continue
+
+            answers[q_num] = answer_raw
+            if explanation:
+                explanations[q_num] = explanation
+
+    return answers, explanations
+
+
+def _extract_answer_key(raw_text: str) -> tuple[dict[int, str], dict[int, str], str]:
+    answer_section_patterns = [
+        r"(?i)(?:^|\n)\s*(?:ANSWER\s*KEY|ANSWER\s*KEYS?|ANSWERS?\s*:?)\s*\n([\s\S]+?)$",
+        r"(?i)(?:^|\n)\s*(?:KEY|ĐÁP\s*ÁN|ANSWER\s+SHEET)\s*:?\s*\n([\s\S]+?)$",
+        r"(?i)(?:^|\n)\s*SOLUTIONS?\s*:?\s*\n([\s\S]+?)$",
+    ]
 
     for pattern in answer_section_patterns:
         match = re.search(pattern, raw_text)
@@ -363,39 +626,11 @@ def _extract_answer_key(raw_text: str) -> tuple[dict[int, str], dict[int, str], 
             continue
 
         answer_block = match.group(1)
+        answers, explanations = _extract_answer_pairs_from_block(answer_block)
+        if len(answers) >= 3:
+            return answers, explanations, raw_text[: match.start()].strip()
 
-        for ans_match in re.finditer(
-            r"(\d+)\s*[.):\s]+\s*"
-            r"([A-Ga-gi-xi-x]|TRUE|FALSE|NOT\s*GIVEN|YES|NO"
-            r"|[A-Za-z][\w\s',.\-]{0,60})",
-            answer_block,
-            re.IGNORECASE,
-        ):
-            num = int(ans_match.group(1))
-            ans = ans_match.group(2).strip()
-            ans = re.sub(r"\s+", " ", ans)
-            if num <= 50:
-                answers[num] = ans
-
-        explanation_pattern = (
-            r"(\d+)\s*[.):\s]+\s*"
-            r"(?:[A-Ga-g]|TRUE|FALSE|NOT\s*GIVEN|YES|NO|[\w\s',.\-]+?)"
-            r"\s*[-–—:]\s*(.+?)(?=\d+\s*[.):\s]|\Z)"
-        )
-        for exp_match in re.finditer(explanation_pattern, answer_block, re.IGNORECASE | re.DOTALL):
-            num = int(exp_match.group(1))
-            explanation_text = exp_match.group(2).strip()
-            explanation_text = re.sub(r"\s+", " ", explanation_text)
-            if num <= 50 and len(explanation_text) > 5:
-                explanations[num] = explanation_text
-
-        if len(answers) >= 5:
-            text_without = raw_text[: match.start()].strip()
-            break
-        answers = {}
-        explanations = {}
-
-    return answers, explanations, text_without
+    return {}, {}, raw_text
 
 
 def _split_into_passage_sections(raw_text: str) -> list[str]:
@@ -417,7 +652,7 @@ def _split_into_passage_sections(raw_text: str) -> list[str]:
 
 
 def _split_passage_from_questions(section_text: str) -> tuple[str, str]:
-    q_match = re.search(r"(?i)\n\s*Questions?\s+\d+\s*[-–to]+\s*\d+", section_text)
+    q_match = re.search(r"(?im)^\s*Questions?\s+\d+\s*(?:[-–]|to)\s*\d+", section_text)
     if q_match:
         return section_text[: q_match.start()].strip(), section_text[q_match.start() :].strip()
 
@@ -449,14 +684,21 @@ def _detect_question_type(instruction: str) -> str:
         return "FLOWCHART_COMPLETION"
     if "diagram" in low and ("label" in low or "complete" in low):
         return "DIAGRAM_LABELING"
+    if "map" in low and ("label" in low or "plan" in low):
+        return "DIAGRAM_LABELING"
+
+    if "short answer" in low:
+        return "SHORT_ANSWER"
+
+    if "choose" in low and "letter" in low and any(token in low for token in ["two", "three", "four", "five"]):
+        return "MCQ_MULTIPLE"
+    if "multiple answers" in low:
+        return "MCQ_MULTIPLE"
 
     if "complete" in low or "fill" in low or "no more than" in low:
         return "SENTENCE_COMPLETION"
     if "one word" in low or "two words" in low or "three words" in low:
         return "SENTENCE_COMPLETION"
-
-    if "short answer" in low:
-        return "SHORT_ANSWER"
 
     if "choose" in low or "correct letter" in low or "multiple" in low:
         return "MULTIPLE_CHOICE"
@@ -464,12 +706,89 @@ def _detect_question_type(instruction: str) -> str:
     return "MULTIPLE_CHOICE"
 
 
+def _is_question_line_start(line: str, start_q: int, end_q: int) -> bool:
+    match = re.match(r"^\s*(\d{1,3})\s*[.)]?\s+", line)
+    if not match:
+        return False
+    q_num = int(match.group(1))
+    return start_q <= q_num <= end_q
+
+
+def _extract_labeled_options(text: str, label_pattern: str) -> list[ParsedOption]:
+    if not text.strip():
+        return []
+
+    pattern = re.compile(
+        rf"(?:^|\n)\s*({label_pattern})\s*(?:[.)\-:]\s*|\s+)"
+        rf"(.+?)(?=(?:\n\s*(?:{label_pattern})\s*(?:[.)\-:]\s*|\s+))|\Z)",
+        re.IGNORECASE | re.DOTALL,
+    )
+
+    matches = list(pattern.finditer(text))
+    if len(matches) < 2:
+        return []
+
+    options: list[ParsedOption] = []
+    for idx, match in enumerate(matches):
+        label = _normalize_spaces(match.group(1)).upper()
+        option_text = _normalize_spaces(match.group(2))
+        if option_text:
+            options.append(ParsedOption(text=option_text, label=label, order_index=idx))
+    return options
+
+
+def _extract_inline_letter_options(text: str) -> tuple[str, list[ParsedOption]]:
+    normalized = text.replace("\r", "")
+    marker_pattern = re.compile(
+        r"(?:(?<=^)|(?<=[\s,;:]))([A-I])(?:\s*[.)])?\s+(?=[A-Za-z])",
+        re.IGNORECASE,
+    )
+    markers = list(marker_pattern.finditer(normalized))
+    if len(markers) < 2:
+        return _normalize_spaces(text), []
+
+    stem = _normalize_spaces(normalized[: markers[0].start()])
+    options: list[ParsedOption] = []
+
+    for idx, marker in enumerate(markers):
+        option_end = markers[idx + 1].start() if idx + 1 < len(markers) else len(normalized)
+        option_text = _normalize_spaces(normalized[marker.end() : option_end])
+        if option_text:
+            options.append(
+                ParsedOption(
+                    text=option_text,
+                    label=marker.group(1).upper(),
+                    order_index=idx,
+                )
+            )
+
+    if len(options) < 2:
+        return _normalize_spaces(text), []
+
+    return stem, options
+
+
+def _extract_shared_options(instruction_text: str, q_type: str) -> list[ParsedOption]:
+    if q_type not in {"MATCHING_HEADING", "MATCHING_FEATURES", "MATCHING_INFO", "DIAGRAM_LABELING"}:
+        return []
+
+    roman_options = _extract_labeled_options(instruction_text, r"[ivxlcdm]{1,8}")
+    if len(roman_options) >= 3:
+        return roman_options
+
+    letter_options = _extract_labeled_options(instruction_text, r"[A-I]")
+    if len(letter_options) >= 3:
+        return letter_options
+
+    return []
+
+
 def _parse_question_sections(
     question_text: str, answers: dict[int, str], explanations: dict[int, str]
 ) -> list[ParsedQuestionGroup]:
     groups: list[ParsedQuestionGroup] = []
 
-    header_pattern = r"(Questions?\s+\d+\s*[-–to]+\s*\d+)"
+    header_pattern = r"(Questions?\s+\d+\s*(?:[-–]|to)\s*\d+)"
     parts = re.split(header_pattern, question_text, flags=re.IGNORECASE)
 
     i = 0
@@ -482,14 +801,14 @@ def _parse_question_sections(
         body = parts[i + 1] if i + 1 < len(parts) else ""
         i += 2
 
-        range_match = re.search(r"(\d+)\s*[-–to]+\s*(\d+)", header)
+        range_match = re.search(r"(\d+)\s*(?:[-–]|to)\s*(\d+)", header, flags=re.IGNORECASE)
         if not range_match:
             continue
 
         start_q = int(range_match.group(1))
         end_q = int(range_match.group(2))
 
-        lines = body.strip().split("\n")
+        lines = [line for line in body.strip().split("\n")]
         instruction_lines: list[str] = []
         q_body_start = 0
 
@@ -497,7 +816,7 @@ def _parse_question_sections(
             stripped = line.strip()
             if not stripped:
                 continue
-            if re.match(r"^\d+\s", stripped):
+            if _is_question_line_start(stripped, start_q, end_q):
                 q_body_start = j
                 break
 
@@ -508,11 +827,21 @@ def _parse_question_sections(
             instruction_lines.append(stripped)
             q_body_start = j + 1
 
-        instruction = " ".join(instruction_lines)
+        instruction_text = "\n".join(instruction_lines)
+        instruction = _normalize_spaces(instruction_text)
         q_type = _detect_question_type(instruction)
+        shared_options = _extract_shared_options(instruction_text, q_type)
 
         remaining = "\n".join(lines[q_body_start:])
-        questions = _extract_individual_questions(remaining, start_q, end_q, q_type, answers, explanations)
+        questions = _extract_individual_questions(
+            remaining,
+            start_q,
+            end_q,
+            q_type,
+            answers,
+            explanations,
+            shared_options=shared_options,
+        )
 
         if questions:
             groups.append(
@@ -535,10 +864,12 @@ def _extract_individual_questions(
     q_type: str,
     answers: dict[int, str],
     explanations: dict[int, str],
+    shared_options: list[ParsedOption] | None = None,
 ) -> list[ParsedQuestion]:
     questions: list[ParsedQuestion] = []
+    shared_options = shared_options or []
 
-    pattern = r"(?:^|\n)\s*(\d+)\s+"
+    pattern = r"(?:^|\n)\s*(\d{1,3})\s*[.)]?\s+"
     splits = re.split(pattern, text)
 
     idx = 1
@@ -554,31 +885,36 @@ def _extract_individual_questions(
             continue
 
         q_content_raw = splits[idx + 1].strip()
-
-        if _is_trash_line(q_content_raw) or len(q_content_raw) < 3:
+        if _is_trash_line(q_content_raw) or len(q_content_raw) < 2:
             idx += 2
             continue
 
         options: list[ParsedOption] = []
         clean_content = q_content_raw
 
-        if q_type in ("MULTIPLE_CHOICE", "MCQ", "MATCHING_HEADING", "MATCHING_FEATURES", "MATCHING_INFO"):
-            opt_matches = list(
-                re.finditer(
-                    r"(?:^|\n)\s*([A-E])\s*[.)]\s*(.+?)(?=\n\s*[A-E]\s*[.)]|\Z)",
-                    q_content_raw,
-                    re.DOTALL,
-                )
-            )
-            if opt_matches:
-                clean_content = q_content_raw[: opt_matches[0].start()].strip()
-                for oi, om in enumerate(opt_matches):
-                    opt_text = om.group(2).strip()
-                    opt_text = re.sub(r"\s+", " ", opt_text)
-                    if len(opt_text) > 0:
-                        options.append(
-                            ParsedOption(text=opt_text, label=om.group(1), order_index=oi)
-                        )
+        if q_type in {
+            "MULTIPLE_CHOICE",
+            "MCQ",
+            "MCQ_MULTIPLE",
+            "MATCHING_HEADING",
+            "MATCHING_FEATURES",
+            "MATCHING_INFO",
+            "DIAGRAM_LABELING",
+        }:
+            block_options = _extract_labeled_options(q_content_raw, r"[A-I]")
+            if len(block_options) >= 2:
+                first_match = re.search(r"(?im)^\s*[A-I]\s*(?:[.)\-:]\s*|\s+)", q_content_raw)
+                if first_match:
+                    clean_content = q_content_raw[: first_match.start()].strip()
+                options = block_options
+            else:
+                inline_content, inline_options = _extract_inline_letter_options(q_content_raw)
+                if inline_options:
+                    clean_content = inline_content
+                    options = inline_options
+
+        if not options and shared_options and q_type in {"MATCHING_HEADING", "MATCHING_FEATURES", "MATCHING_INFO", "DIAGRAM_LABELING"}:
+            options = [ParsedOption(text=o.text, label=o.label, order_index=o.order_index) for o in shared_options]
 
         if q_type == "TRUE_FALSE_NG":
             options = [
@@ -594,7 +930,10 @@ def _extract_individual_questions(
                 ParsedOption(text="NOT GIVEN", label="NOT GIVEN", order_index=2),
             ]
 
-        clean_content = re.sub(r"\s+", " ", clean_content).strip()
+        clean_content = _normalize_spaces(clean_content)
+        if not clean_content:
+            idx += 2
+            continue
 
         correct = answers.get(q_num)
         explanation = explanations.get(q_num)

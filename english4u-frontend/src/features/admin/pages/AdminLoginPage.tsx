@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Mail, Lock, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
@@ -6,6 +6,7 @@ import { message } from 'antd';
 import { GalaxyBackground } from '../components/GalaxyBackground';
 import { useLoginMutation } from '@/features/auth/api/auth.api';
 import { GoogleLoginButton } from '@/features/auth/components/GoogleLoginButton';
+import { consumeForcedLogoutReason } from '@/features/auth/lib/sessionSignals';
 
 
 export function AdminLoginPage() {
@@ -13,6 +14,13 @@ export function AdminLoginPage() {
     const [password, setPassword] = useState('');
     const navigate = useNavigate();
     const loginMutation = useLoginMutation();
+
+    useEffect(() => {
+        const forcedLogoutReason = consumeForcedLogoutReason();
+        if (forcedLogoutReason) {
+            message.warning(forcedLogoutReason);
+        }
+    }, []);
 
     const handleLogin = (e: React.FormEvent) => {
         e.preventDefault();

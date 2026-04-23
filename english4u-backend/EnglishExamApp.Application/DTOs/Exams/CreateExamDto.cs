@@ -29,6 +29,7 @@ public sealed record CreateListeningPartDto(
     int? PartNumber,
     string AudioUrl,
     string? ContextDescription,
+    string? TranscriptData,
     List<CreateQuestionGroupDto> QuestionGroups);
 
 public sealed record CreateWritingTaskDto(
@@ -67,5 +68,6 @@ public sealed record CreateQuestionDto(
 
 public sealed record CreateQuestionOptionDto(
     string OptionText,
+    string? ImageUrl,
     bool IsCorrect,
     int? OrderIndex);
