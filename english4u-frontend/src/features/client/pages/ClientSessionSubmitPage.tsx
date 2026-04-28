@@ -16,9 +16,10 @@ import { ArrowLeftOutlined, BulbOutlined, ReloadOutlined, SendOutlined } from '@
 import { createPortal } from 'react-dom';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { streamCopilotChat } from '../api/copilot.api';
-import { usePracticeSessionQuery, useStartPracticeSessionMutation, useSubmitReadingListeningMutation, useSubmitWritingMutation } from '../api/session.api';
+import { usePracticeSessionQuery, useStartPracticeSessionMutation, useSubmitReadingListeningMutation, useSubmitSpeakingMutation, useSubmitWritingMutation } from '../api/session.api';
 import { ReviewCopilotDrawer } from '../components/ReviewCopilotDrawer';
 import { ListeningAttemptModeModal } from '../components/ListeningAttemptModeModal';
+import { SpeakingSessionReview } from '../components/speaking/SpeakingSessionReview';
 import {
     buildListeningQuestionFocusPayload,
     buildObjectiveReviewCopilotContext,
@@ -29,7 +30,7 @@ import {
     inferListeningQuestionEvidenceMatch,
 } from '../lib/reviewCopilotContext';
 import { setListeningAttemptMode, type ListeningAttemptMode } from '../lib/listeningSessionState';
-import { getSessionRunnerPath, getSkillLabel, isObjectiveSkill, isSupportedRunnerSkill, isWritingSkill } from '../lib/sessionRouting';
+import { getSessionRunnerPath, getSkillLabel, isObjectiveSkill, isSpeakingSkill, isSupportedRunnerSkill, isWritingSkill } from '../lib/sessionRouting';
 import {
     findListeningReplayMatch,
     findListeningTranscriptSnippetByTime,
@@ -2052,11 +2053,13 @@ export const ClientSessionSubmitPage = () => {
     const { data: session, isLoading, isError, refetch } = usePracticeSessionQuery(sessionId);
     const submitMutation = useSubmitReadingListeningMutation();
     const submitWritingMutation = useSubmitWritingMutation();
+    const submitSpeakingMutation = useSubmitSpeakingMutation();
     const startSessionMutation = useStartPracticeSessionMutation();
 
     useEffect(() => {
         const canAutoSubmitWriting = isWritingSkill(session?.skillType) && session?.status === 'Submitted' && session.result?.writingScore == null;
-        if (!autoSubmit || autoSubmitTriggeredRef.current || !session || (!canAutoSubmitWriting && session.status !== 'InProgress') || !isSupportedRunnerSkill(session.skillType)) {
+        const canAutoSubmitSpeaking = isSpeakingSkill(session?.skillType) && session?.status === 'Submitted' && session.result?.speakingScore == null;
+        if (!autoSubmit || autoSubmitTriggeredRef.current || !session || (!canAutoSubmitWriting && !canAutoSubmitSpeaking && session.status !== 'InProgress') || !isSupportedRunnerSkill(session.skillType)) {
             return;
         }
 
@@ -2069,11 +2072,21 @@ export const ClientSessionSubmitPage = () => {
             }
         }
 
-        const mutation = isWritingSkill(session.skillType) ? submitWritingMutation : submitMutation;
+        const mutation = isWritingSkill(session.skillType)
+            ? submitWritingMutation
+            : isSpeakingSkill(session.skillType)
+                ? submitSpeakingMutation
+                : submitMutation;
         mutation.mutate(sessionId, {
             onSuccess: () => {
                 refetch();
-                message.success(isWritingSkill(session.skillType) ? 'Đã nộp bài Writing. AI đang chấm...' : 'Đã tự động nộp bài.');
+                message.success(
+                    isWritingSkill(session.skillType)
+                        ? 'Đã nộp bài Writing. AI đang chấm...'
+                        : isSpeakingSkill(session.skillType)
+                            ? 'Đã nộp bài Speaking. AI đang chấm...'
+                            : 'Đã tự động nộp bài.',
+                );
             },
             onError: (error: any) => {
                 refetch();
@@ -2081,13 +2094,14 @@ export const ClientSessionSubmitPage = () => {
                 message.error(errorMessage);
             },
         });
-    }, [autoSubmit, session, sessionId, refetch, submitMutation, submitWritingMutation]);
+    }, [autoSubmit, session, sessionId, refetch, submitMutation, submitSpeakingMutation, submitWritingMutation]);
 
     useEffect(() => {
         setHeaderSlot(document.getElementById('client-page-header-slot'));
     }, []);
 
     const isWritingSession = isWritingSkill(session?.skillType);
+    const isSpeakingSession = isSpeakingSkill(session?.skillType);
     const showObjectiveReview = isObjectiveSkill(session?.skillType) && session?.status === 'Completed';
     const writingReviewAnswerMap = useMemo(() => getWritingReviewAnswerMap(session), [session]);
     const writingCopilotBaseContext = useMemo<ReviewCopilotContext | null>(
@@ -2168,7 +2182,11 @@ export const ClientSessionSubmitPage = () => {
         }
     }, []);
 
-    const latestMutationResult = isWritingSession ? submitWritingMutation.data : submitMutation.data;
+    const latestMutationResult = isWritingSession
+        ? submitWritingMutation.data
+        : isSpeakingSession
+            ? submitSpeakingMutation.data
+            : submitMutation.data;
     const result = session?.result ?? latestMutationResult ?? null;
     const canRetryWritingScore = isWritingSession && session?.status === 'Submitted' && result?.writingScore == null;
     const canSubmitNow = !!session && (session.status === 'InProgress' || canRetryWritingScore) && isSupportedRunnerSkill(session.skillType);
@@ -2302,6 +2320,34 @@ export const ClientSessionSubmitPage = () => {
                     </Button>
                 </Empty>
             </Card>
+        );
+    }
+
+    if (isSpeakingSession) {
+        const canRetrySpeakingScore = session.status !== 'InProgress' && result?.speakingScore == null;
+        const canSubmitSpeaking = session.status === 'InProgress' || canRetrySpeakingScore;
+
+        return (
+            <SpeakingSessionReview
+                session={session}
+                result={result}
+                submitLoading={submitSpeakingMutation.isPending}
+                canSubmitNow={canSubmitSpeaking}
+                onSubmit={() => {
+                    submitSpeakingMutation.mutate(sessionId, {
+                        onSuccess: () => {
+                            refetch();
+                            message.success(canRetrySpeakingScore ? 'Đã gửi lại yêu cầu chấm Speaking.' : 'Đã nộp bài Speaking.');
+                        },
+                        onError: (error: any) => {
+                            refetch();
+                            message.error(error?.response?.data?.message || 'Không thể nộp/chấm Speaking. Bạn hãy thử lại.');
+                        },
+                    });
+                }}
+                onBackToRunner={() => navigate(getSessionRunnerPath(session.sessionId, session.skillType))}
+                onBackToLibrary={() => navigate('/app/my-exams')}
+            />
         );
     }
     const writingTasks = getWritingTasks(session);

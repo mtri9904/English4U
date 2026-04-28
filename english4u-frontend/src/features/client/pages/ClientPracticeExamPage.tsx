@@ -122,7 +122,7 @@ export const ClientPracticeExamPage: FC = () => {
 
     const launchSession = (attemptMode?: ListeningAttemptMode) => {
         if (!supportsPracticeRunner || !exam) {
-            message.info('Runner hiện tại mở cho Reading, Listening và Writing.');
+            message.info('Runner hiện tại mở cho Reading, Listening, Writing và Speaking.');
             return;
         }
 

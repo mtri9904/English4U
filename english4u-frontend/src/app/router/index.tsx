@@ -31,6 +31,7 @@ import {
     ClientReadingSessionPage,
     ClientListeningSessionPage,
     ClientWritingSessionPage,
+    ClientSpeakingSessionPage,
     ClientSessionSubmitPage,
 } from '@/features/client';
 
@@ -163,6 +164,10 @@ export const appRouter = createBrowserRouter([
             {
                 path: 'sessions/:sessionId/writing',
                 element: <ClientWritingSessionPage />,
+            },
+            {
+                path: 'sessions/:sessionId/speaking',
+                element: <ClientSpeakingSessionPage />,
             },
             {
                 path: 'sessions/:sessionId/submit',

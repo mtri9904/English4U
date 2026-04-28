@@ -753,9 +753,32 @@ export const emptySpeakingQuestion = (): CreateSpeakingQuestionDto => ({
 
 export const emptySpeakingPart = (partNumber = 1): CreateSpeakingPartDto => ({
     partNumber,
-    description: '',
+    description: undefined,
     questions: [emptySpeakingQuestion()],
 });
+
+export const sanitizeSpeakingPartsForSubmit = (speakingParts: CreateSpeakingPartDto[] = []): CreateSpeakingPartDto[] => (
+    speakingParts.map((part) => ({
+        ...part,
+        description: undefined,
+        questions: (part.questions ?? []).map((question, questionIdx) => ({
+            ...question,
+            audioPromptUrl: undefined,
+            cueCardPoints:
+                part.partNumber === 2 && questionIdx === 0
+                    ? question.cueCardPoints?.trim() || undefined
+                    : undefined,
+        })),
+    }))
+);
+
+export const sanitizeSpeakingSectionsForSubmit = (sections: CreateSectionDto[] = []): CreateSectionDto[] => (
+    sections.map((section) => (
+        section.skillType === 'Speaking'
+            ? { ...section, speakingParts: sanitizeSpeakingPartsForSubmit(section.speakingParts ?? []) }
+            : section
+    ))
+);
 
 export const emptySection = (skill: SkillType): CreateSectionDto => {
     const base: CreateSectionDto = { skillType: skill, title: `${skill} Section`, orderIndex: 0 };

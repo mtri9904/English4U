@@ -8,7 +8,11 @@ public sealed record AutoSaveAnswerDto(
 public sealed record PracticeSessionAnswerInputDto(
     Guid? QuestionId,
     Guid? WritingTaskId,
-    string? AnswerText);
+    Guid? SpeakingQuestionId,
+    string? AnswerText,
+    string? AudioUrl = null,
+    double? DurationSeconds = null,
+    int? FileSizeKB = null);
 
 public sealed record UpdatePracticeSessionAnswersDto(
     int? TimeRemaining,
@@ -34,13 +38,28 @@ public sealed record PracticeSessionResultDto(
     double AccuracyPercent,
     string Status,
     double? WritingScore = null,
-    string? OverallFeedback = null);
+    string? OverallFeedback = null,
+    double? SpeakingScore = null);
 
 public sealed record PracticeSessionFeedbackDto(
     string Criteria,
     double BandScore,
     string? Comment,
     string? Improvements);
+
+public sealed record PracticeSessionSpeakingAnalyticsDto(
+    int WordCount,
+    double? WordsPerMinute,
+    double? CoverageRatio,
+    int? TargetDurationSeconds,
+    double? EstimatedFluencyBand,
+    string PaceLabel,
+    string CoverageLabel);
+
+public sealed record PracticeSessionSpeakingPromptCueDto(
+    string Code,
+    int StartMs,
+    int EndMs);
 
 public sealed record PracticeSessionAnswerDto(
     Guid QuestionId,
@@ -52,7 +71,14 @@ public sealed record PracticeSessionAnswerDto(
     string? CorrectAnswer,
     double ScoreEarned,
     bool? IsCorrect,
-    IReadOnlyList<PracticeSessionFeedbackDto>? Feedbacks = null);
+    IReadOnlyList<PracticeSessionFeedbackDto>? Feedbacks = null,
+    Guid? SpeakingQuestionId = null,
+    int? SpeakingQuestionOrderIndex = null,
+    int? SpeakingPartNumber = null,
+    string? AudioUrl = null,
+    double? DurationSeconds = null,
+    string? TranscriptText = null,
+    PracticeSessionSpeakingAnalyticsDto? SpeakingAnalytics = null);
 
 public sealed record PracticeSessionOptionDto(
     Guid Id,
@@ -101,6 +127,21 @@ public sealed record PracticeSessionWritingTaskDto(
     string? AssetsData,
     int MinWords);
 
+public sealed record PracticeSessionSpeakingQuestionDto(
+    Guid Id,
+    string Content,
+    string? CueCardPoints,
+    string? AudioPromptUrl,
+    int? OrderIndex,
+    int? PromptEstimatedDurationMs = null,
+    IReadOnlyList<PracticeSessionSpeakingPromptCueDto>? PromptVisemeTimeline = null);
+
+public sealed record PracticeSessionSpeakingPartDto(
+    Guid Id,
+    int? PartNumber,
+    string? Description,
+    IReadOnlyList<PracticeSessionSpeakingQuestionDto> Questions);
+
 public sealed record PracticeSessionSectionDto(
     Guid Id,
     string SkillType,
@@ -108,7 +149,8 @@ public sealed record PracticeSessionSectionDto(
     int? OrderIndex,
     IReadOnlyList<PracticeSessionReadingPassageDto> ReadingPassages,
     IReadOnlyList<PracticeSessionListeningPartDto> ListeningParts,
-    IReadOnlyList<PracticeSessionWritingTaskDto> WritingTasks);
+    IReadOnlyList<PracticeSessionWritingTaskDto> WritingTasks,
+    IReadOnlyList<PracticeSessionSpeakingPartDto> SpeakingParts);
 
 public sealed record PracticeSessionExamDto(
     Guid Id,
@@ -153,7 +195,23 @@ public sealed record PracticeSessionListItemDto(
     double? ReadingScore,
     double? ListeningScore,
     double? TotalAutoScore,
-    double? WritingScore = null);
+    double? WritingScore = null,
+    double? SpeakingScore = null);
+
+public sealed record UploadPracticeSpeakingRecordingDto(
+    Guid SpeakingQuestionId,
+    string? AnswerText,
+    double? DurationSeconds = null);
+
+public sealed record PracticeSessionSpeakingUploadResultDto(
+    Guid SpeakingQuestionId,
+    string AudioUrl,
+    int FileSizeKB,
+    double? DurationSeconds,
+    string? TranscriptText,
+    int TranscriptSegmentCount,
+    string? AnswerText,
+    PracticeSessionSpeakingAnalyticsDto? SpeakingAnalytics = null);
 
 public sealed record AdminAttemptQueryDto(
     string? Status,

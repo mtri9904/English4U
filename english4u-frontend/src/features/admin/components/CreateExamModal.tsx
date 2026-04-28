@@ -33,7 +33,7 @@ import {
     applySharedListeningAudioUrl, getSharedListeningAudioUrl, normalizeListeningPartsToSharedAudio,
     reorderQuestionNumbers, emptyWritingTask, emptySpeakingQuestion, emptySpeakingPart,
     emptySection, GROUP_TYPE_OPTIONS, SKILL_COLORS, getOptionsForType, EXAM_LIMITS, getMaxQuestionNumber,
-    applyBoldToTextarea, validateExamStructureLimits,
+    applyBoldToTextarea, sanitizeSpeakingSectionsForSubmit, validateExamStructureLimits,
 } from '../pages/exam-editor/examEditor.helpers';
 import { FlowchartCompletionEditor } from '../pages/exam-editor/FlowchartCompletionEditor';
 import { ListeningMultiSelectEditor } from '../pages/exam-editor/ListeningMultiSelectEditor';
@@ -266,11 +266,13 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
         try {
             const normalizedForm: CreateExamDto = {
                 ...form,
-                sections: form.sections.map((section) => (
-                    section.skillType === 'Listening'
-                        ? { ...section, listeningParts: normalizeListeningPartsToSharedAudio(section.listeningParts ?? []) }
-                        : section
-                )),
+                sections: sanitizeSpeakingSectionsForSubmit(
+                    form.sections.map((section) => (
+                        section.skillType === 'Listening'
+                            ? { ...section, listeningParts: normalizeListeningPartsToSharedAudio(section.listeningParts ?? []) }
+                            : section
+                    )),
+                ),
             };
             if (isEdit && initialData) {
                 await updateMutation.mutateAsync({ id: initialData.id, data: normalizedForm });
@@ -802,20 +804,6 @@ const setListeningMcqOptionInputMode = (
                                     onClick={() => updateSection(sIdx, { speakingParts: parts.filter((_, i) => i !== pIdx) })} />
                             )}
                         </div>
-                        <Input.TextArea value={part.description ?? ''} placeholder="Mô tả chủ đề Part..."
-                            autoSize={{ minRows: 2, maxRows: 6 }} style={{ marginBottom: '10px' }}
-                            onPaste={e => {
-                                const newVal = getCleanPastedInputValue(e, part.description || '');
-                                if (newVal === null) return;
-                                const updated = [...parts];
-                                updated[pIdx] = { ...part, description: newVal };
-                                updateSection(sIdx, { speakingParts: updated });
-                            }}
-                            onChange={e => {
-                                const updated = [...parts];
-                                updated[pIdx] = { ...part, description: e.target.value };
-                                updateSection(sIdx, { speakingParts: updated });
-                            }} />
                         {part.questions.map((sq, sqIdx) => (
                             <div key={sqIdx} style={{ padding: '10px', background: '#fef2f2', borderRadius: '8px', marginBottom: '8px', border: '1px solid #fecaca' }}>
                                 <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '6px' }}>
@@ -847,7 +835,7 @@ const setListeningMcqOptionInputMode = (
                                         updated[pIdx] = { ...part, questions: qs };
                                         updateSection(sIdx, { speakingParts: updated });
                                     }} />
-                                {(part.partNumber === 2) && (
+                                {part.partNumber === 2 && sqIdx === 0 && (
                                     <Input.TextArea value={sq.cueCardPoints ?? ''} placeholder="Cue Card gợi ý..."
                                         autoSize={{ minRows: 2, maxRows: 5 }} style={{ marginTop: '6px' }}
                                         onPaste={e => {

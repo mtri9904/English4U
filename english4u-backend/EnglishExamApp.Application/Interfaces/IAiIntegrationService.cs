@@ -6,6 +6,9 @@ public interface IAiIntegrationService
 {
     Task ScoreWritingAsync(Guid sessionId, CancellationToken cancellationToken = default);
     Task ScoreSpeakingAsync(Guid sessionId, CancellationToken cancellationToken = default);
+    Task<GeneratedSpeakingPromptAudioDto?> GenerateSpeakingPromptAudioAsync(
+        string promptText,
+        CancellationToken cancellationToken = default);
     Task<GenerateListeningTranscriptResultDto> GenerateListeningTranscriptAsync(
         GenerateListeningTranscriptRequestDto request,
         CancellationToken cancellationToken = default);

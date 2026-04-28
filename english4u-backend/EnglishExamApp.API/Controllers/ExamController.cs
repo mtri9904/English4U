@@ -12,11 +12,25 @@ public class ExamController(
     IExamService examService,
     IExamPdfGenerationService examPdfGenerationService,
     IAiIntegrationService aiIntegrationService,
+    ISpeakingMediaStorageService speakingMediaStorageService,
     IWritingVisualExtractionService writingVisualExtractionService,
     IPdfGenerationProgressTracker pdfGenerationProgressTracker,
     IRealtimeEventDispatcher realtimeDispatcher,
     ILogger<ExamController> logger) : ControllerBase
 {
+    private const long MaxSpeakingPromptAudioBytes = 30 * 1024 * 1024;
+
+    private static readonly HashSet<string> AllowedSpeakingPromptAudioExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".aac",
+        ".flac",
+        ".m4a",
+        ".mp3",
+        ".ogg",
+        ".wav",
+        ".webm",
+    };
+
     [HttpGet]
     public async Task<IResult> GetAll(CancellationToken cancellationToken)
     {
@@ -83,6 +97,79 @@ public class ExamController(
         catch (InvalidOperationException ex)
         {
             return TypedResults.BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpPost("generate-speaking-prompt-audio")]
+    public async Task<IActionResult> GenerateSpeakingPromptAudio(
+        [FromBody] GenerateSpeakingPromptAudioRequestDto dto,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(dto.PromptText))
+        {
+            return BadRequest(new { message = "PromptText is required." });
+        }
+
+        var generatedAudio = await aiIntegrationService.GenerateSpeakingPromptAudioAsync(dto.PromptText, cancellationToken);
+        if (generatedAudio is null || generatedAudio.AudioBytes.Length == 0)
+        {
+            return Problem(
+                title: "Failed to generate speaking prompt audio.",
+                detail: "AI service did not return any prompt audio.",
+                statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+
+        return File(generatedAudio.AudioBytes, generatedAudio.MimeType);
+    }
+
+    [HttpPost("speaking-prompt-audio")]
+    [RequestSizeLimit(MaxSpeakingPromptAudioBytes)]
+    [RequestFormLimits(MultipartBodyLengthLimit = MaxSpeakingPromptAudioBytes)]
+    public async Task<IResult> UploadSpeakingPromptAudio(
+        [FromForm(Name = "file")] IFormFile? file,
+        CancellationToken cancellationToken)
+    {
+        if (file is null || file.Length == 0)
+        {
+            return TypedResults.BadRequest(new { message = "Audio file is required." });
+        }
+
+        if (file.Length > MaxSpeakingPromptAudioBytes)
+        {
+            return TypedResults.BadRequest(new { message = "Audio prompt must be 30MB or smaller." });
+        }
+
+        var extension = Path.GetExtension(file.FileName);
+        if (string.IsNullOrWhiteSpace(extension) || !AllowedSpeakingPromptAudioExtensions.Contains(extension))
+        {
+            return TypedResults.BadRequest(new { message = "Only audio files are supported: mp3, wav, m4a, webm, ogg, aac, flac." });
+        }
+
+        try
+        {
+            await using var stream = file.OpenReadStream();
+            var storedMedia = await speakingMediaStorageService.SavePromptAsync(
+                file.FileName,
+                stream,
+                cancellationToken);
+
+            return TypedResults.Ok(new
+            {
+                audioUrl = storedMedia.AudioUrl,
+                fileSizeKB = storedMedia.FileSizeKB
+            });
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to upload speaking prompt audio file {FileName}", file.FileName);
+            return TypedResults.Problem(
+                title: "Failed to upload speaking prompt audio.",
+                detail: "Unexpected server error while storing the audio prompt.",
+                statusCode: StatusCodes.Status500InternalServerError);
         }
     }
 

@@ -1,4 +1,5 @@
 using EnglishExamApp.Application.DTOs.ExamExecution;
+using EnglishExamApp.Application.DTOs.Exams;
 using EnglishExamApp.Application.Interfaces;
 using EnglishExamApp.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -10,6 +11,7 @@ namespace EnglishExamApp.Application.Services;
 public sealed class ExamExecutionService(
     IApplicationDbContext context,
     IAiIntegrationService aiIntegrationService,
+    ISpeakingMediaStorageService speakingMediaStorageService,
     ILogger<ExamExecutionService> logger) : IExamExecutionService
 {
     private const int WritingSubmitMinWords = 10;
@@ -20,6 +22,10 @@ public sealed class ExamExecutionService(
         "xi", "xii", "xiii", "xiv", "xv", "xvi", "xvii", "xviii", "xix", "xx",
         "xxi", "xxii", "xxiii", "xxiv", "xxv", "xxvi"
     ];
+
+    private static readonly Regex PromptVisemeChunkRegex = new(
+        "th|sh|ch|ph|wh|ee|ea|oo|ou|ow|[aeiouy]+|[bcdfghjklmnpqrstvwxyz]+",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     private sealed record SessionHeader(
         Guid SessionId,
@@ -78,6 +84,340 @@ public sealed class ExamExecutionService(
 
         return Regex.Matches(value.Trim(), @"\S+").Count;
     }
+
+    private static int? GetSpeakingTargetDurationSeconds(int? partNumber) =>
+        partNumber switch
+        {
+            1 => 45,
+            2 => 120,
+            3 => 90,
+            _ => null,
+        };
+
+    private static string GetSpeakingPaceLabel(double? wordsPerMinute)
+    {
+        if (!wordsPerMinute.HasValue || wordsPerMinute.Value <= 0)
+        {
+            return "insufficient_data";
+        }
+
+        return wordsPerMinute.Value switch
+        {
+            < 85 => "slow",
+            <= 155 => "balanced",
+            <= 185 => "fast",
+            _ => "very_fast",
+        };
+    }
+
+    private static string GetSpeakingCoverageLabel(double? coverageRatio)
+    {
+        if (!coverageRatio.HasValue || coverageRatio.Value <= 0)
+        {
+            return "insufficient_data";
+        }
+
+        return coverageRatio.Value switch
+        {
+            < 0.35 => "too_short",
+            <= 1.0 => "on_target",
+            _ => "exceeds_target",
+        };
+    }
+
+    private static double? EstimateFluencyBand(int wordCount, double? wordsPerMinute, double? coverageRatio)
+    {
+        if (wordCount == 0)
+        {
+            return null;
+        }
+
+        var score = 6.0;
+
+        if (!wordsPerMinute.HasValue || wordsPerMinute.Value <= 0)
+        {
+            score -= 0.5;
+        }
+        else if (wordsPerMinute.Value < 85)
+        {
+            score -= 1.0;
+        }
+        else if (wordsPerMinute.Value <= 155)
+        {
+            score += 1.0;
+        }
+        else if (wordsPerMinute.Value <= 185)
+        {
+            score += 0.25;
+        }
+        else
+        {
+            score -= 0.75;
+        }
+
+        if (coverageRatio.HasValue)
+        {
+            if (coverageRatio.Value < 0.35)
+            {
+                score -= 1.25;
+            }
+            else if (coverageRatio.Value < 0.55)
+            {
+                score -= 0.35;
+            }
+            else if (coverageRatio.Value <= 1.0)
+            {
+                score += 0.5;
+            }
+            else if (coverageRatio.Value > 1.1)
+            {
+                score -= 0.25;
+            }
+        }
+
+        if (wordCount < 12)
+        {
+            score = Math.Min(score, 4.5);
+        }
+        else if (wordCount < 25)
+        {
+            score = Math.Min(score, 5.5);
+        }
+
+        return Math.Round(Math.Clamp(score, 3.0, 8.5), 1);
+    }
+
+    private static PracticeSessionSpeakingAnalyticsDto? BuildSpeakingAnalytics(
+        string? transcriptText,
+        string? answerText,
+        double? durationSeconds,
+        int? partNumber)
+    {
+        var sourceText = !string.IsNullOrWhiteSpace(transcriptText)
+            ? transcriptText
+            : answerText;
+        var wordCount = CountWords(sourceText);
+        var targetDurationSeconds = GetSpeakingTargetDurationSeconds(partNumber);
+
+        if (wordCount == 0 && (!durationSeconds.HasValue || durationSeconds.Value <= 0))
+        {
+            return null;
+        }
+
+        double? wordsPerMinute = null;
+        if (wordCount > 0 && durationSeconds.HasValue && durationSeconds.Value > 0)
+        {
+            wordsPerMinute = Math.Round((wordCount / durationSeconds.Value) * 60d, 1);
+        }
+
+        double? coverageRatio = null;
+        if (targetDurationSeconds.HasValue && durationSeconds.HasValue && targetDurationSeconds.Value > 0)
+        {
+            coverageRatio = Math.Round(durationSeconds.Value / targetDurationSeconds.Value, 2);
+        }
+
+        return new PracticeSessionSpeakingAnalyticsDto(
+            wordCount,
+            wordsPerMinute,
+            coverageRatio,
+            targetDurationSeconds,
+            EstimateFluencyBand(wordCount, wordsPerMinute, coverageRatio),
+            GetSpeakingPaceLabel(wordsPerMinute),
+            GetSpeakingCoverageLabel(coverageRatio));
+    }
+
+    private static string NormalizePromptWord(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        return Regex.Replace(value, "[^a-z']", string.Empty, RegexOptions.IgnoreCase).ToLowerInvariant();
+    }
+
+    private static int EstimatePromptDurationMs(string? text)
+    {
+        var wordCount = CountWords(text);
+        if (wordCount == 0)
+        {
+            return 1800;
+        }
+
+        var durationMs = (wordCount / 145d) * 60_000d;
+        return (int)Math.Round(Math.Clamp(durationMs, 1800d, 12_000d));
+    }
+
+    private static string MapPromptVisemeCode(string chunk)
+    {
+        var normalized = chunk.Trim().ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            return "X";
+        }
+
+        if (Regex.IsMatch(normalized, "^(m|b|p)"))
+        {
+            return "B";
+        }
+
+        if (Regex.IsMatch(normalized, "^(f|v|ph)"))
+        {
+            return "G";
+        }
+
+        if (Regex.IsMatch(normalized, "^(th)"))
+        {
+            return "D";
+        }
+
+        if (Regex.IsMatch(normalized, "^(r|l|er|ir|ur)"))
+        {
+            return "E";
+        }
+
+        if (Regex.IsMatch(normalized, "^(oo|ou|ow|o|u|w)"))
+        {
+            return "F";
+        }
+
+        if (Regex.IsMatch(normalized, "^(ee|ea|ei|i|y|e)"))
+        {
+            return "C";
+        }
+
+        if (Regex.IsMatch(normalized, "^(a|ai|au)"))
+        {
+            return "A";
+        }
+
+        return "H";
+    }
+
+    private static IReadOnlyList<PracticeSessionSpeakingPromptCueDto> BuildSpeakingPromptVisemeTimeline(string? text, int? preferredDurationMs = null)
+    {
+        var words = (text ?? string.Empty)
+            .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
+            .Select(NormalizePromptWord)
+            .Where(word => !string.IsNullOrWhiteSpace(word))
+            .ToList();
+
+        var totalDurationMs = (int)Math.Round(Math.Clamp((double)(preferredDurationMs ?? EstimatePromptDurationMs(text)), 1200d, 15_000d));
+        if (words.Count == 0)
+        {
+            return [new PracticeSessionSpeakingPromptCueDto("X", 0, totalDurationMs)];
+        }
+
+        var leadInMs = (int)Math.Round(Math.Min(180d, totalDurationMs * 0.08d));
+        var tailOutMs = (int)Math.Round(Math.Min(160d, totalDurationMs * 0.06d));
+        var gapMs = (int)Math.Clamp((int)Math.Round(totalDurationMs / (double)Math.Max(words.Count * 6, 24)), 20, 52);
+        var totalGapMs = gapMs * Math.Max(0, words.Count - 1);
+        var speechBodyMs = Math.Max(600, totalDurationMs - leadInMs - tailOutMs - totalGapMs);
+        var totalWeight = words.Sum(word => Math.Max(1, word.Length));
+
+        var cues = new List<PracticeSessionSpeakingPromptCueDto>();
+        var cursor = 0;
+
+        if (leadInMs > 0)
+        {
+            cues.Add(new PracticeSessionSpeakingPromptCueDto("X", 0, leadInMs));
+            cursor = leadInMs;
+        }
+
+        for (var wordIndex = 0; wordIndex < words.Count; wordIndex++)
+        {
+            var word = words[wordIndex];
+            var wordWeight = Math.Max(1, word.Length);
+            var wordDurationMs = Math.Max(120, (int)Math.Round((speechBodyMs * wordWeight) / (double)totalWeight));
+            var chunks = PromptVisemeChunkRegex.Matches(word).Select(match => match.Value).ToList();
+            if (chunks.Count == 0)
+            {
+                chunks.Add(word);
+            }
+
+            var chunkDurationMs = Math.Max(70, (int)Math.Round(wordDurationMs / (double)Math.Max(1, chunks.Count)));
+
+            for (var chunkIndex = 0; chunkIndex < chunks.Count; chunkIndex++)
+            {
+                var startMs = cursor;
+                var endMs = Math.Min(totalDurationMs, startMs + chunkDurationMs);
+                var adjustedEndMs = chunkIndex == chunks.Count - 1
+                    ? Math.Max(endMs, startMs + (int)Math.Round(chunkDurationMs * 0.85d))
+                    : endMs;
+
+                cues.Add(new PracticeSessionSpeakingPromptCueDto(
+                    MapPromptVisemeCode(chunks[chunkIndex]),
+                    startMs,
+                    adjustedEndMs));
+                cursor = endMs;
+            }
+
+            if (wordIndex < words.Count - 1)
+            {
+                cues.Add(new PracticeSessionSpeakingPromptCueDto(
+                    "X",
+                    cursor,
+                    Math.Min(totalDurationMs, cursor + gapMs)));
+                cursor += gapMs;
+            }
+        }
+
+        if (cursor < totalDurationMs)
+        {
+            cues.Add(new PracticeSessionSpeakingPromptCueDto("X", cursor, totalDurationMs));
+        }
+
+        var mergedCues = new List<PracticeSessionSpeakingPromptCueDto>();
+        foreach (var cue in cues)
+        {
+            var adjustedCue = cue with { EndMs = Math.Max(cue.EndMs, cue.StartMs + 40) };
+            if (mergedCues.Count > 0)
+            {
+                var previousCue = mergedCues[^1];
+                if (previousCue.Code == adjustedCue.Code && previousCue.EndMs >= adjustedCue.StartMs)
+                {
+                    mergedCues[^1] = previousCue with { EndMs = Math.Max(previousCue.EndMs, adjustedCue.EndMs) };
+                    continue;
+                }
+            }
+
+            mergedCues.Add(adjustedCue);
+        }
+
+        return mergedCues;
+    }
+
+    private static PracticeSessionExamDto AttachSpeakingPromptMedia(PracticeSessionExamDto exam)
+    {
+        return exam with
+        {
+            Sections = exam.Sections
+                .Select(section => section with
+                {
+                    SpeakingParts = section.SpeakingParts
+                        .Select(part => part with
+                        {
+                            Questions = part.Questions
+                                .Select(question =>
+                                {
+                                    var estimatedDurationMs = EstimatePromptDurationMs(question.Content);
+                                    return question with
+                                    {
+                                        PromptEstimatedDurationMs = estimatedDurationMs,
+                                        PromptVisemeTimeline = BuildSpeakingPromptVisemeTimeline(question.Content, estimatedDurationMs),
+                                    };
+                                })
+                                .ToList()
+                        })
+                        .ToList()
+                })
+                .ToList()
+        };
+    }
+
+    private static bool HasAnswerContent(PracticeSessionAnswerDto answer) =>
+        !string.IsNullOrWhiteSpace(answer.AnswerText)
+        || !string.IsNullOrWhiteSpace(answer.AudioUrl);
 
     private static string ToAlphaOptionLabel(int index) =>
         index >= 0 && index < 26 ? ((char)('A' + index)).ToString() : string.Empty;
@@ -597,6 +937,7 @@ public sealed class ExamExecutionService(
         {
             return null;
         }
+        exam = AttachSpeakingPromptMedia(exam);
 
         var answers = await GetSessionAnswersAsync(
             sessionId,
@@ -608,8 +949,19 @@ public sealed class ExamExecutionService(
         }
         var blueprints = FlattenObjectiveQuestions(exam);
         var writingTaskCount = CountWritingTasks(exam);
-        var totalItems = blueprints.Count > 0 ? blueprints.Count : writingTaskCount;
-        var result = await BuildPracticeSessionResultAsync(sessionId, header.ExamId, header.Status, blueprints, answers, cancellationToken);
+        var speakingQuestionCount = CountSpeakingQuestions(exam);
+        var totalItems = blueprints.Count > 0
+            ? blueprints.Count
+            : writingTaskCount > 0
+                ? writingTaskCount
+                : speakingQuestionCount;
+        PracticeSessionResultDto? result = blueprints.Count > 0
+            ? await BuildPracticeSessionResultAsync(sessionId, header.ExamId, header.Status, blueprints, answers, cancellationToken)
+            : writingTaskCount > 0
+                ? await BuildWritingSessionResultAsync(sessionId, header.ExamId, header.Status, writingTaskCount, cancellationToken)
+                : speakingQuestionCount > 0
+                    ? await BuildSpeakingSessionResultAsync(sessionId, header.ExamId, header.Status, speakingQuestionCount, cancellationToken)
+                    : null;
         var answerMap = answers
             .Where(answer => answer.QuestionId != Guid.Empty)
             .ToDictionary(answer => answer.QuestionId, answer => answer.AnswerText);
@@ -667,9 +1019,16 @@ public sealed class ExamExecutionService(
                         .Count()
                     + item.Exam.ExamSections
                         .SelectMany(section => section.WritingTasks)
+                        .Count()
+                    + item.Exam.ExamSections
+                        .SelectMany(section => section.SpeakingParts)
+                        .SelectMany(part => part.SpeakingQuestions)
                         .Count(),
                 AnsweredQuestions = item.UserAnswers
-                    .Count(answer => (answer.QuestionId != null || answer.WritingTaskId != null) && answer.AnswerText != null && answer.AnswerText != ""),
+                    .Count(answer =>
+                        (answer.QuestionId != null || answer.WritingTaskId != null || answer.SpeakingQuestionId != null)
+                        && ((answer.AnswerText != null && answer.AnswerText != "")
+                            || answer.UserAudioRecords.Any())),
                 ResumeQuestionNumber = item.UserAnswers
                     .Where(answer => answer.QuestionId != null && answer.AnswerText != null && answer.AnswerText != "")
                     .Select(answer => answer.Question!.QuestionNumber)
@@ -686,6 +1045,10 @@ public sealed class ExamExecutionService(
                 WritingScore = item.ScoringResults
                     .OrderByDescending(result => result.ScoredAt)
                     .Select(result => result.WritingScore)
+                    .FirstOrDefault(),
+                SpeakingScore = item.ScoringResults
+                    .OrderByDescending(result => result.ScoredAt)
+                    .Select(result => result.SpeakingScore)
                     .FirstOrDefault()
             })
             .ToListAsync(cancellationToken);
@@ -707,7 +1070,8 @@ public sealed class ExamExecutionService(
                 item.ReadingScore,
                 item.ListeningScore,
                 (item.ReadingScore ?? 0) + (item.ListeningScore ?? 0),
-                item.WritingScore))
+                item.WritingScore,
+                item.SpeakingScore))
             .ToList();
     }
 
@@ -741,8 +1105,13 @@ public sealed class ExamExecutionService(
             .GroupBy(item => item.WritingTaskId!.Value)
             .Select(group => group.Last())
             .ToList();
+        var speakingInputs = (dto.Answers ?? [])
+            .Where(item => item.SpeakingQuestionId.HasValue && item.SpeakingQuestionId.Value != Guid.Empty)
+            .GroupBy(item => item.SpeakingQuestionId!.Value)
+            .Select(group => group.Last())
+            .ToList();
 
-        if (inputs.Count == 0 && writingInputs.Count == 0)
+        if (inputs.Count == 0 && writingInputs.Count == 0 && speakingInputs.Count == 0)
         {
             await context.SaveChangesAsync(cancellationToken);
             return;
@@ -765,7 +1134,14 @@ public sealed class ExamExecutionService(
             .Select(task => task.Id)
             .ToHashSetAsync(cancellationToken);
 
-        if (validQuestionIds.Count == 0 && validWritingTaskIds.Count == 0)
+        var speakingQuestionIds = speakingInputs.Select(item => item.SpeakingQuestionId!.Value).ToList();
+        var validSpeakingQuestionIds = await context.SpeakingQuestions
+            .AsNoTracking()
+            .Where(question => speakingQuestionIds.Contains(question.Id) && question.Part.Section.ExamId == session.ExamId)
+            .Select(question => question.Id)
+            .ToHashSetAsync(cancellationToken);
+
+        if (validQuestionIds.Count == 0 && validWritingTaskIds.Count == 0 && validSpeakingQuestionIds.Count == 0)
         {
             await context.SaveChangesAsync(cancellationToken);
             return;
@@ -826,7 +1202,207 @@ public sealed class ExamExecutionService(
             });
         }
 
+        var existingSpeakingAnswers = await context.UserAnswers
+            .Where(answer => answer.SessionId == sessionId && answer.SpeakingQuestionId != null && validSpeakingQuestionIds.Contains(answer.SpeakingQuestionId.Value))
+            .Include(answer => answer.UserAudioRecords)
+            .ToDictionaryAsync(answer => answer.SpeakingQuestionId!.Value, cancellationToken);
+
+        foreach (var input in speakingInputs.Where(item => item.SpeakingQuestionId.HasValue && validSpeakingQuestionIds.Contains(item.SpeakingQuestionId.Value)))
+        {
+            var normalizedAnswer = string.IsNullOrWhiteSpace(input.AnswerText) ? null : input.AnswerText.Trim();
+            var speakingQuestionId = input.SpeakingQuestionId!.Value;
+            var normalizedAudioUrl = string.IsNullOrWhiteSpace(input.AudioUrl) ? null : input.AudioUrl.Trim();
+            var fileSizeKb = input.FileSizeKB;
+
+            if (!existingSpeakingAnswers.TryGetValue(speakingQuestionId, out var existingAnswer))
+            {
+                existingAnswer = new UserAnswer
+                {
+                    Id = Guid.NewGuid(),
+                    SessionId = sessionId,
+                    SpeakingQuestionId = speakingQuestionId,
+                    AnswerText = normalizedAnswer,
+                    ScoreEarned = 0,
+                    SubmittedAt = now
+                };
+                context.UserAnswers.Add(existingAnswer);
+                existingSpeakingAnswers[speakingQuestionId] = existingAnswer;
+            }
+            else
+            {
+                existingAnswer.AnswerText = normalizedAnswer;
+                existingAnswer.ScoreEarned = 0;
+                existingAnswer.SubmittedAt = now;
+            }
+
+            if (string.IsNullOrWhiteSpace(normalizedAudioUrl))
+            {
+                continue;
+            }
+
+            var audioRecord = existingAnswer.UserAudioRecords
+                .OrderByDescending(record => record.DurationSeconds ?? 0)
+                .ThenByDescending(record => record.Id)
+                .FirstOrDefault();
+
+            if (audioRecord is null)
+            {
+                audioRecord = new UserAudioRecord
+                {
+                    Id = Guid.NewGuid(),
+                    AnswerId = existingAnswer.Id,
+                };
+                existingAnswer.UserAudioRecords.Add(audioRecord);
+                context.UserAudioRecords.Add(audioRecord);
+            }
+
+            audioRecord.AudioUrl = normalizedAudioUrl;
+            audioRecord.DurationSeconds = input.DurationSeconds;
+            audioRecord.FileSizeKB = fileSizeKb;
+        }
+
         await context.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task<PracticeSessionSpeakingUploadResultDto> UploadSpeakingRecordingAsync(
+        Guid userId,
+        Guid sessionId,
+        UploadPracticeSpeakingRecordingDto dto,
+        Stream audioStream,
+        string originalFileName,
+        CancellationToken cancellationToken = default)
+    {
+        if (dto.SpeakingQuestionId == Guid.Empty)
+        {
+            throw new InvalidOperationException("SpeakingQuestionId is required.");
+        }
+
+        var session = await context.ExamSessions
+            .Include(item => item.UserAnswers)
+                .ThenInclude(answer => answer.UserAudioRecords)
+                    .ThenInclude(record => record.SpeechTranscripts)
+            .FirstOrDefaultAsync(item => item.Id == sessionId && item.UserId == userId, cancellationToken)
+            ?? throw new InvalidOperationException("Session not found.");
+
+        if (NormalizeSessionStatus(session.Status) != "InProgress")
+        {
+            throw new InvalidOperationException("Session is no longer accepting speaking recordings.");
+        }
+
+        var speakingQuestion = await context.SpeakingQuestions
+            .AsNoTracking()
+            .Include(question => question.Part)
+            .FirstOrDefaultAsync(
+                question => question.Id == dto.SpeakingQuestionId && question.Part.Section.ExamId == session.ExamId,
+                cancellationToken)
+            ?? throw new InvalidOperationException("Speaking question not found in this session.");
+
+        var storedMedia = await speakingMediaStorageService.SaveAsync(
+            sessionId,
+            dto.SpeakingQuestionId,
+            originalFileName,
+            audioStream,
+            cancellationToken);
+
+        var normalizedAnswer = string.IsNullOrWhiteSpace(dto.AnswerText) ? null : dto.AnswerText.Trim();
+        var answer = session.UserAnswers
+            .FirstOrDefault(item => item.SpeakingQuestionId == dto.SpeakingQuestionId);
+
+        if (answer is null)
+        {
+            answer = new UserAnswer
+            {
+                Id = Guid.NewGuid(),
+                SessionId = sessionId,
+                SpeakingQuestionId = dto.SpeakingQuestionId,
+                AnswerText = normalizedAnswer,
+                ScoreEarned = 0,
+                SubmittedAt = DateTime.UtcNow,
+            };
+            context.UserAnswers.Add(answer);
+            session.UserAnswers.Add(answer);
+        }
+        else
+        {
+            answer.AnswerText = normalizedAnswer;
+            answer.ScoreEarned = 0;
+            answer.SubmittedAt = DateTime.UtcNow;
+        }
+
+        var audioRecord = answer.UserAudioRecords
+            .OrderByDescending(item => item.Id)
+            .FirstOrDefault();
+
+        if (audioRecord is null)
+        {
+            audioRecord = new UserAudioRecord
+            {
+                Id = Guid.NewGuid(),
+                AnswerId = answer.Id,
+            };
+            answer.UserAudioRecords.Add(audioRecord);
+            context.UserAudioRecords.Add(audioRecord);
+        }
+
+        audioRecord.AudioUrl = storedMedia.AudioUrl;
+        audioRecord.DurationSeconds = dto.DurationSeconds;
+        audioRecord.FileSizeKB = storedMedia.FileSizeKB;
+
+        if (audioRecord.SpeechTranscripts.Count > 0)
+        {
+            context.SpeechTranscripts.RemoveRange(audioRecord.SpeechTranscripts);
+            audioRecord.SpeechTranscripts.Clear();
+        }
+
+        string? transcriptText = null;
+        var transcriptSegmentCount = 0;
+
+        try
+        {
+            var transcript = await aiIntegrationService.GenerateListeningTranscriptAsync(
+                new GenerateListeningTranscriptRequestDto(storedMedia.AudioUrl, "en"),
+                cancellationToken);
+            transcriptText = string.IsNullOrWhiteSpace(transcript.TranscriptText) ? null : transcript.TranscriptText.Trim();
+            transcriptSegmentCount = transcript.SegmentCount;
+
+            if (!string.IsNullOrWhiteSpace(transcriptText))
+            {
+                var speechTranscript = new SpeechTranscript
+                {
+                    Id = Guid.NewGuid(),
+                    AudioRecordId = audioRecord.Id,
+                    TranscriptText = transcriptText,
+                };
+                audioRecord.SpeechTranscripts.Add(speechTranscript);
+                context.SpeechTranscripts.Add(speechTranscript);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(
+                ex,
+                "Failed to generate speaking transcript for session {SessionId}, question {SpeakingQuestionId}.",
+                sessionId,
+                dto.SpeakingQuestionId);
+        }
+
+        var speakingAnalytics = BuildSpeakingAnalytics(
+            transcriptText,
+            normalizedAnswer,
+            dto.DurationSeconds,
+            speakingQuestion.Part.PartNumber);
+
+        await context.SaveChangesAsync(cancellationToken);
+
+        return new PracticeSessionSpeakingUploadResultDto(
+            speakingQuestion.Id,
+            storedMedia.AudioUrl,
+            storedMedia.FileSizeKB,
+            dto.DurationSeconds,
+            transcriptText,
+            transcriptSegmentCount,
+            normalizedAnswer,
+            speakingAnalytics);
     }
 
     public async Task<PracticeSessionResultDto> SubmitReadingListeningAsync(Guid userId, Guid sessionId, CancellationToken cancellationToken = default)
@@ -916,6 +1492,56 @@ public sealed class ExamExecutionService(
         return await BuildWritingSessionResultAsync(sessionId, session.ExamId, session.Status, writingTasks.Count, cancellationToken);
     }
 
+    public async Task<PracticeSessionResultDto> SubmitSpeakingAsync(Guid userId, Guid sessionId, CancellationToken cancellationToken = default)
+    {
+        var session = await context.ExamSessions
+            .Include(item => item.UserAnswers)
+                .ThenInclude(answer => answer.UserAudioRecords)
+            .FirstOrDefaultAsync(item => item.Id == sessionId && item.UserId == userId, cancellationToken)
+            ?? throw new InvalidOperationException("Session not found.");
+
+        var speakingQuestionCount = await context.SpeakingQuestions
+            .AsNoTracking()
+            .Where(question => question.Part.Section.ExamId == session.ExamId)
+            .CountAsync(cancellationToken);
+
+        if (speakingQuestionCount == 0)
+        {
+            throw new InvalidOperationException("Session này không có Speaking prompt.");
+        }
+
+        if (NormalizeSessionStatus(session.Status) == "Completed")
+        {
+            return await BuildSpeakingSessionResultAsync(sessionId, session.ExamId, session.Status, speakingQuestionCount, cancellationToken);
+        }
+
+        if (NormalizeSessionStatus(session.Status) != "Submitted")
+        {
+            session.Status = "Submitted";
+            session.EndedAt = DateTime.UtcNow;
+            session.TimeRemaining = Math.Max(0, session.TimeRemaining ?? 0);
+            await context.SaveChangesAsync(cancellationToken);
+        }
+
+        try
+        {
+            await aiIntegrationService.ScoreSpeakingAsync(sessionId, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Speaking AI scoring failed for session {SessionId}. Submission was saved.", sessionId);
+            throw new InvalidOperationException($"Bài Speaking đã được lưu nhưng chấm AI thất bại: {ex.Message}");
+        }
+
+        if (NormalizeSessionStatus(session.Status) == "Submitted")
+        {
+            session.Status = "Completed";
+            await context.SaveChangesAsync(cancellationToken);
+        }
+
+        return await BuildSpeakingSessionResultAsync(sessionId, session.ExamId, session.Status, speakingQuestionCount, cancellationToken);
+    }
+
     private async Task<PracticeSessionResultDto> BuildWritingSessionResultAsync(
         Guid sessionId,
         Guid examId,
@@ -956,6 +1582,45 @@ public sealed class ExamExecutionService(
             NormalizeSessionStatus(sessionStatus ?? status),
             WritingScore: scoringResult?.WritingScore,
             OverallFeedback: scoringResult?.OverallFeedback);
+    }
+
+    private async Task<PracticeSessionResultDto> BuildSpeakingSessionResultAsync(
+        Guid sessionId,
+        Guid examId,
+        string? status,
+        int speakingQuestionCount,
+        CancellationToken cancellationToken)
+    {
+        var speakingAnswers = await GetSessionAnswersAsync(sessionId, includeCorrectness: false, cancellationToken);
+        var filteredSpeakingAnswers = speakingAnswers
+            .Where(answer => answer.SpeakingQuestionId.HasValue)
+            .ToList();
+
+        var scoringResult = await context.ScoringResults
+            .AsNoTracking()
+            .Where(result => result.SessionId == sessionId)
+            .OrderByDescending(result => result.ScoredAt)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var sessionStatus = await context.ExamSessions
+            .AsNoTracking()
+            .Where(currentSession => currentSession.Id == sessionId)
+            .Select(currentSession => currentSession.Status)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return new PracticeSessionResultDto(
+            sessionId,
+            null,
+            null,
+            0,
+            0,
+            speakingQuestionCount,
+            CountAnsweredQuestions(filteredSpeakingAnswers),
+            0,
+            0,
+            NormalizeSessionStatus(sessionStatus ?? status),
+            OverallFeedback: scoringResult?.OverallFeedback,
+            SpeakingScore: scoringResult?.SpeakingScore);
     }
 
     public async Task<IReadOnlyList<AdminAttemptListItemDto>> GetAdminAttemptsAsync(
@@ -1406,6 +2071,24 @@ public sealed class ExamExecutionService(
                                 task.PromptText,
                                 task.AssetsData,
                                 task.MinWords))
+                            .ToList(),
+                        section.SpeakingParts
+                            .OrderBy(part => part.PartNumber)
+                            .Select(part => new PracticeSessionSpeakingPartDto(
+                                part.Id,
+                                part.PartNumber,
+                                part.Description,
+                                part.SpeakingQuestions
+                                    .OrderBy(question => question.OrderIndex)
+                                    .Select(question => new PracticeSessionSpeakingQuestionDto(
+                                        question.Id,
+                                        question.Content,
+                                        question.CueCardPoints,
+                                        question.AudioPromptUrl,
+                                        question.OrderIndex,
+                                        null,
+                                        null))
+                                    .ToList()))
                             .ToList()))
                     .ToList()))
             .FirstOrDefaultAsync(cancellationToken);
@@ -1443,6 +2126,9 @@ public sealed class ExamExecutionService(
 
     private static int CountWritingTasks(PracticeSessionExamDto exam) =>
         exam.Sections.SelectMany(section => section.WritingTasks).Count();
+
+    private static int CountSpeakingQuestions(PracticeSessionExamDto exam) =>
+        exam.Sections.SelectMany(section => section.SpeakingParts).SelectMany(part => part.Questions).Count();
 
     private async Task<List<ObjectiveQuestionBlueprint>> GetObjectiveQuestionBlueprintsAsync(Guid examId, CancellationToken cancellationToken)
     {
@@ -1522,7 +2208,65 @@ public sealed class ExamExecutionService(
                     .ToList()))
             .ToList();
 
-        return objectiveAnswers.Concat(writingAnswerDtos).ToList();
+        var speakingAnswers = await context.UserAnswers
+            .AsNoTracking()
+            .Where(item => item.SessionId == sessionId && item.SpeakingQuestionId != null)
+            .Include(item => item.SpeakingQuestion)
+                .ThenInclude(question => question!.Part)
+            .Include(item => item.UserAudioRecords)
+                .ThenInclude(record => record.SpeechTranscripts)
+            .Include(item => item.AiFeedbacks)
+                .ThenInclude(feedback => feedback.Rubric)
+            .OrderBy(item => item.SpeakingQuestion!.Part.PartNumber)
+            .ThenBy(item => item.SpeakingQuestion!.OrderIndex)
+            .ToListAsync(cancellationToken);
+
+        var speakingAnswerDtos = speakingAnswers
+            .Select(item =>
+            {
+                var audioRecord = item.UserAudioRecords
+                    .OrderByDescending(record => record.DurationSeconds ?? 0)
+                    .ThenByDescending(record => record.Id)
+                    .FirstOrDefault();
+                var transcriptText = audioRecord?.SpeechTranscripts
+                    .OrderByDescending(transcript => transcript.Id)
+                    .Select(transcript => transcript.TranscriptText)
+                    .FirstOrDefault(text => !string.IsNullOrWhiteSpace(text));
+                var speakingAnalytics = BuildSpeakingAnalytics(
+                    transcriptText,
+                    item.AnswerText,
+                    audioRecord?.DurationSeconds,
+                    item.SpeakingQuestion?.Part.PartNumber);
+
+                return new PracticeSessionAnswerDto(
+                    Guid.Empty,
+                    null,
+                    null,
+                    null,
+                    "SPEAKING_PROMPT",
+                    item.AnswerText,
+                    null,
+                    item.ScoreEarned,
+                    null,
+                    item.AiFeedbacks
+                        .OrderBy(feedback => feedback.Rubric.CriteriaName)
+                        .Select(feedback => new PracticeSessionFeedbackDto(
+                            feedback.Rubric.CriteriaName ?? string.Empty,
+                            feedback.BandScore,
+                            feedback.AiComment,
+                            feedback.Improvements))
+                        .ToList(),
+                    item.SpeakingQuestionId,
+                    item.SpeakingQuestion?.OrderIndex,
+                    item.SpeakingQuestion?.Part.PartNumber,
+                    audioRecord?.AudioUrl,
+                    audioRecord?.DurationSeconds,
+                    transcriptText,
+                    speakingAnalytics);
+            })
+            .ToList();
+
+        return objectiveAnswers.Concat(writingAnswerDtos).Concat(speakingAnswerDtos).ToList();
     }
 
     private async Task<List<PracticeSessionAnswerDto>> IncludeUnansweredObjectiveReviewAnswersAsync(
@@ -1623,11 +2367,12 @@ public sealed class ExamExecutionService(
             totalQuestions == 0 ? 0 : Math.Round(correctQuestions * 100d / totalQuestions, 1),
             NormalizeSessionStatus(status),
             scoringResult?.WritingScore,
-            scoringResult?.OverallFeedback);
+            scoringResult?.OverallFeedback,
+            scoringResult?.SpeakingScore);
     }
 
     private static int CountAnsweredQuestions(IReadOnlyList<PracticeSessionAnswerDto> answers) =>
-        answers.Count(answer => !string.IsNullOrWhiteSpace(answer.AnswerText));
+        answers.Count(HasAnswerContent);
 
     private static int? ComputeResumeQuestionNumber(
         IReadOnlyList<ObjectiveQuestionBlueprint> blueprints,

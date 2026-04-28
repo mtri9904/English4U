@@ -8,12 +8,14 @@ using EnglishExamApp.Infrastructure.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.Extensions.FileProviders;
 using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
+builder.Services.AddHttpContextAccessor();
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -52,6 +54,7 @@ builder.Services.AddScoped<IExamService, ExamService>();
 builder.Services.AddScoped<IExamExecutionService, ExamExecutionService>();
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
+builder.Services.AddScoped<ISpeakingMediaStorageService, LocalSpeakingMediaStorageService>();
 builder.Services.AddSingleton<IPdfGenerationProgressTracker, PdfGenerationProgressTracker>();
 builder.Services.AddSingleton<RealtimeEventDispatcher>();
 builder.Services.AddSingleton<IRealtimeEventDispatcher>(provider =>
@@ -90,6 +93,8 @@ builder.Services.AddHttpClient<IWritingVisualExtractionService, GeminiWritingVis
 });
 
 var app = builder.Build();
+var uploadRoot = Path.Combine(app.Environment.ContentRootPath, "uploads");
+Directory.CreateDirectory(uploadRoot);
 
 if (app.Environment.IsDevelopment())
 {
@@ -106,6 +111,13 @@ if (app.Environment.IsDevelopment())
 app.UseWebSockets(new WebSocketOptions
 {
     KeepAliveInterval = TimeSpan.FromSeconds(30),
+});
+
+app.UseStaticFiles();
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new PhysicalFileProvider(uploadRoot),
+    RequestPath = "/uploads",
 });
 
 app.UseRouting();

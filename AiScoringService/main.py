@@ -1,28 +1,31 @@
 import asyncio
+import base64
+import io
 import json
 import logging
+import math
 import os
 import re
 import tempfile
 import time
 import unicodedata
+import wave
+from collections import Counter
 from contextlib import asynccontextmanager
 from functools import lru_cache
-from typing import Literal
+from typing import Literal, TypeVar
 from urllib.parse import urlparse
 from urllib.request import urlopen
 
-import instructor
-import ollama
 from docling.document_converter import DocumentConverter
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from faster_whisper import WhisperModel
+from faster_whisper.transcribe import Segment, Word
 from google import genai as google_genai
 from google.genai import types as google_genai_types
-from openai import OpenAI
 from pdf_parser import OPTION_REQUIRED_TYPES, ParsedOption, parse_ielts_pdf, parsed_passage_to_group
 from pydantic import BaseModel, Field
 
@@ -30,8 +33,47 @@ logger = logging.getLogger(__name__)
 
 load_dotenv()
 
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3:8b")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
+GEMINI_SCORING_MODEL = os.getenv("GEMINI_SCORING_MODEL", "gemini-2.5-flash-lite").strip()
+GEMINI_SCORING_FALLBACK_MODELS = [
+    model.strip()
+    for model in os.getenv("GEMINI_SCORING_FALLBACK_MODELS", "gemini-2.5-flash").split(",")
+    if model.strip()
+]
+GEMINI_SCORING_MODEL_CANDIDATES = list(
+    dict.fromkeys([
+        model
+        for model in [GEMINI_SCORING_MODEL, *GEMINI_SCORING_FALLBACK_MODELS]
+        if model
+    ])
+)
+GEMINI_SPEAKING_TTS_MODEL = os.getenv("GEMINI_SPEAKING_TTS_MODEL", "gemini-3.1-flash-tts").strip()
+GEMINI_SPEAKING_TTS_FALLBACK_MODELS = [
+    model.strip()
+    for model in os.getenv("GEMINI_SPEAKING_TTS_FALLBACK_MODELS", "gemini-2.5-flash-tts,gemini-2.5-pro-tts").split(",")
+    if model.strip()
+]
+GEMINI_SPEAKING_TTS_MODEL_CANDIDATES = list(
+    dict.fromkeys([
+        model
+        for model in [GEMINI_SPEAKING_TTS_MODEL, *GEMINI_SPEAKING_TTS_FALLBACK_MODELS]
+        if model
+    ])
+)
+GEMINI_SPEAKING_TTS_VOICE = os.getenv("GEMINI_SPEAKING_TTS_VOICE", "Iapetus").strip() or "Iapetus"
+GEMINI_SPEAKING_SCORING_MODEL = os.getenv("GEMINI_SPEAKING_SCORING_MODEL", "gemini-3-flash-preview").strip()
+GEMINI_SPEAKING_SCORING_FALLBACK_MODELS = [
+    model.strip()
+    for model in os.getenv("GEMINI_SPEAKING_SCORING_FALLBACK_MODELS", "gemini-3-pro-preview").split(",")
+    if model.strip()
+]
+GEMINI_SPEAKING_SCORING_MODEL_CANDIDATES = list(
+    dict.fromkeys([
+        model
+        for model in [GEMINI_SPEAKING_SCORING_MODEL, *GEMINI_SPEAKING_SCORING_FALLBACK_MODELS]
+        if model
+    ])
+)
 GEMINI_ALIGNMENT_MODEL = os.getenv("GEMINI_ALIGNMENT_MODEL", "gemini-2.5-flash").strip()
 LISTENING_ALIGNMENT_USE_GEMINI = os.getenv("LISTENING_ALIGNMENT_USE_GEMINI", "false").strip().lower() in {"1", "true", "yes", "on"}
 GEMINI_ALIGNMENT_FALLBACK_MODELS = [
@@ -51,10 +93,7 @@ whisper_model: WhisperModel | None = None
 gemini_client: google_genai.Client | None = None
 gemini_alignment_quota_cooldown_until = 0.0
 
-instructor_client = instructor.from_openai(
-    OpenAI(base_url="http://localhost:11434/v1", api_key="ollama"),
-    mode=instructor.Mode.JSON,
-)
+StructuredModelT = TypeVar("StructuredModelT", bound=BaseModel)
 
 
 @asynccontextmanager
@@ -274,14 +313,13 @@ def convert_pdf_to_markdown(file_path: str) -> str:
 
 def generate_reading_exam_from_markdown(markdown_text: str) -> ReadingExam:
     cleaned_text = clean_garbage_text(markdown_text)
-    return instructor_client.chat.completions.create(
-        model=OLLAMA_MODEL,
-        response_model=ReadingExam,
-        messages=[
-            {"role": "system", "content": READING_SYSTEM_PROMPT},
-            {"role": "user", "content": cleaned_text},
-        ],
-        max_retries=3,
+    return generate_structured_content_with_gemini(
+        prompt=cleaned_text,
+        system_instruction=READING_SYSTEM_PROMPT,
+        response_schema=ReadingExam,
+        model_candidates=GEMINI_SCORING_MODEL_CANDIDATES,
+        error_context="reading exam generation",
+        max_output_tokens=8192,
     )
 
 
@@ -315,6 +353,22 @@ class ScoreResponse(BaseModel):
     answer_id: str
     overall_band: float
     rubrics: list[RubricScore]
+    overall_feedback: str | None = None
+    transcript_text: str | None = None
+
+
+class StructuredScoreResult(BaseModel):
+    overall_band: float
+    rubrics: list[RubricScore]
+    overall_feedback: str | None = None
+
+
+class StructuredSpeakingGeminiResult(BaseModel):
+    rubrics: list[RubricScore]
+
+
+class GenerateSpeakingPromptAudioRequest(BaseModel):
+    promptText: str
 
 
 class ListeningTranscriptRequest(BaseModel):
@@ -1881,6 +1935,12 @@ SPEAKING_RUBRICS = [
     "Pronunciation",
 ]
 
+SPEAKING_GEMINI_RUBRICS = [
+    "Fluency and Coherence",
+    "Lexical Resource",
+    "Grammatical Range and Accuracy",
+]
+
 
 def build_scoring_prompt(text: str, rubrics: list[str], skill_type: str, question_prompt: str | None) -> str:
     rubric_list = "\n".join(f"- {r}" for r in rubrics)
@@ -1909,15 +1969,835 @@ Return ONLY valid JSON in this exact format:
 }}"""
 
 
-async def call_ollama(prompt: str) -> dict:
-    response = await asyncio.to_thread(
-        ollama.chat,
-        model=OLLAMA_MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        format="json",
+def generate_structured_content_with_gemini(
+    prompt: str,
+    system_instruction: str,
+    response_schema: type[StructuredModelT],
+    model_candidates: list[str],
+    *,
+    error_context: str,
+    temperature: float = 0.1,
+    max_output_tokens: int = 2048,
+) -> StructuredModelT:
+    if gemini_client is None:
+        raise HTTPException(status_code=503, detail="Gemini client is not configured.")
+
+    last_error: Exception | None = None
+    for model_name in model_candidates:
+        try:
+            response = gemini_client.models.generate_content(
+                model=model_name,
+                contents=prompt,
+                config=google_genai_types.GenerateContentConfig(
+                    system_instruction=system_instruction,
+                    response_mime_type="application/json",
+                    response_schema=response_schema,
+                    temperature=temperature,
+                    candidate_count=1,
+                    max_output_tokens=max_output_tokens,
+                ),
+            )
+            if isinstance(response.parsed, response_schema):
+                return response.parsed
+
+            if isinstance(response.text, str) and response.text.strip():
+                return response_schema.model_validate_json(response.text)
+
+            raise RuntimeError(f"Gemini model {model_name} returned no structured payload.")
+        except HTTPException:
+            raise
+        except Exception as ex:  # pragma: no cover
+            last_error = ex
+            logger.exception("Gemini model %s failed during %s.", model_name, error_context)
+
+    raise HTTPException(status_code=503, detail=f"Gemini {error_context} failed: {last_error}") from last_error
+
+
+async def generate_structured_content_with_gemini_async(
+    prompt: str,
+    system_instruction: str,
+    response_schema: type[StructuredModelT],
+    model_candidates: list[str],
+    *,
+    error_context: str,
+    temperature: float = 0.1,
+    max_output_tokens: int = 2048,
+) -> StructuredModelT:
+    return await asyncio.to_thread(
+        generate_structured_content_with_gemini,
+        prompt,
+        system_instruction,
+        response_schema,
+        model_candidates,
+        error_context=error_context,
+        temperature=temperature,
+        max_output_tokens=max_output_tokens,
     )
-    text = response["message"]["content"].strip()
-    return json.loads(text)
+
+
+def build_speaking_prompt_tts_text(prompt_text: str) -> str:
+    normalized_prompt = re.sub(r"\s+", " ", (prompt_text or "").strip())
+    if not normalized_prompt:
+        raise ValueError("Prompt text is required for speaking TTS.")
+
+    return (
+        "Read exactly the following IELTS Speaking examiner prompt in a clear, neutral, professional examiner voice. "
+        "Do not add any introductions, explanations, or extra words.\n\n"
+        f"{normalized_prompt}"
+    )
+
+
+def pcm_to_wav_bytes(
+    pcm_bytes: bytes,
+    *,
+    channels: int = 1,
+    sample_rate: int = 24_000,
+    sample_width: int = 2,
+) -> bytes:
+    with io.BytesIO() as wav_buffer:
+        with wave.open(wav_buffer, "wb") as wav_file:
+            wav_file.setnchannels(channels)
+            wav_file.setsampwidth(sample_width)
+            wav_file.setframerate(sample_rate)
+            wav_file.writeframes(pcm_bytes)
+        return wav_buffer.getvalue()
+
+
+def generate_speaking_prompt_audio_with_gemini(
+    prompt_text: str,
+    *,
+    voice_name: str | None = None,
+) -> bytes:
+    if gemini_client is None:
+        raise HTTPException(status_code=503, detail="Gemini client is not configured.")
+
+    final_voice_name = (voice_name or GEMINI_SPEAKING_TTS_VOICE).strip() or GEMINI_SPEAKING_TTS_VOICE
+    tts_prompt = build_speaking_prompt_tts_text(prompt_text)
+
+    last_error: Exception | None = None
+    for model_name in GEMINI_SPEAKING_TTS_MODEL_CANDIDATES:
+        try:
+            response = gemini_client.models.generate_content(
+                model=model_name,
+                contents=tts_prompt,
+                config=google_genai_types.GenerateContentConfig(
+                    response_modalities=["AUDIO"],
+                    speech_config=google_genai_types.SpeechConfig(
+                        voice_config=google_genai_types.VoiceConfig(
+                            prebuilt_voice_config=google_genai_types.PrebuiltVoiceConfig(
+                                voice_name=final_voice_name,
+                            )
+                        )
+                    ),
+                    candidate_count=1,
+                ),
+            )
+
+            pcm_bytes: bytes | None = None
+            for candidate in response.candidates or []:
+                for part in candidate.content.parts or []:
+                    inline_data = getattr(part, "inline_data", None)
+                    raw_audio = getattr(inline_data, "data", None)
+                    if raw_audio is None:
+                        continue
+
+                    pcm_bytes = (
+                        base64.b64decode(raw_audio)
+                        if isinstance(raw_audio, str)
+                        else bytes(raw_audio)
+                    )
+                    break
+
+                if pcm_bytes:
+                    break
+
+            if not pcm_bytes:
+                raise RuntimeError(f"Gemini TTS model {model_name} returned no audio payload.")
+
+            return pcm_to_wav_bytes(pcm_bytes)
+        except HTTPException:
+            raise
+        except Exception as ex:  # pragma: no cover
+            last_error = ex
+            logger.exception("Gemini TTS model %s failed for speaking prompt generation.", model_name)
+
+    raise HTTPException(status_code=503, detail=f"Gemini speaking TTS failed: {last_error}") from last_error
+
+
+async def generate_speaking_prompt_audio_with_gemini_async(
+    prompt_text: str,
+    *,
+    voice_name: str | None = None,
+) -> bytes:
+    return await asyncio.to_thread(
+        generate_speaking_prompt_audio_with_gemini,
+        prompt_text,
+        voice_name=voice_name,
+    )
+
+
+async def call_scoring_model(prompt: str) -> StructuredScoreResult:
+    return await generate_structured_content_with_gemini_async(
+        prompt=prompt,
+        system_instruction=(
+            "You are an IELTS examiner. Return only valid JSON that matches the requested schema."
+        ),
+        response_schema=StructuredScoreResult,
+        model_candidates=GEMINI_SCORING_MODEL_CANDIDATES,
+        error_context="scoring",
+        max_output_tokens=2048,
+    )
+
+
+SPEAKING_FILLER_PHRASES = (
+    "uh",
+    "um",
+    "erm",
+    "ah",
+    "you know",
+    "i mean",
+    "kind of",
+    "sort of",
+)
+
+SPEAKING_CONNECTOR_PHRASES = (
+    "because",
+    "so",
+    "but",
+    "also",
+    "however",
+    "for example",
+    "for instance",
+    "personally",
+    "in my opinion",
+    "first",
+    "second",
+    "finally",
+    "although",
+    "while",
+)
+
+SPEAKING_STOPWORDS = {
+    "a", "an", "and", "are", "as", "at", "be", "been", "being", "but", "by", "do", "does",
+    "for", "from", "had", "has", "have", "he", "her", "hers", "him", "his", "i", "if", "in",
+    "is", "it", "its", "me", "my", "of", "on", "or", "our", "ours", "she", "that", "the",
+    "their", "theirs", "them", "they", "this", "to", "us", "was", "we", "were", "with", "you",
+    "your", "yours",
+}
+
+
+def clamp_band(value: float) -> float:
+    return max(0.0, min(9.0, value))
+
+
+def round_band_half(value: float) -> float:
+    return round(clamp_band(value) * 2) / 2
+
+
+def clamp_speaking_band_to_rule_window(
+    rule_band: float,
+    gemini_band: float,
+    *,
+    max_adjustment: float = 1.0,
+) -> float:
+    lower_bound = clamp_band(rule_band - max_adjustment)
+    upper_bound = clamp_band(rule_band + max_adjustment)
+    return round_band_half(min(upper_bound, max(lower_bound, gemini_band)))
+
+
+def get_speaking_target_duration_seconds(part_number: int | None) -> float | None:
+    if part_number == 1:
+        return 45.0
+    if part_number == 2:
+        return 120.0
+    if part_number == 3:
+        return 90.0
+    return None
+
+
+def extract_speaking_tokens(text: str) -> list[str]:
+    return re.findall(r"[a-z]+(?:'[a-z]+)?", text.lower())
+
+
+def count_phrase_occurrences(text: str, phrases: tuple[str, ...]) -> int:
+    normalized = f" {re.sub(r'\\s+', ' ', text.lower()).strip()} "
+    return sum(normalized.count(f" {phrase} ") for phrase in phrases)
+
+
+def transcribe_audio_file(
+    file_path: str,
+    *,
+    language: str = "en",
+    word_timestamps: bool = False,
+) -> tuple[list[Segment], str]:
+    if whisper_model is None:
+        raise RuntimeError("Whisper model not loaded.")
+
+    segments, _ = whisper_model.transcribe(
+        file_path,
+        language=language,
+        beam_size=5,
+        vad_filter=True,
+        word_timestamps=word_timestamps,
+    )
+    normalized_segments = [
+        segment
+        for segment in segments
+        if segment.text and segment.text.strip()
+    ]
+    transcript = " ".join(segment.text.strip() for segment in normalized_segments).strip()
+    return normalized_segments, transcript
+
+
+def infer_duration_seconds(segments: list[Segment], fallback_duration_seconds: float | None) -> float | None:
+    if fallback_duration_seconds is not None and fallback_duration_seconds > 0:
+        return fallback_duration_seconds
+
+    word_ends = [
+        word.end
+        for segment in segments
+        for word in (segment.words or [])
+        if word.end is not None
+    ]
+    if word_ends:
+        return max(word_ends)
+
+    segment_ends = [segment.end for segment in segments if segment.end is not None]
+    if segment_ends:
+        return max(segment_ends)
+
+    return None
+
+
+def build_speaking_feature_map(
+    transcript: str,
+    segments: list[Segment],
+    *,
+    part_number: int | None,
+    duration_seconds: float | None,
+) -> dict[str, float | int | None]:
+    tokens = extract_speaking_tokens(transcript)
+    total_words = len(tokens)
+    unique_ratio = (len(set(tokens)) / total_words) if total_words else 0.0
+    content_tokens = [token for token in tokens if token not in SPEAKING_STOPWORDS]
+    content_ratio = (len(content_tokens) / total_words) if total_words else 0.0
+    long_word_ratio = (
+        sum(1 for token in tokens if len(token) >= 7) / total_words
+        if total_words
+        else 0.0
+    )
+    filler_count = count_phrase_occurrences(transcript, SPEAKING_FILLER_PHRASES)
+    filler_ratio = filler_count / max(total_words, 1)
+    connector_count = count_phrase_occurrences(transcript, SPEAKING_CONNECTOR_PHRASES)
+
+    consecutive_repetitions = sum(
+        1
+        for index in range(1, total_words)
+        if tokens[index] == tokens[index - 1]
+    )
+    repetition_ratio = (
+        consecutive_repetitions / max(total_words - 1, 1)
+        if total_words > 1
+        else 0.0
+    )
+
+    punctuation_sentences = len(re.findall(r"[.!?]", transcript))
+    sentence_units = max(1, punctuation_sentences or len(segments) or 1)
+    avg_words_per_sentence = total_words / sentence_units if sentence_units else float(total_words)
+
+    effective_duration_seconds = infer_duration_seconds(segments, duration_seconds)
+    words_per_minute = (
+        round((total_words / effective_duration_seconds) * 60, 1)
+        if total_words and effective_duration_seconds and effective_duration_seconds > 0
+        else None
+    )
+
+    flat_words: list[Word] = [
+        word
+        for segment in segments
+        for word in (segment.words or [])
+        if word.word and word.word.strip()
+    ]
+
+    if flat_words:
+        mean_word_probability = sum(word.probability for word in flat_words) / len(flat_words)
+        low_confidence_ratio = (
+            sum(1 for word in flat_words if word.probability < 0.55) / len(flat_words)
+        )
+        pauses = [
+            max(0.0, current.start - previous.end)
+            for previous, current in zip(flat_words, flat_words[1:])
+        ]
+    else:
+        derived_probabilities = [
+            max(0.05, min(0.99, math.exp(segment.avg_logprob)))
+            for segment in segments
+        ]
+        mean_word_probability = (
+            sum(derived_probabilities) / len(derived_probabilities)
+            if derived_probabilities
+            else 0.0
+        )
+        low_confidence_ratio = (
+            sum(1 for probability in derived_probabilities if probability < 0.55) / len(derived_probabilities)
+            if derived_probabilities
+            else 0.0
+        )
+        pauses = [
+            max(0.0, current.start - previous.end)
+            for previous, current in zip(segments, segments[1:])
+            if current.start is not None and previous.end is not None
+        ]
+
+    total_pause_seconds = sum(pauses)
+    long_pause_count = sum(1 for pause in pauses if pause >= 1.2)
+    pause_ratio = (
+        total_pause_seconds / effective_duration_seconds
+        if effective_duration_seconds and effective_duration_seconds > 0
+        else 0.0
+    )
+    avg_no_speech_prob = (
+        sum(segment.no_speech_prob for segment in segments) / len(segments)
+        if segments
+        else None
+    )
+    target_duration_seconds = get_speaking_target_duration_seconds(part_number)
+    coverage_ratio = (
+        effective_duration_seconds / target_duration_seconds
+        if effective_duration_seconds and target_duration_seconds and target_duration_seconds > 0
+        else None
+    )
+
+    return {
+        "word_count": total_words,
+        "unique_ratio": unique_ratio,
+        "content_ratio": content_ratio,
+        "long_word_ratio": long_word_ratio,
+        "filler_count": filler_count,
+        "filler_ratio": filler_ratio,
+        "connector_count": connector_count,
+        "repetition_ratio": repetition_ratio,
+        "sentence_units": sentence_units,
+        "avg_words_per_sentence": avg_words_per_sentence,
+        "duration_seconds": effective_duration_seconds,
+        "words_per_minute": words_per_minute,
+        "mean_word_probability": mean_word_probability,
+        "low_confidence_ratio": low_confidence_ratio,
+        "pause_ratio": pause_ratio,
+        "long_pause_count": long_pause_count,
+        "avg_no_speech_prob": avg_no_speech_prob,
+        "coverage_ratio": coverage_ratio,
+    }
+
+
+def build_speaking_comment(
+    *,
+    criteria: str,
+    band: float,
+    features: dict[str, float | int | None],
+    audio_backed: bool,
+) -> tuple[str, str]:
+    word_count = int(features["word_count"] or 0)
+    words_per_minute = features["words_per_minute"]
+    pause_ratio = float(features["pause_ratio"] or 0.0)
+    connector_count = int(features["connector_count"] or 0)
+    unique_ratio = float(features["unique_ratio"] or 0.0)
+    repetition_ratio = float(features["repetition_ratio"] or 0.0)
+    mean_word_probability = float(features["mean_word_probability"] or 0.0)
+    low_confidence_ratio = float(features["low_confidence_ratio"] or 0.0)
+    filler_ratio = float(features["filler_ratio"] or 0.0)
+
+    if criteria == "Fluency and Coherence":
+        pace_text = f"tốc độ nói khoảng {words_per_minute} WPM" if words_per_minute is not None else "nhịp nói chưa đủ dữ liệu thời lượng"
+        comment = (
+            f"Bài nói có khoảng {word_count} từ; {pace_text}. "
+            f"Mức ngắt quãng đang ở khoảng {round(pause_ratio * 100)}% thời lượng và số liên từ ý là {connector_count}."
+        )
+        improvements = (
+            "Giữ câu trả lời theo 2-3 ý rõ ràng, nối ý bằng because/so/however/for example, "
+            "và giảm các quãng dừng dài hoặc filler không cần thiết."
+        )
+        return comment, improvements
+
+    if criteria == "Lexical Resource":
+        comment = (
+            f"Độ đa dạng từ vựng hiện ở khoảng {round(unique_ratio * 100)}%, "
+            f"tỉ lệ lặp từ liên tiếp khoảng {round(repetition_ratio * 100)}%."
+        )
+        improvements = (
+            "Mở rộng paraphrase cho các ý quen thuộc, thay từ lặp bằng collocation tự nhiên, "
+            "và thêm ví dụ cụ thể thay vì lặp lại cùng một cụm từ."
+        )
+        return comment, improvements
+
+    if criteria == "Grammatical Range and Accuracy":
+        comment = (
+            f"Câu trả lời được chia thành khoảng {int(features['sentence_units'] or 1)} đơn vị ý, "
+            f"độ dài trung bình khoảng {round(float(features['avg_words_per_sentence'] or 0.0), 1)} từ/ý."
+        )
+        improvements = (
+            "Luyện kết hợp câu đơn với câu có mệnh đề because/although/when, "
+            "giữ mỗi ý trọn vẹn chủ ngữ-động từ-tân ngữ và tránh lặp cấu trúc quá ngắn."
+        )
+        return comment, improvements
+
+    confidence_text = (
+        f"Độ rõ theo ASR khoảng {round(mean_word_probability * 100)}%"
+        if audio_backed
+        else "Điểm này đang dựa chủ yếu trên transcript vì chưa có đủ đặc trưng audio"
+    )
+    comment = (
+        f"{confidence_text}; tỉ lệ từ có độ chắc thấp khoảng {round(low_confidence_ratio * 100)}% "
+        f"và filler khoảng {round(filler_ratio * 100)}%."
+    )
+    improvements = (
+        "Nói chậm hơn một chút ở từ khóa, nhấn trọng âm rõ ở danh từ/động từ chính, "
+        "và giữ hơi đều để cuối câu không bị nuốt âm."
+    )
+    return comment, improvements
+
+
+def build_speaking_gemini_prompt(
+    transcript: str,
+    *,
+    question_prompt: str | None,
+    part_number: int | None,
+    features: dict[str, float | int | None],
+    rule_rubric_bands: dict[str, float],
+) -> str:
+    part_context = {
+        1: "Part 1 focuses on short natural answers about familiar topics.",
+        2: "Part 2 focuses on a sustained individual long turn with clear development.",
+        3: "Part 3 focuses on extended discussion, reasons, comparisons and abstract support.",
+    }.get(part_number, "Use the transcript as part of a full IELTS Speaking interview.")
+
+    metric_lines = [
+        f"- Word count: {int(features['word_count'] or 0)}",
+        f"- Words per minute: {features['words_per_minute'] if features['words_per_minute'] is not None else 'n/a'}",
+        f"- Pause ratio: {round(float(features['pause_ratio'] or 0.0) * 100, 1)}%",
+        f"- Filler ratio: {round(float(features['filler_ratio'] or 0.0) * 100, 1)}%",
+        f"- Connector count: {int(features['connector_count'] or 0)}",
+        f"- Unique word ratio: {round(float(features['unique_ratio'] or 0.0) * 100, 1)}%",
+        f"- Average words per sentence unit: {round(float(features['avg_words_per_sentence'] or 0.0), 1)}",
+    ]
+    rubric_anchor_lines = "\n".join(
+        f"- {criteria}: {band:.1f}"
+        for criteria, band in rule_rubric_bands.items()
+        if criteria in SPEAKING_GEMINI_RUBRICS
+    )
+    metrics_block = "\n".join(metric_lines)
+    topic_block = question_prompt.strip() if question_prompt and question_prompt.strip() else "No explicit prompt provided."
+
+    return f"""You are assisting an IELTS Speaking scoring engine.
+Assess the response using the official IELTS Speaking criteria in paraphrased form:
+- Fluency and Coherence: continuity, manageable hesitation, logical progression, and effective use of linking language.
+- Lexical Resource: range, precision, flexibility, and ability to paraphrase naturally.
+- Grammatical Range and Accuracy: variety of sentence patterns and control of errors so meaning remains clear.
+
+Important rules:
+- Score ONLY these 3 criteria: Fluency and Coherence, Lexical Resource, Grammatical Range and Accuracy.
+- Do NOT score Pronunciation here because the main scoring engine handles it from audio-backed signals.
+- Bands must be IELTS bands from 0 to 9 in 0.5 increments.
+- Use the rule-based anchor bands below as guardrails. Stay close to them and only adjust when the transcript evidence supports it.
+- Keep comments concise, concrete, and in Vietnamese.
+- Keep improvements specific, practical, and in Vietnamese.
+
+Speaking context:
+- Interview part: {part_number if part_number is not None else "unknown"}
+- Part guidance: {part_context}
+- Question/topic: {topic_block}
+
+Observed signals:
+{metrics_block}
+
+Rule-based anchor bands:
+{rubric_anchor_lines}
+
+Candidate transcript:
+\"\"\"
+{transcript.strip()}
+\"\"\"
+
+Return ONLY valid JSON in this exact format:
+{{
+  "rubrics": [
+    {{
+      "criteria": "Fluency and Coherence",
+      "band": 6.0,
+      "comment": "Nhận xét ngắn bằng tiếng Việt.",
+      "improvements": "Gợi ý cải thiện ngắn bằng tiếng Việt."
+    }},
+    {{
+      "criteria": "Lexical Resource",
+      "band": 6.0,
+      "comment": "Nhận xét ngắn bằng tiếng Việt.",
+      "improvements": "Gợi ý cải thiện ngắn bằng tiếng Việt."
+    }},
+    {{
+      "criteria": "Grammatical Range and Accuracy",
+      "band": 6.0,
+      "comment": "Nhận xét ngắn bằng tiếng Việt.",
+      "improvements": "Gợi ý cải thiện ngắn bằng tiếng Việt."
+    }}
+  ]
+}}"""
+
+
+def normalize_speaking_gemini_result(
+    result: StructuredSpeakingGeminiResult,
+) -> dict[str, RubricScore]:
+    normalized: dict[str, RubricScore] = {}
+
+    for rubric in result.rubrics:
+        matched_criteria = next(
+            (
+                criteria
+                for criteria in SPEAKING_GEMINI_RUBRICS
+                if criteria.lower() == rubric.criteria.strip().lower()
+            ),
+            None,
+        )
+        if matched_criteria is None or matched_criteria in normalized:
+            continue
+
+        normalized[matched_criteria] = RubricScore(
+            criteria=matched_criteria,
+            band=round_band_half(clamp_band(rubric.band)),
+            comment=rubric.comment.strip() or "Gemini chưa trả nhận xét đủ rõ cho tiêu chí này.",
+            improvements=rubric.improvements.strip() or "Cần luyện thêm tiêu chí này với câu trả lời tự nhiên hơn.",
+        )
+
+    return normalized
+
+
+async def maybe_get_speaking_gemini_rubrics(
+    transcript: str,
+    *,
+    question_prompt: str | None,
+    answer_id: str,
+    part_number: int | None,
+    features: dict[str, float | int | None],
+    rule_rubric_bands: dict[str, float],
+) -> dict[str, RubricScore]:
+    if gemini_client is None or int(features["word_count"] or 0) < 8:
+        return {}
+
+    try:
+        result = await generate_structured_content_with_gemini_async(
+            prompt=build_speaking_gemini_prompt(
+                transcript,
+                question_prompt=question_prompt,
+                part_number=part_number,
+                features=features,
+                rule_rubric_bands=rule_rubric_bands,
+            ),
+            system_instruction=(
+                "You are an IELTS Speaking examiner assistant. "
+                "Return only valid JSON matching the requested schema."
+            ),
+            response_schema=StructuredSpeakingGeminiResult,
+            model_candidates=GEMINI_SPEAKING_SCORING_MODEL_CANDIDATES,
+            error_context="speaking scoring",
+            max_output_tokens=1200,
+        )
+        return normalize_speaking_gemini_result(result)
+    except Exception:  # pragma: no cover
+        logger.exception("Gemini speaking rubric refinement failed for answer %s.", answer_id)
+        return {}
+
+
+async def score_speaking_rubrics(
+    transcript: str,
+    *,
+    answer_id: str,
+    question_prompt: str | None,
+    part_number: int | None,
+    duration_seconds: float | None,
+    segments: list[Segment],
+) -> tuple[list[RubricScore], str]:
+    features = build_speaking_feature_map(
+        transcript,
+        segments,
+        part_number=part_number,
+        duration_seconds=duration_seconds,
+    )
+    word_count = int(features["word_count"] or 0)
+    words_per_minute = features["words_per_minute"]
+    pause_ratio = float(features["pause_ratio"] or 0.0)
+    filler_ratio = float(features["filler_ratio"] or 0.0)
+    connector_count = int(features["connector_count"] or 0)
+    coverage_ratio = features["coverage_ratio"]
+    unique_ratio = float(features["unique_ratio"] or 0.0)
+    long_word_ratio = float(features["long_word_ratio"] or 0.0)
+    repetition_ratio = float(features["repetition_ratio"] or 0.0)
+    avg_words_per_sentence = float(features["avg_words_per_sentence"] or 0.0)
+    low_confidence_ratio = float(features["low_confidence_ratio"] or 0.0)
+    mean_word_probability = float(features["mean_word_probability"] or 0.0)
+    avg_no_speech_prob = float(features["avg_no_speech_prob"] or 0.0)
+    audio_backed = bool(segments)
+
+    fluency_score = 6.0
+    if word_count < 12:
+        fluency_score = 4.0
+    elif word_count < 25:
+        fluency_score = min(fluency_score, 5.0)
+
+    if words_per_minute is not None:
+        if words_per_minute < 75:
+            fluency_score -= 1.0
+        elif words_per_minute < 95:
+            fluency_score -= 0.5
+        elif 105 <= words_per_minute <= 165:
+            fluency_score += 0.5
+        elif words_per_minute > 185:
+            fluency_score -= 0.5
+
+    if coverage_ratio is not None:
+        if coverage_ratio < 0.45:
+            fluency_score -= 1.0
+        elif coverage_ratio < 0.7:
+            fluency_score -= 0.5
+        elif 0.85 <= coverage_ratio <= 1.2:
+            fluency_score += 0.25
+
+    if pause_ratio > 0.32:
+        fluency_score -= 1.0
+    elif pause_ratio > 0.22:
+        fluency_score -= 0.5
+    elif pause_ratio < 0.12 and word_count >= 25:
+        fluency_score += 0.25
+
+    if filler_ratio > 0.08:
+        fluency_score -= 0.5
+    elif filler_ratio < 0.02:
+        fluency_score += 0.25
+
+    if connector_count >= 3 and word_count >= 35:
+        fluency_score += 0.5
+    elif connector_count == 0 and word_count >= 30:
+        fluency_score -= 0.25
+
+    if int(features["long_pause_count"] or 0) >= 5:
+        fluency_score -= 0.5
+
+    lexical_score = 6.0
+    if word_count < 12:
+        lexical_score = 4.0
+    elif word_count < 25:
+        lexical_score = min(lexical_score, 5.0)
+
+    if unique_ratio < 0.42:
+        lexical_score -= 1.0
+    elif unique_ratio < 0.52:
+        lexical_score -= 0.5
+    elif unique_ratio > 0.68 and word_count >= 25:
+        lexical_score += 0.5
+
+    if long_word_ratio > 0.18 and word_count >= 25:
+        lexical_score += 0.25
+    if float(features["content_ratio"] or 0.0) > 0.55 and word_count >= 20:
+        lexical_score += 0.25
+    if repetition_ratio > 0.12:
+        lexical_score -= 0.5
+    if filler_ratio > 0.08:
+        lexical_score -= 0.25
+
+    grammar_score = 5.5
+    if word_count < 12:
+        grammar_score = 4.0
+    elif word_count < 25:
+        grammar_score = min(grammar_score, 5.0)
+
+    if avg_words_per_sentence >= 7 and int(features["sentence_units"] or 1) >= 2:
+        grammar_score += 0.5
+    elif avg_words_per_sentence < 4 and word_count >= 15:
+        grammar_score -= 0.5
+
+    if connector_count >= 2:
+        grammar_score += 0.25
+    if repetition_ratio > 0.1:
+        grammar_score -= 0.25
+    if unique_ratio > 0.6 and word_count >= 30:
+        grammar_score += 0.25
+    if filler_ratio > 0.08:
+        grammar_score -= 0.25
+    if low_confidence_ratio > 0.35:
+        grammar_score -= 0.5
+
+    pronunciation_score = 6.0
+    if word_count < 10:
+        pronunciation_score = 4.5
+
+    if mean_word_probability < 0.45:
+        pronunciation_score -= 1.5
+    elif mean_word_probability < 0.6:
+        pronunciation_score -= 0.75
+    elif mean_word_probability < 0.72:
+        pronunciation_score -= 0.25
+    elif mean_word_probability > 0.88 and audio_backed:
+        pronunciation_score += 0.5
+
+    if low_confidence_ratio > 0.35:
+        pronunciation_score -= 1.0
+    elif low_confidence_ratio > 0.22:
+        pronunciation_score -= 0.5
+
+    if pause_ratio > 0.28:
+        pronunciation_score -= 0.5
+    if avg_no_speech_prob > 0.55:
+        pronunciation_score -= 0.25
+    if words_per_minute is not None and (words_per_minute < 75 or words_per_minute > 190):
+        pronunciation_score -= 0.25
+
+    rule_rubric_bands = {
+        "Fluency and Coherence": round_band_half(fluency_score),
+        "Lexical Resource": round_band_half(lexical_score),
+        "Grammatical Range and Accuracy": round_band_half(grammar_score),
+        "Pronunciation": round_band_half(pronunciation_score),
+    }
+
+    gemini_rubrics = await maybe_get_speaking_gemini_rubrics(
+        transcript,
+        question_prompt=question_prompt,
+        answer_id=answer_id,
+        part_number=part_number,
+        features=features,
+        rule_rubric_bands=rule_rubric_bands,
+    )
+
+    rubrics: list[RubricScore] = []
+    final_rubric_bands: dict[str, float] = {}
+
+    for criteria, rule_band in rule_rubric_bands.items():
+        rule_comment, rule_improvements = build_speaking_comment(
+            criteria=criteria,
+            band=rule_band,
+            features=features,
+            audio_backed=audio_backed,
+        )
+        gemini_rubric = gemini_rubrics.get(criteria)
+        final_band = (
+            clamp_speaking_band_to_rule_window(rule_band, gemini_rubric.band)
+            if gemini_rubric is not None
+            else rule_band
+        )
+        rubrics.append(RubricScore(
+            criteria=criteria,
+            band=final_band,
+            comment=gemini_rubric.comment if gemini_rubric is not None else rule_comment,
+            improvements=gemini_rubric.improvements if gemini_rubric is not None else rule_improvements,
+        ))
+        final_rubric_bands[criteria] = final_band
+
+    strongest = sorted(final_rubric_bands.items(), key=lambda item: item[1], reverse=True)[:2]
+    weakest = sorted(final_rubric_bands.items(), key=lambda item: item[1])[:2]
+    overall_band = round_band_half(sum(final_rubric_bands.values()) / len(final_rubric_bands))
+    overall_feedback = (
+        f"Ước lượng band Speaking hiện tại khoảng {overall_band:.1f}. "
+        f"Điểm mạnh tương đối nằm ở {', '.join(criteria for criteria, _ in strongest)}. "
+        f"Hai ưu tiên nên luyện tiếp là {', '.join(criteria for criteria, _ in weakest)}."
+    )
+    return rubrics, overall_feedback
 
 
 @app.post("/api/ai/score-writing", response_model=ScoreResponse)
@@ -1931,52 +2811,75 @@ async def score_writing(request: ScoreWritingRequest):
         skill_type="Writing",
         question_prompt=request.question_prompt,
     )
-    result = await call_ollama(prompt)
+    result = await call_scoring_model(prompt)
     return ScoreResponse(
         session_id=request.session_id,
         answer_id=request.answer_id,
-        overall_band=result.get("overall_band", 0),
-        rubrics=[RubricScore(**r) for r in result.get("rubrics", [])],
+        overall_band=result.overall_band,
+        rubrics=result.rubrics,
+        overall_feedback=result.overall_feedback,
     )
 
 
 @app.post("/api/ai/score-speaking", response_model=ScoreResponse)
 async def score_speaking(
-    audio: UploadFile = File(...),
+    audio: UploadFile | None = File(None),
     session_id: str = Form(...),
     answer_id: str = Form(...),
     question_prompt: str | None = Form(None),
+    transcript_text: str | None = Form(None),
+    part_number: int | None = Form(None),
+    duration_seconds: float | None = Form(None),
 ):
-    if whisper_model is None:
-        raise HTTPException(status_code=503, detail="Whisper model not loaded.")
+    transcript = (transcript_text or "").strip()
+    segments: list[Segment] = []
 
-    suffix = os.path.splitext(audio.filename or ".wav")[1]
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-        content = await audio.read()
-        tmp.write(content)
-        tmp_path = tmp.name
+    if audio is not None:
+        if whisper_model is None:
+            raise HTTPException(status_code=503, detail="Whisper model not loaded.")
 
-    try:
-        segments, _ = whisper_model.transcribe(tmp_path, language="en")
-        transcript = " ".join(segment.text.strip() for segment in segments)
-    finally:
-        os.unlink(tmp_path)
+        suffix = os.path.splitext(audio.filename or ".wav")[1]
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            content = await audio.read()
+            tmp.write(content)
+            tmp_path = tmp.name
+
+        try:
+            segments, detected_transcript = await asyncio.to_thread(
+                transcribe_audio_file,
+                tmp_path,
+                language="en",
+                word_timestamps=True,
+            )
+            transcript = detected_transcript or transcript
+        except Exception as ex:
+            logger.exception("Failed to transcribe speaking audio for answer %s.", answer_id)
+            if not transcript:
+                raise HTTPException(status_code=400, detail=f"Could not transcribe audio: {ex}") from ex
+        finally:
+            os.unlink(tmp_path)
+    elif not transcript:
+        raise HTTPException(status_code=400, detail="Audio file or transcript_text is required.")
 
     if not transcript.strip():
         raise HTTPException(status_code=400, detail="Could not transcribe audio.")
 
-    prompt = build_scoring_prompt(
-        text=transcript,
-        rubrics=SPEAKING_RUBRICS,
-        skill_type="Speaking",
+    rubrics, overall_feedback = await score_speaking_rubrics(
+        transcript,
+        answer_id=answer_id,
         question_prompt=question_prompt,
+        part_number=part_number,
+        duration_seconds=duration_seconds,
+        segments=segments,
     )
-    result = await call_ollama(prompt)
+    overall_band = round_band_half(sum(rubric.band for rubric in rubrics) / len(rubrics))
     return ScoreResponse(
         session_id=session_id,
         answer_id=answer_id,
-        overall_band=result.get("overall_band", 0),
-        rubrics=[RubricScore(**r) for r in result.get("rubrics", [])],
+        overall_band=overall_band,
+        rubrics=rubrics,
+        overall_feedback=overall_feedback,
+        transcript_text=transcript,
     )
 
 
@@ -1990,6 +2893,22 @@ def download_audio_url_to_tempfile(audio_url: str) -> str:
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         tmp.write(content)
         return tmp.name
+
+
+@app.post("/api/ai/generate-speaking-prompt-audio")
+async def generate_speaking_prompt_audio(request: GenerateSpeakingPromptAudioRequest):
+    prompt_text = (request.promptText or "").strip()
+    if not prompt_text:
+        raise HTTPException(status_code=400, detail="promptText is required.")
+
+    wav_bytes = await generate_speaking_prompt_audio_with_gemini_async(prompt_text)
+    return StreamingResponse(
+        io.BytesIO(wav_bytes),
+        media_type="audio/wav",
+        headers={
+            "Content-Disposition": 'inline; filename="speaking-prompt.wav"',
+        },
+    )
 
 
 @app.post("/api/ai/generate-listening-transcript", response_model=ListeningTranscriptResponse)
@@ -2008,21 +2927,11 @@ async def generate_listening_transcript(request: ListeningTranscriptRequest):
         raise HTTPException(status_code=400, detail=f"Could not download audio from URL: {ex}") from ex
 
     try:
-        segments, _ = whisper_model.transcribe(
+        normalized_segments, transcript_text = await asyncio.to_thread(
+            transcribe_audio_file,
             tmp_path,
             language=(request.language or "en").strip() or "en",
-            beam_size=5,
-            vad_filter=True,
         )
-        normalized_segments = [
-            ListeningTranscriptSegment(
-                start_time=round(segment.start, 2),
-                end_time=round(segment.end, 2) if segment.end is not None else None,
-                text=segment.text.strip(),
-            )
-            for segment in segments
-            if segment.text and segment.text.strip()
-        ]
     finally:
         if os.path.exists(tmp_path):
             os.unlink(tmp_path)
@@ -2030,9 +2939,15 @@ async def generate_listening_transcript(request: ListeningTranscriptRequest):
     if not normalized_segments:
         raise HTTPException(status_code=400, detail="Could not transcribe audio.")
 
-    transcript_text = " ".join(segment.text for segment in normalized_segments).strip()
     return ListeningTranscriptResponse(
-        segments=normalized_segments,
+        segments=[
+            ListeningTranscriptSegment(
+                start_time=round(segment.start, 2),
+                end_time=round(segment.end, 2) if segment.end is not None else None,
+                text=segment.text.strip(),
+            )
+            for segment in normalized_segments
+        ],
         transcript_text=transcript_text,
     )
 
@@ -2506,14 +3421,13 @@ def generate_single_passage(
 
 Trả về QuestionGroup cho Passage {passage_number} (title, content = toàn bộ passage, questions = danh sách câu hỏi)."""
 
-    result = instructor_client.chat.completions.create(
-        model=OLLAMA_MODEL,
-        response_model=ReadingQuestionGroup,
-        messages=[
-            {"role": "system", "content": STREAMING_SYSTEM_PROMPT},
-            {"role": "user", "content": user_content},
-        ],
-        max_retries=3,
+    result = generate_structured_content_with_gemini(
+        prompt=user_content,
+        system_instruction=STREAMING_SYSTEM_PROMPT,
+        response_schema=ReadingQuestionGroup,
+        model_candidates=GEMINI_SCORING_MODEL_CANDIDATES,
+        error_context=f"reading passage extraction for passage {passage_number}",
+        max_output_tokens=8192,
     )
 
     group_dict = result.model_dump()

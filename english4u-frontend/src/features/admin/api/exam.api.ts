@@ -11,6 +11,7 @@ import type {
     PdfQuestionGroupPreviewDto,
     PdfRawExtractionPreviewDto,
     PdfRawReviewDto,
+    UploadSpeakingPromptAudioResult,
     WritingVisualExtractionResultDto,
 } from '../types/exam.types';
 
@@ -48,6 +49,15 @@ export const examApi = {
     },
     updateStatus: async ({ id, isPublished }: { id: string; isPublished: boolean }): Promise<void> => {
         await axiosInstance.patch(`/exam/${id}/publish`, { isPublished });
+    },
+    uploadSpeakingPromptAudio: async (file: File): Promise<UploadSpeakingPromptAudioResult> => {
+        const formData = new FormData();
+        formData.append('file', file);
+        const res = await axiosInstance.post<UploadSpeakingPromptAudioResult>('/exam/speaking-prompt-audio', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+            timeout: 2 * 60 * 1000,
+        });
+        return res.data;
     },
     generateFromPdf: async ({ file, clientRequestId }: { file: File; clientRequestId: string }): Promise<GenerateExamFromPdfResult> => {
         const formData = new FormData();

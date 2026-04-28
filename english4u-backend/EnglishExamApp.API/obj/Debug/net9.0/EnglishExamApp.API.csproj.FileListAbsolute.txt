@@ -198,3 +198,4 @@ C:\Users\Hande\OneDrive\Documents\English4skills\english4u-backend\EnglishExamAp
 C:\Users\Hande\OneDrive\Documents\English4skills\english4u-backend\EnglishExamApp.API\bin\Debug\net9.0\runtimes\win-x64\native\pdfium.dll
 C:\Users\Hande\OneDrive\Documents\English4skills\english4u-backend\EnglishExamApp.API\bin\Debug\net9.0\runtimes\win-x86\native\LICENSE
 C:\Users\Hande\OneDrive\Documents\English4skills\english4u-backend\EnglishExamApp.API\bin\Debug\net9.0\runtimes\win-x86\native\pdfium.dll
+C:\Users\Hande\OneDrive\Documents\English4skills\english4u-backend\EnglishExamApp.API\bin\Debug\net9.0\EnglishExamApp.API.staticwebassets.runtime.json

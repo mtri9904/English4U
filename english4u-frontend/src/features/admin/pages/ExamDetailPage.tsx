@@ -1317,6 +1317,11 @@ const renderSectionBody = (section: SectionDetailDto) => {
                     <div key={sqIdx} style={{ padding: '10px', background: '#fff', borderRadius: '8px', marginBottom: '6px', border: '1px solid #f1f5f9' }}>
                         <span style={{ fontWeight: 600, color: '#991b1b', marginRight: '6px' }}>Q{sqIdx + 1}.</span>
                         {renderFormattedText(sq.content)}
+                        {sq.audioPromptUrl && (
+                            <div style={{ marginTop: '8px' }}>
+                                <audio controls preload="metadata" src={sq.audioPromptUrl} style={{ width: '100%' }} />
+                            </div>
+                        )}
                         {sq.cueCardPoints && (
                             <div style={{ marginTop: '6px', padding: '8px', background: '#fef2f2', borderRadius: '6px', fontSize: '0.8125rem', color: '#991b1b', whiteSpace: 'pre-wrap' }}>
                                 Cue Card: {renderFormattedText(sq.cueCardPoints)}

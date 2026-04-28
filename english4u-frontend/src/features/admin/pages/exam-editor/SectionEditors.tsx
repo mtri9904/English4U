@@ -49,6 +49,8 @@ interface WritingSectionEditorProps extends SharedSectionEditorProps {
     handleUploadFile: (file: File, type: 'image' | 'video' | 'raw' | 'auto') => Promise<string>;
 }
 
+interface SpeakingSectionEditorProps extends SharedSectionEditorProps {}
+
 const getCleanPastedInputValue = (
     event: ClipboardEvent<HTMLInputElement | HTMLTextAreaElement>,
     currentValue: string,
@@ -591,7 +593,7 @@ export const SpeakingSectionEditor = ({
     section,
     sIdx,
     updateSection,
-}: SharedSectionEditorProps) => {
+}: SpeakingSectionEditorProps) => {
     const parts = section.speakingParts ?? [];
 
     return (
@@ -610,25 +612,6 @@ export const SpeakingSectionEditor = ({
                             />
                         )}
                     </div>
-                    <Input.TextArea
-                        value={part.description ?? ''}
-                        placeholder="Mô tả chủ đề Part..."
-                        autoSize={{ minRows: 2, maxRows: 6 }}
-                        style={{ marginBottom: '10px' }}
-                        onPaste={(event) => {
-                            const nextValue = getCleanPastedInputValue(event, part.description ?? '');
-                            if (nextValue === null) return;
-
-                            const updatedParts = [...parts];
-                            updatedParts[partIdx] = { ...part, description: nextValue };
-                            updateSection(sIdx, { speakingParts: updatedParts });
-                        }}
-                        onChange={(event) => {
-                            const updatedParts = [...parts];
-                            updatedParts[partIdx] = { ...part, description: event.target.value };
-                            updateSection(sIdx, { speakingParts: updatedParts });
-                        }}
-                    />
                     {part.questions.map((question, questionIdx) => (
                         <div key={questionIdx} style={{ padding: '10px', background: '#fef2f2', borderRadius: '8px', marginBottom: '8px', border: '1px solid #fecaca' }}>
                             <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '6px' }}>
@@ -672,7 +655,7 @@ export const SpeakingSectionEditor = ({
                                     updateSection(sIdx, { speakingParts: updatedParts });
                                 }}
                             />
-                            {part.partNumber === 2 && (
+                            {part.partNumber === 2 && questionIdx === 0 && (
                                 <Input.TextArea
                                     value={question.cueCardPoints ?? ''}
                                     placeholder="Cue Card gợi ý..."

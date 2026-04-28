@@ -16,6 +16,7 @@ import type { SkillType } from '../constants/questionTypes';
 import {
     emptySection,
     normalizeListeningPartsToSharedAudio,
+    sanitizeSpeakingSectionsForSubmit,
     SKILL_COLORS,
     validateExamStructureLimits,
 } from './exam-editor/examEditor.helpers';
@@ -161,13 +162,15 @@ export const ExamEditorPage = () => {
         const submitData: CreateExamDto = {
             ...form,
             totalPoints: calculatedTotalPoints,
-            sections: form.sections
-                .map(normalizeSectionQuestionTypes)
-                .map((section) => (
-                    section.skillType === 'Listening'
-                        ? { ...section, listeningParts: normalizeListeningPartsToSharedAudio(section.listeningParts ?? []) }
-                        : section
-                )),
+            sections: sanitizeSpeakingSectionsForSubmit(
+                form.sections
+                    .map(normalizeSectionQuestionTypes)
+                    .map((section) => (
+                        section.skillType === 'Listening'
+                            ? { ...section, listeningParts: normalizeListeningPartsToSharedAudio(section.listeningParts ?? []) }
+                            : section
+                    )),
+            ),
         };
         const limitErrors = validateExamStructureLimits(submitData);
         if (limitErrors.length > 0) {

@@ -6,9 +6,10 @@ export const isObjectiveSkill = (value?: string | null) => {
 };
 
 export const isWritingSkill = (value?: string | null) => normalizeSkill(value) === 'WRITING';
+export const isSpeakingSkill = (value?: string | null) => normalizeSkill(value) === 'SPEAKING';
 
 export const isSupportedRunnerSkill = (value?: string | null) =>
-    isObjectiveSkill(value) || isWritingSkill(value);
+    isObjectiveSkill(value) || isWritingSkill(value) || isSpeakingSkill(value);
 
 export const getSessionRunnerPath = (sessionId: string, skillType?: string | null) => {
     const skill = normalizeSkill(skillType);
@@ -18,6 +19,10 @@ export const getSessionRunnerPath = (sessionId: string, skillType?: string | nul
 
     if (skill === 'WRITING') {
         return `/app/sessions/${sessionId}/writing`;
+    }
+
+    if (skill === 'SPEAKING') {
+        return `/app/sessions/${sessionId}/speaking`;
     }
 
     return `/app/sessions/${sessionId}/reading`;

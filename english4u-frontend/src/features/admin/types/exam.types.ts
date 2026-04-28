@@ -184,6 +184,11 @@ export interface GenerateExamFromPdfResult {
     questionCount: number;
 }
 
+export interface UploadSpeakingPromptAudioResult {
+    audioUrl: string;
+    fileSizeKB: number;
+}
+
 export interface ListeningTranscriptSegmentDto {
     startTime: number;
     endTime: number | null;

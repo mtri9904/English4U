@@ -10,4 +10,5 @@ public class SpeakingQuestion
     public int? OrderIndex { get; set; }
 
     public SpeakingPart Part { get; set; } = null!;
+    public ICollection<UserAnswer> UserAnswers { get; set; } = [];
 }

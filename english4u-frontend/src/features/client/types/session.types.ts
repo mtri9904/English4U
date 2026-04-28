@@ -1,7 +1,11 @@
 export interface PracticeSessionAnswerInputDto {
     questionId?: string | null;
     writingTaskId?: string | null;
+    speakingQuestionId?: string | null;
     answerText: string | null;
+    audioUrl?: string | null;
+    durationSeconds?: number | null;
+    fileSizeKB?: number | null;
 }
 
 export interface UpdatePracticeSessionAnswersDto {
@@ -31,6 +35,7 @@ export interface PracticeSessionResultDto {
     status: string;
     writingScore: number | null;
     overallFeedback: string | null;
+    speakingScore: number | null;
 }
 
 export interface PracticeSessionFeedbackDto {
@@ -38,6 +43,22 @@ export interface PracticeSessionFeedbackDto {
     bandScore: number;
     comment: string | null;
     improvements: string | null;
+}
+
+export interface PracticeSessionSpeakingAnalyticsDto {
+    wordCount: number;
+    wordsPerMinute: number | null;
+    coverageRatio: number | null;
+    targetDurationSeconds: number | null;
+    estimatedFluencyBand: number | null;
+    paceLabel: 'insufficient_data' | 'slow' | 'balanced' | 'fast' | 'very_fast';
+    coverageLabel: 'insufficient_data' | 'too_short' | 'on_target' | 'exceeds_target';
+}
+
+export interface PracticeSessionSpeakingPromptCueDto {
+    code: string;
+    startMs: number;
+    endMs: number;
 }
 
 export interface PracticeSessionAnswerDto {
@@ -51,6 +72,13 @@ export interface PracticeSessionAnswerDto {
     scoreEarned: number;
     isCorrect: boolean | null;
     feedbacks: PracticeSessionFeedbackDto[] | null;
+    speakingQuestionId?: string | null;
+    speakingQuestionOrderIndex?: number | null;
+    speakingPartNumber?: number | null;
+    audioUrl?: string | null;
+    durationSeconds?: number | null;
+    transcriptText?: string | null;
+    speakingAnalytics?: PracticeSessionSpeakingAnalyticsDto | null;
 }
 
 export interface PracticeSessionOptionDto {
@@ -107,6 +135,23 @@ export interface PracticeSessionWritingTaskDto {
     minWords: number;
 }
 
+export interface PracticeSessionSpeakingQuestionDto {
+    id: string;
+    content: string;
+    cueCardPoints: string | null;
+    audioPromptUrl: string | null;
+    orderIndex: number | null;
+    promptEstimatedDurationMs?: number | null;
+    promptVisemeTimeline?: PracticeSessionSpeakingPromptCueDto[] | null;
+}
+
+export interface PracticeSessionSpeakingPartDto {
+    id: string;
+    partNumber: number | null;
+    description: string | null;
+    questions: PracticeSessionSpeakingQuestionDto[];
+}
+
 export interface PracticeSessionSectionDto {
     id: string;
     skillType: string;
@@ -115,6 +160,7 @@ export interface PracticeSessionSectionDto {
     readingPassages: PracticeSessionReadingPassageDto[];
     listeningParts: PracticeSessionListeningPartDto[];
     writingTasks: PracticeSessionWritingTaskDto[];
+    speakingParts: PracticeSessionSpeakingPartDto[];
 }
 
 export interface PracticeSessionExamDto {
@@ -163,4 +209,23 @@ export interface PracticeSessionListItemDto {
     listeningScore: number | null;
     totalAutoScore: number | null;
     writingScore: number | null;
+    speakingScore: number | null;
+}
+
+export interface UploadPracticeSpeakingRecordingDto {
+    speakingQuestionId: string;
+    answerText?: string | null;
+    durationSeconds?: number | null;
+    audio: File;
+}
+
+export interface PracticeSessionSpeakingUploadResultDto {
+    speakingQuestionId: string;
+    audioUrl: string;
+    fileSizeKB: number;
+    durationSeconds: number | null;
+    transcriptText: string | null;
+    transcriptSegmentCount: number;
+    answerText: string | null;
+    speakingAnalytics: PracticeSessionSpeakingAnalyticsDto | null;
 }

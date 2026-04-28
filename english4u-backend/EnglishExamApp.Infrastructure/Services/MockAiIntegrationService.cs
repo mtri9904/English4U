@@ -18,6 +18,14 @@ public sealed class MockAiIntegrationService(ILogger<MockAiIntegrationService> l
         return Task.CompletedTask;
     }
 
+    public Task<GeneratedSpeakingPromptAudioDto?> GenerateSpeakingPromptAudioAsync(
+        string promptText,
+        CancellationToken cancellationToken = default)
+    {
+        logger.LogInformation("[Mock AI] GenerateSpeakingPromptAudio triggered for prompt length {PromptLength}", promptText?.Length ?? 0);
+        return Task.FromResult<GeneratedSpeakingPromptAudioDto?>(null);
+    }
+
     public Task<GenerateListeningTranscriptResultDto> GenerateListeningTranscriptAsync(
         GenerateListeningTranscriptRequestDto request,
         CancellationToken cancellationToken = default)

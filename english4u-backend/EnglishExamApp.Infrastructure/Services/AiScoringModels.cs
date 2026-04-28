@@ -20,7 +20,8 @@ public sealed record AiScoreResponse(
     [property: JsonPropertyName("overall_band")] double OverallBand,
     [property: JsonPropertyName("rubrics")] List<AiRubricScore> Rubrics,
     [property: JsonPropertyName("overall_feedback")] string? OverallFeedback = null,
-    [property: JsonPropertyName("detailed_corrections")] List<AiWritingCorrection>? DetailedCorrections = null);
+    [property: JsonPropertyName("detailed_corrections")] List<AiWritingCorrection>? DetailedCorrections = null,
+    [property: JsonPropertyName("transcript_text")] string? TranscriptText = null);
 
 public sealed record AiRubricScore(
     [property: JsonPropertyName("criteria")] string Criteria,

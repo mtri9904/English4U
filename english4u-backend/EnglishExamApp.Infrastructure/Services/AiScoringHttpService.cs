@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -38,6 +39,14 @@ public sealed class AiScoringHttpService(
         "Coherence and Cohesion",
         "Lexical Resource",
         "Grammatical Range and Accuracy"
+    ];
+
+    private static readonly string[] SpeakingCriteria =
+    [
+        "Fluency and Coherence",
+        "Lexical Resource",
+        "Grammatical Range and Accuracy",
+        "Pronunciation"
     ];
 
     private readonly string _geminiApiKey = FirstNonEmpty(
@@ -135,60 +144,180 @@ public sealed class AiScoringHttpService(
     public async Task ScoreSpeakingAsync(Guid sessionId, CancellationToken cancellationToken = default)
     {
         var speakingAnswers = await context.UserAnswers
-            .Where(a => a.SessionId == sessionId && a.Question != null && a.Question.Group.GroupType == "SPEAKING")
-            .Include(a => a.Question)
+            .Where(a => a.SessionId == sessionId && a.SpeakingQuestionId != null)
+            .Include(a => a.SpeakingQuestion)
+                .ThenInclude(question => question!.Part)
             .Include(a => a.UserAudioRecords)
+                .ThenInclude(record => record.SpeechTranscripts)
             .ToListAsync(cancellationToken);
 
         if (speakingAnswers.Count == 0)
             return;
 
-        double totalBand = 0;
-        int scoredCount = 0;
+        var scoredItems = new List<(UserAnswer Answer, AiScoreResponse Result, int PartNumber)>();
 
         foreach (var answer in speakingAnswers)
         {
-            var audioRecord = answer.UserAudioRecords.FirstOrDefault();
+            var audioRecord = answer.UserAudioRecords
+                .OrderByDescending(record => record.DurationSeconds ?? 0)
+                .ThenByDescending(record => record.Id)
+                .FirstOrDefault();
             if (audioRecord is null || string.IsNullOrWhiteSpace(audioRecord.AudioUrl))
                 continue;
 
-            using var audioStream = await DownloadAudioAsync(audioRecord.AudioUrl, cancellationToken);
-            if (audioStream is null) continue;
-
             using var formContent = new MultipartFormDataContent();
-            var audioContent = new StreamContent(audioStream);
-            audioContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("audio/wav");
-            formContent.Add(audioContent, "audio", "recording.wav");
-            formContent.Add(new StringContent(sessionId.ToString()), "session_id");
-            formContent.Add(new StringContent(answer.Id.ToString()), "answer_id");
+            Stream? audioStream = null;
+            try
+            {
+                formContent.Add(new StringContent(sessionId.ToString()), "session_id");
+                formContent.Add(new StringContent(answer.Id.ToString()), "answer_id");
 
-            var questionPrompt = answer.Question?.Content;
-            if (!string.IsNullOrWhiteSpace(questionPrompt))
-                formContent.Add(new StringContent(questionPrompt), "question_prompt");
+                var questionPrompt = answer.SpeakingQuestion?.Content;
+                if (!string.IsNullOrWhiteSpace(questionPrompt))
+                    formContent.Add(new StringContent(questionPrompt), "question_prompt");
 
-            var response = await httpClient.PostAsync("/api/ai/score-speaking", formContent, cancellationToken);
-            response.EnsureSuccessStatusCode();
+                if (answer.SpeakingQuestion?.Part.PartNumber is int partNumber)
+                    formContent.Add(new StringContent(partNumber.ToString(CultureInfo.InvariantCulture)), "part_number");
 
-            var result = await response.Content.ReadFromJsonAsync<AiScoreResponse>(cancellationToken);
-            if (result is null) continue;
+                if (audioRecord.DurationSeconds is double durationSeconds)
+                {
+                    formContent.Add(
+                        new StringContent(durationSeconds.ToString("0.###", CultureInfo.InvariantCulture)),
+                        "duration_seconds");
+                }
 
-            await SaveFeedbacks(answer.Id, result, "Speaking", cancellationToken);
+                var transcriptText = audioRecord.SpeechTranscripts
+                    .OrderByDescending(transcript => transcript.Id)
+                    .Select(transcript => transcript.TranscriptText)
+                    .FirstOrDefault(text => !string.IsNullOrWhiteSpace(text));
 
-            answer.ScoreEarned = result.OverallBand;
-            totalBand += result.OverallBand;
-            scoredCount++;
+                if (!string.IsNullOrWhiteSpace(transcriptText))
+                {
+                    formContent.Add(new StringContent(transcriptText), "transcript_text");
+                }
 
-            logger.LogInformation(
-                "Speaking scored for answer {AnswerId}: band {Band}",
-                answer.Id, result.OverallBand);
+                audioStream = await DownloadAudioAsync(audioRecord.AudioUrl, cancellationToken);
+                if (audioStream is not null)
+                {
+                    var audioContent = new StreamContent(audioStream);
+                    var audioFileName = GetAudioFileName(audioRecord.AudioUrl);
+                    audioContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(
+                        GetAudioContentType(audioFileName));
+                    formContent.Add(audioContent, "audio", audioFileName);
+                }
+                else if (string.IsNullOrWhiteSpace(transcriptText))
+                {
+                    continue;
+                }
+
+                using var response = await httpClient.PostAsync("/api/ai/score-speaking", formContent, cancellationToken);
+                if (!response.IsSuccessStatusCode)
+                {
+                    var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
+                    var detail = ExtractAiServiceErrorDetail(errorBody);
+                    throw new InvalidOperationException(
+                        string.IsNullOrWhiteSpace(detail)
+                            ? $"AI speaking scoring failed with status {(int)response.StatusCode}."
+                            : detail);
+                }
+
+                var result = await response.Content.ReadFromJsonAsync<AiScoreResponse>(cancellationToken);
+                if (result is null) continue;
+                result = NormalizeSpeakingScoreResponse(sessionId, answer.Id, result);
+
+                if (!string.IsNullOrWhiteSpace(result.TranscriptText))
+                {
+                    var existingTranscript = audioRecord.SpeechTranscripts
+                        .OrderByDescending(transcript => transcript.Id)
+                        .FirstOrDefault();
+
+                    if (existingTranscript is null)
+                    {
+                        existingTranscript = new SpeechTranscript
+                        {
+                            Id = Guid.NewGuid(),
+                            AudioRecordId = audioRecord.Id,
+                        };
+                        context.SpeechTranscripts.Add(existingTranscript);
+                        audioRecord.SpeechTranscripts.Add(existingTranscript);
+                    }
+
+                    existingTranscript.TranscriptText = result.TranscriptText.Trim();
+                }
+
+                await SaveFeedbacks(answer.Id, result, "Speaking", cancellationToken);
+
+                answer.ScoreEarned = result.OverallBand;
+                scoredItems.Add((answer, result, answer.SpeakingQuestion?.Part.PartNumber ?? 0));
+
+                logger.LogInformation(
+                    "Speaking scored for answer {AnswerId}: band {Band}",
+                    answer.Id, result.OverallBand);
+            }
+            finally
+            {
+                audioStream?.Dispose();
+            }
         }
 
-        if (scoredCount > 0)
+        if (scoredItems.Count > 0)
         {
-            await UpdateScoringResult(sessionId, speakingScore: totalBand / scoredCount, cancellationToken: cancellationToken);
+            await UpdateScoringResult(
+                sessionId,
+                speakingScore: BuildSpeakingOverallBand(scoredItems),
+                overallFeedback: BuildSpeakingOverallFeedbackPayload(scoredItems),
+                cancellationToken: cancellationToken);
         }
 
         await context.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task<GeneratedSpeakingPromptAudioDto?> GenerateSpeakingPromptAudioAsync(
+        string promptText,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(promptText))
+        {
+            return null;
+        }
+
+        using var response = await httpClient.PostAsJsonAsync(
+            "/api/ai/generate-speaking-prompt-audio",
+            new
+            {
+                promptText = promptText.Trim(),
+            },
+            JsonOptions,
+            cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            var detail = ExtractAiServiceErrorDetail(errorBody);
+
+            logger.LogWarning(
+                "AI speaking prompt TTS failed with status {StatusCode}. Detail: {Detail}",
+                (int)response.StatusCode,
+                string.IsNullOrWhiteSpace(detail) ? "(empty)" : detail);
+
+            return null;
+        }
+
+        var audioBytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+        if (audioBytes.Length == 0)
+        {
+            logger.LogWarning("AI speaking prompt TTS returned an empty audio payload.");
+            return null;
+        }
+
+        var mimeType = response.Content.Headers.ContentType?.MediaType?.Trim() ?? "audio/wav";
+        var fileExtension = mimeType.Equals("audio/mpeg", StringComparison.OrdinalIgnoreCase)
+            ? ".mp3"
+            : mimeType.Equals("audio/x-wav", StringComparison.OrdinalIgnoreCase)
+                ? ".wav"
+                : ".wav";
+
+        return new GeneratedSpeakingPromptAudioDto(audioBytes, mimeType, fileExtension);
     }
 
     public async Task<GenerateListeningTranscriptResultDto> GenerateListeningTranscriptAsync(
@@ -917,6 +1046,47 @@ public sealed class AiScoringHttpService(
         };
     }
 
+    private static AiScoreResponse NormalizeSpeakingScoreResponse(Guid sessionId, Guid answerId, AiScoreResponse result)
+    {
+        var rubricLookup = (result.Rubrics ?? [])
+            .Where(rubric => !string.IsNullOrWhiteSpace(rubric.Criteria))
+            .GroupBy(rubric => rubric.Criteria.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => group
+                    .Select(rubric => rubric with { Band = RoundIeltsBand(ClampBand(rubric.Band)) })
+                    .First(),
+                StringComparer.OrdinalIgnoreCase);
+
+        var rubrics = new List<AiRubricScore>(SpeakingCriteria.Length);
+        foreach (var criteria in SpeakingCriteria)
+        {
+            if (rubricLookup.TryGetValue(criteria, out var rubric))
+            {
+                rubrics.Add(rubric with { Criteria = criteria });
+                continue;
+            }
+
+            rubrics.Add(new AiRubricScore(
+                criteria,
+                0,
+                "AI chưa trả về nhận xét cho tiêu chí này.",
+                "Cần chấm lại để có nhận xét đầy đủ hơn."));
+        }
+
+        var overallBand = rubrics.Count > 0
+            ? RoundIeltsBand(rubrics.Average(rubric => rubric.Band))
+            : RoundIeltsBand(ClampBand(result.OverallBand));
+
+        return result with
+        {
+            SessionId = string.IsNullOrWhiteSpace(result.SessionId) ? sessionId.ToString() : result.SessionId,
+            AnswerId = string.IsNullOrWhiteSpace(result.AnswerId) ? answerId.ToString() : result.AnswerId,
+            OverallBand = overallBand,
+            Rubrics = rubrics
+        };
+    }
+
     private static bool NeedsVietnameseFeedbackNormalization(AiScoreResponse result)
     {
         var feedbackTexts = new List<string?>();
@@ -1016,6 +1186,125 @@ public sealed class AiScoringHttpService(
                 detailed_corrections = item.Result.DetailedCorrections ?? []
             })
         }, JsonOptions);
+
+    private static double BuildSpeakingOverallBand(
+        IReadOnlyList<(UserAnswer Answer, AiScoreResponse Result, int PartNumber)> scoredItems)
+    {
+        var partCriterionMaps = scoredItems
+            .GroupBy(item => item.PartNumber)
+            .Select(partGroup => BuildSpeakingCriterionAverageMap(partGroup.Select(item => item.Result)))
+            .ToList();
+
+        if (partCriterionMaps.Count == 0)
+        {
+            return 0;
+        }
+
+        var overallCriterionBands = SpeakingCriteria
+            .Select(criteria => partCriterionMaps.Average(map => map[criteria]))
+            .ToList();
+
+        return overallCriterionBands.Count == 0
+            ? 0
+            : RoundIeltsBand(overallCriterionBands.Average());
+    }
+
+    private static Dictionary<string, double> BuildSpeakingCriterionAverageMap(IEnumerable<AiScoreResponse> results)
+    {
+        var rubricList = results
+            .SelectMany(result => result.Rubrics ?? [])
+            .ToList();
+
+        return SpeakingCriteria.ToDictionary(
+            criteria => criteria,
+            criteria => rubricList
+                .Where(rubric => criteria.Equals(rubric.Criteria, StringComparison.OrdinalIgnoreCase))
+                .Select(rubric => ClampBand(rubric.Band))
+                .DefaultIfEmpty(0)
+                .Average(),
+            StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static string BuildSpeakingOverallFeedbackPayload(
+        IReadOnlyList<(UserAnswer Answer, AiScoreResponse Result, int PartNumber)> scoredItems)
+    {
+        var lines = new List<string>();
+        var overallBand = BuildSpeakingOverallBand(scoredItems);
+        lines.Add(
+            $"Band Speaking tổng quan khoảng {overallBand:0.0}. "
+            + "Điểm được tổng hợp theo 4 tiêu chí IELTS và cân bằng theo từng Part đã trả lời.");
+
+        foreach (var partGroup in scoredItems.GroupBy(item => item.PartNumber).OrderBy(group => group.Key))
+        {
+            var criterionBands = BuildSpeakingCriterionAverageMap(partGroup.Select(item => item.Result));
+            var partBand = RoundIeltsBand(criterionBands.Values.Average());
+            var strongestCriteria = criterionBands
+                .OrderByDescending(item => item.Value)
+                .ThenBy(item => item.Key, StringComparer.Ordinal)
+                .Take(2)
+                .Select(item => GetSpeakingCriteriaDisplayName(item.Key))
+                .ToList();
+            var weakestCriteria = criterionBands
+                .OrderBy(item => item.Value)
+                .ThenBy(item => item.Key, StringComparer.Ordinal)
+                .Take(2)
+                .Select(item => item.Key)
+                .ToList();
+
+            lines.Add(
+                $"{FormatSpeakingPartLabel(partGroup.Key)} · Band khoảng {partBand:0.0}. "
+                + $"Điểm mạnh tương đối: {string.Join(", ", strongestCriteria)}. "
+                + $"Cần ưu tiên: {string.Join(", ", weakestCriteria.Select(GetSpeakingCriteriaDisplayName))}. "
+                + BuildSpeakingPartImprovementSummary(partGroup.Key, weakestCriteria));
+        }
+
+        return string.Join(Environment.NewLine + Environment.NewLine, lines);
+    }
+
+    private static string FormatSpeakingPartLabel(int partNumber) =>
+        partNumber > 0 ? $"Part {partNumber}" : "Speaking";
+
+    private static string GetSpeakingCriteriaDisplayName(string criteria) => criteria switch
+    {
+        "Fluency and Coherence" => "độ trôi chảy và mạch lạc",
+        "Lexical Resource" => "từ vựng",
+        "Grammatical Range and Accuracy" => "ngữ pháp",
+        "Pronunciation" => "phát âm",
+        _ => criteria
+    };
+
+    private static string BuildSpeakingPartImprovementSummary(int partNumber, IReadOnlyList<string> weakestCriteria)
+    {
+        var advice = new List<string>();
+
+        var partAdvice = partNumber switch
+        {
+            1 => "Ở Part 1, nên trả lời trực tiếp rồi mở rộng thêm 1-2 câu thay vì dừng quá sớm.",
+            2 => "Ở Part 2, nên giữ mạch mở ý → ví dụ → kết ý để nói trọn long turn ổn định hơn.",
+            3 => "Ở Part 3, nên nêu quan điểm rõ rồi giải thích nguyên nhân, hệ quả hoặc so sánh sâu hơn.",
+            _ => "Nên giữ câu trả lời đủ ý và có mạch phát triển rõ ràng.",
+        };
+        advice.Add(partAdvice);
+
+        foreach (var criteria in weakestCriteria)
+        {
+            var criteriaAdvice = criteria switch
+            {
+                "Fluency and Coherence" => "Ưu tiên giảm hesitation dài và nối ý bằng because, however, for example khi chuyển luận điểm.",
+                "Lexical Resource" => "Ưu tiên paraphrase và dùng collocation tự nhiên hơn để tránh lặp lại cùng một từ khóa.",
+                "Grammatical Range and Accuracy" => "Ưu tiên đa dạng cấu trúc câu và kiểm soát lỗi chia thì, chủ-vị, mệnh đề phụ.",
+                "Pronunciation" => "Ưu tiên nhấn trọng âm từ khóa, chia cụm ý rõ và tránh nuốt âm cuối.",
+                _ => null,
+            };
+
+            if (!string.IsNullOrWhiteSpace(criteriaAdvice) && !advice.Contains(criteriaAdvice, StringComparer.Ordinal))
+            {
+                advice.Add(criteriaAdvice);
+            }
+        }
+
+        return string.Join(" ", advice);
+    }
 
     private static string ExtractJsonObject(string value)
     {
@@ -1131,6 +1420,35 @@ public sealed class AiScoringHttpService(
             logger.LogWarning(ex, "Failed to download audio from {Url}", audioUrl);
             return null;
         }
+    }
+
+    private static string GetAudioFileName(string? audioUrl)
+    {
+        if (string.IsNullOrWhiteSpace(audioUrl))
+        {
+            return "recording.webm";
+        }
+
+        if (!Uri.TryCreate(audioUrl, UriKind.Absolute, out var uri))
+        {
+            return "recording.webm";
+        }
+
+        var fileName = Path.GetFileName(uri.LocalPath);
+        return string.IsNullOrWhiteSpace(fileName) ? "recording.webm" : fileName;
+    }
+
+    private static string GetAudioContentType(string fileName)
+    {
+        return Path.GetExtension(fileName).ToLowerInvariant() switch
+        {
+            ".webm" => "audio/webm",
+            ".wav" => "audio/wav",
+            ".mp3" => "audio/mpeg",
+            ".m4a" => "audio/mp4",
+            ".ogg" => "audio/ogg",
+            _ => "application/octet-stream"
+        };
     }
 
     private sealed record GeminiGenerateContentResponse(

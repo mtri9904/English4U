@@ -238,7 +238,7 @@ public class ExamService(
     public async Task<Guid> CreateExamAsync(CreateExamDto dto, Guid createdBy, CancellationToken cancellationToken = default)
     {
         ValidateExamLimits(dto);
-        var enrichedSections = await EnrichWritingSectionsAsync(dto.Sections, cancellationToken);
+        var enrichedSections = await EnrichSectionsAsync(dto.Sections, cancellationToken);
 
         await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
 
@@ -274,7 +274,7 @@ public class ExamService(
     public async Task<bool> UpdateExamAsync(Guid examId, CreateExamDto dto, CancellationToken cancellationToken = default)
     {
         ValidateExamLimits(dto);
-        var enrichedSections = await EnrichWritingSectionsAsync(dto.Sections, cancellationToken);
+        var enrichedSections = await EnrichSectionsAsync(dto.Sections, cancellationToken);
 
         await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
 
@@ -399,7 +399,7 @@ public class ExamService(
         }
     }
 
-    private async Task<List<CreateSectionDto>> EnrichWritingSectionsAsync(
+    private async Task<List<CreateSectionDto>> EnrichSectionsAsync(
         List<CreateSectionDto> sections,
         CancellationToken cancellationToken)
     {
@@ -407,31 +407,31 @@ public class ExamService(
 
         foreach (var section in sections)
         {
-            if (!string.Equals(section.SkillType?.Trim(), "WRITING", StringComparison.OrdinalIgnoreCase)
-                || section.WritingTasks is not { Count: > 0 })
+            if (string.Equals(section.SkillType?.Trim(), "WRITING", StringComparison.OrdinalIgnoreCase)
+                && section.WritingTasks is { Count: > 0 })
             {
-                result.Add(section);
+                var enrichedTasks = new List<CreateWritingTaskDto>(section.WritingTasks.Count);
+                foreach (var task in section.WritingTasks)
+                {
+                    var enrichedAssetsData = await EnsureWritingTaskAssetsDataAsync(
+                        task.AssetsData,
+                        task.PromptText,
+                        cancellationToken);
+
+                    enrichedTasks.Add(task with
+                    {
+                        AssetsData = enrichedAssetsData
+                    });
+                }
+
+                result.Add(section with
+                {
+                    WritingTasks = enrichedTasks
+                });
                 continue;
             }
 
-            var enrichedTasks = new List<CreateWritingTaskDto>(section.WritingTasks.Count);
-            foreach (var task in section.WritingTasks)
-            {
-                var enrichedAssetsData = await EnsureWritingTaskAssetsDataAsync(
-                    task.AssetsData,
-                    task.PromptText,
-                    cancellationToken);
-
-                enrichedTasks.Add(task with
-                {
-                    AssetsData = enrichedAssetsData
-                });
-            }
-
-            result.Add(section with
-            {
-                WritingTasks = enrichedTasks
-            });
+            result.Add(section);
         }
 
         return result;

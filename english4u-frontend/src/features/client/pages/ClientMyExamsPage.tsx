@@ -38,7 +38,6 @@ export const ClientMyExamsPage = () => {
     const [pendingListeningExamId, setPendingListeningExamId] = useState<string | null>(null);
 
     const inProgress = sessions.filter((item) => item.status === 'InProgress').length;
-    const completed = sessions.filter((item) => item.status === 'Completed').length;
     const avgScore = sessions.length > 0
         ? sessions.reduce((total, item) => total + (item.totalAutoScore ?? 0), 0) / sessions.length
         : 0;
@@ -75,7 +74,7 @@ export const ClientMyExamsPage = () => {
                         Resume nhanh cac luot thi dang lam
                     </Title>
                     <Paragraph style={{ margin: 0, color: '#475569', maxWidth: 860 }}>
-                        Trang nay doc truc tiep tu session da tao. Ban co the mo lai Reading/Listening dang lam, xem ket qua objective sau khi nop va kiem tra de nao dang con do.
+                        Trang nay doc truc tiep tu session da tao. Ban co the mo lai Reading, Listening, Writing hoac Speaking dang lam, xem ket qua sau khi nop va kiem tra de nao dang con do.
                     </Paragraph>
                 </Space>
             </Card>
@@ -103,7 +102,7 @@ export const ClientMyExamsPage = () => {
                     <Col span={24}>
                         <Card style={{ borderRadius: 24 }}>
                             <Empty
-                                description="Bạn chưa có lượt thi nào. Hãy vào kho đề và bắt đầu một đề Reading, Listening hoặc Writing."
+                                description="Bạn chưa có lượt thi nào. Hãy vào kho đề và bắt đầu một đề Reading, Listening, Writing hoặc Speaking."
                                 image={Empty.PRESENTED_IMAGE_SIMPLE}
                             >
                                 <Button type="primary" onClick={() => navigate('/app/practice')}>
@@ -116,9 +115,12 @@ export const ClientMyExamsPage = () => {
                     <Col xs={24} lg={12} key={session.sessionId}>
                         {(() => {
                             const isWritingSession = normalizeSkill(session.skillType) === 'WRITING';
-                            const progressUnit = isWritingSession ? 'task' : 'câu';
+                            const isSpeakingSession = normalizeSkill(session.skillType) === 'SPEAKING';
+                            const progressUnit = isWritingSession ? 'task' : isSpeakingSession ? 'prompt' : 'câu';
                             const scoreLabel = isWritingSession
                                 ? (session.writingScore != null ? session.writingScore.toFixed(1) : '—')
+                                : isSpeakingSession
+                                    ? (session.speakingScore != null ? session.speakingScore.toFixed(1) : '—')
                                 : (session.totalAutoScore != null ? session.totalAutoScore.toFixed(1) : '0.0');
 
                             return (
@@ -155,7 +157,7 @@ export const ClientMyExamsPage = () => {
                                         <Statistic title="Da lam" value={`${session.answeredQuestions}/${session.totalQuestions}`} />
                                     </Col>
                                     <Col span={8}>
-                                        <Statistic title={isWritingSession ? 'Band' : 'Diem'} value={scoreLabel} />
+                                        <Statistic title={isWritingSession || isSpeakingSession ? 'Band' : 'Diem'} value={scoreLabel} />
                                     </Col>
                                     <Col span={8}>
                                         <Statistic title="Loai de" value={session.examType || 'Practice'} />

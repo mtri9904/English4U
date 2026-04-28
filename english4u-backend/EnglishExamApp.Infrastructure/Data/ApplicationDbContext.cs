@@ -305,12 +305,14 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             entity.Property(e => e.SessionId).HasColumnName("sessionId").HasMaxLength(36);
             entity.Property(e => e.QuestionId).HasColumnName("questionId").HasMaxLength(36);
             entity.Property(e => e.WritingTaskId).HasColumnName("writingTaskId").HasMaxLength(36);
+            entity.Property(e => e.SpeakingQuestionId).HasColumnName("speakingQuestionId").HasMaxLength(36);
             entity.Property(e => e.AnswerText).HasColumnName("answerText");
             entity.Property(e => e.ScoreEarned).HasColumnName("scoreEarned").HasDefaultValue(0.0);
             entity.Property(e => e.SubmittedAt).HasColumnName("submittedAt").HasDefaultValueSql("GETDATE()");
             entity.HasOne(e => e.Session).WithMany(s => s.UserAnswers).HasForeignKey(e => e.SessionId).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne(e => e.Question).WithMany(q => q.UserAnswers).HasForeignKey(e => e.QuestionId).OnDelete(DeleteBehavior.NoAction);
             entity.HasOne(e => e.WritingTask).WithMany(w => w.UserAnswers).HasForeignKey(e => e.WritingTaskId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(e => e.SpeakingQuestion).WithMany(q => q.UserAnswers).HasForeignKey(e => e.SpeakingQuestionId).OnDelete(DeleteBehavior.NoAction);
         });
 
         modelBuilder.Entity<UserAudioRecord>(entity =>

@@ -107,6 +107,48 @@ public class PracticeController(
         }
     }
 
+    [HttpPost("sessions/{sessionId:guid}/speaking-recordings")]
+    [RequestFormLimits(MultipartBodyLengthLimit = 25 * 1024 * 1024)]
+    public async Task<IResult> UploadSpeakingRecording(
+        Guid sessionId,
+        [FromHeader(Name = "X-User-Id")] string? userIdStr,
+        [FromForm] Guid speakingQuestionId,
+        [FromForm] string? answerText,
+        [FromForm] double? durationSeconds,
+        [FromForm(Name = "audio")] IFormFile? audio,
+        CancellationToken cancellationToken)
+    {
+        if (!TryParseUserId(userIdStr, out var userId))
+        {
+            return TypedResults.Unauthorized();
+        }
+
+        if (audio is null || audio.Length == 0)
+        {
+            return TypedResults.BadRequest(new { message = "Audio file is required." });
+        }
+
+        try
+        {
+            await using var stream = audio.OpenReadStream();
+            var result = await examExecutionService.UploadSpeakingRecordingAsync(
+                userId,
+                sessionId,
+                new UploadPracticeSpeakingRecordingDto(
+                    speakingQuestionId,
+                    answerText,
+                    durationSeconds),
+                stream,
+                audio.FileName,
+                cancellationToken);
+            return TypedResults.Ok(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return TypedResults.BadRequest(new { message = ex.Message });
+        }
+    }
+
     [HttpPost("sessions/{sessionId:guid}/submit-reading-listening")]
     public async Task<IResult> SubmitReadingListening(
         Guid sessionId,
@@ -143,6 +185,28 @@ public class PracticeController(
         try
         {
             var result = await examExecutionService.SubmitWritingAsync(userId, sessionId, cancellationToken);
+            return TypedResults.Ok(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return TypedResults.BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpPost("sessions/{sessionId:guid}/submit-speaking")]
+    public async Task<IResult> SubmitSpeaking(
+        Guid sessionId,
+        [FromHeader(Name = "X-User-Id")] string? userIdStr,
+        CancellationToken cancellationToken)
+    {
+        if (!TryParseUserId(userIdStr, out var userId))
+        {
+            return TypedResults.Unauthorized();
+        }
+
+        try
+        {
+            var result = await examExecutionService.SubmitSpeakingAsync(userId, sessionId, cancellationToken);
             return TypedResults.Ok(result);
         }
         catch (InvalidOperationException ex)
