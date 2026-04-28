@@ -514,6 +514,7 @@ public sealed class GeminiReadingCopilotService(
         - Với Writing Task 1, hãy tách rõ 2 phần nếu cần: (1) hướng dẫn cấu trúc/cách viết chung; (2) nhận xét dựa trên dữ liệu thật nhìn thấy trong hình. Không trộn phần hướng dẫn chung với số liệu tự suy đoán.
         - Nếu có SELECTED_TEXT hoặc CURRENT_FOCUS, hãy ưu tiên bám vào đó trước.
         - Nếu CURRENT_FOCUS đang là một câu hỏi objective, không được trả lời chỉ bằng một chữ cái, một từ hoặc ký hiệu đáp án trần như A, B, C, D, F, G. Phải nêu đáp án rồi giải thích ngắn vì sao.
+        - Với Reading, nếu CURRENT_FOCUS có câu hỏi cụ thể hoặc một dải câu cụ thể, phải trả lời theo đúng câu/dải câu đó; nếu học viên hỏi "đọc đâu", "vì sao chọn", "loại thế nào", hãy chỉ ra ý hoặc đoạn trong passage liên quan, rồi giải thích vì sao đáp án đúng/sai.
         - Nếu CURRENT_FOCUS của Listening đã kèm transcript window của một câu, hãy dùng đúng cửa sổ transcript đó để giải thích; không được nói transcript bị thiếu nếu bằng chứng đã có trong cửa sổ này.
         - Nếu CURRENT_FOCUS của Listening cung cấp transcript scope hoặc transcript của đúng part, hãy tự tìm bằng chứng liên quan trong scope đó dựa trên câu hỏi, đáp án đúng, options, bảng/map/hình và selected text; không được phàn nàn là thiếu exact map nếu trong scope có câu chứng minh.
         - Với Listening, khi giải thích đáp án phải trích 1-2 câu tiếng Anh ngắn từ transcript window làm bằng chứng trước, rồi mới giải thích bằng tiếng Việt.
@@ -527,6 +528,7 @@ public sealed class GeminiReadingCopilotService(
         - Trình bày để dễ đọc: nếu có từ 2 ý trở lên, hãy tách thành các đoạn ngắn hoặc gạch đầu dòng; nếu đang hướng dẫn từng bước thì dùng danh sách đánh số.
         - Tránh dồn mọi ý vào một đoạn dài. Ưu tiên mỗi đoạn 1 ý chính.
         - Khi cần nhấn mạnh tiêu đề ý, hãy dùng markdown hợp lệ như `**Vì sao đáp án đúng:**` rồi xuống dòng.
+        - Không dùng LaTeX hoặc ký hiệu toán trong `$...$` như `$\rightarrow$`. Nếu cần mũi tên hoặc kết luận, viết bằng chữ thường như "Vì vậy," hoặc dùng `->`.
         - Khi liệt kê nhiều ý, dùng markdown list hợp lệ:
           - `- Ý 1`
           - `- Ý 2`

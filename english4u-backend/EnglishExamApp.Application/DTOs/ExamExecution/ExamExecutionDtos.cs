@@ -26,6 +26,19 @@ public sealed record PracticeSessionStartDto(
     int? TimeRemaining,
     bool IsResumed);
 
+public sealed record PracticeSessionRewardDto(
+    int ExperienceAwarded,
+    bool IsFirstExamCompletion,
+    bool LevelUpOccurred,
+    int ExperiencePoints,
+    int CurrentLevel,
+    int CurrentLevelStartExperience,
+    int NextLevelExperience,
+    int ExperienceToNextLevel,
+    double LevelProgressPercent,
+    int DailyStreakCount,
+    int LongestStreakCount);
+
 public sealed record PracticeSessionResultDto(
     Guid SessionId,
     double? ReadingScore,
@@ -39,13 +52,23 @@ public sealed record PracticeSessionResultDto(
     string Status,
     double? WritingScore = null,
     string? OverallFeedback = null,
-    double? SpeakingScore = null);
+    double? SpeakingScore = null,
+    double? TotalBandScore = null,
+    PracticeSessionRewardDto? Reward = null);
 
 public sealed record PracticeSessionFeedbackDto(
     string Criteria,
     double BandScore,
     string? Comment,
-    string? Improvements);
+    string? Improvements,
+    double? ConfidenceScore = null,
+    IReadOnlyList<string>? Evidence = null);
+
+public sealed record PracticeSessionSpeakingWordTimestampDto(
+    string Word,
+    double? Start,
+    double? End,
+    double? Probability);
 
 public sealed record PracticeSessionSpeakingAnalyticsDto(
     int WordCount,
@@ -54,7 +77,15 @@ public sealed record PracticeSessionSpeakingAnalyticsDto(
     int? TargetDurationSeconds,
     double? EstimatedFluencyBand,
     string PaceLabel,
-    string CoverageLabel);
+    string CoverageLabel,
+    double? MeanWordConfidence = null,
+    double? SpeechRatio = null,
+    int? PauseCount = null,
+    int? LongPauseCount = null,
+    double? TotalPauseSeconds = null,
+    string? AudioQualityLabel = null,
+    IReadOnlyList<string>? AudioQualityWarnings = null,
+    IReadOnlyList<PracticeSessionSpeakingWordTimestampDto>? WordTimestamps = null);
 
 public sealed record PracticeSessionSpeakingPromptCueDto(
     string Code,
@@ -196,7 +227,8 @@ public sealed record PracticeSessionListItemDto(
     double? ListeningScore,
     double? TotalAutoScore,
     double? WritingScore = null,
-    double? SpeakingScore = null);
+    double? SpeakingScore = null,
+    double? TotalBandScore = null);
 
 public sealed record UploadPracticeSpeakingRecordingDto(
     Guid SpeakingQuestionId,
@@ -235,7 +267,8 @@ public sealed record AdminAttemptListItemDto(
     int? ResumeQuestionNumber,
     double? ReadingScore,
     double? ListeningScore,
-    double? TotalAutoScore);
+    double? TotalAutoScore,
+    double? TotalBandScore = null);
 
 public sealed record AdminAttemptAnswerDto(
     Guid QuestionId,
@@ -272,4 +305,5 @@ public sealed record SubmitExamResultDto(
     double TotalAutoScore,
     bool HasWriting,
     bool HasSpeaking,
-    string Status);
+    string Status,
+    double? TotalBandScore = null);

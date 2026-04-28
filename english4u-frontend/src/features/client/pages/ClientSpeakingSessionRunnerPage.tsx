@@ -910,13 +910,6 @@ export const ClientSpeakingSessionPage = () => {
 
                             <div className="speaking-runner-prompt-list">
                             {promptEntries.map((entry) => {
-                                const savedAnswer = answerMap.get(entry.question.id);
-                                const transcriptText = (
-                                    localTranscriptByQuestionId[entry.question.id]
-                                    || savedAnswer?.transcriptText
-                                    || savedAnswer?.answerText
-                                    || ''
-                                ).trim();
                                 const hasResponse = hasPromptResponse(entry.question.id);
                                 const isActive = entry.question.id === activeQuestionId;
                                 const isLocked = lockedPart2QuestionIds.has(entry.question.id);
@@ -966,17 +959,6 @@ export const ClientSpeakingSessionPage = () => {
                                             >
                                                 {entry.question.content}
                                             </Text>
-                                            {transcriptText ? (
-                                                <Text
-                                                    style={{
-                                                        color: isActive ? 'rgba(255,255,255,0.78)' : '#64748b',
-                                                        whiteSpace: 'normal',
-                                                        display: 'block',
-                                                    }}
-                                                >
-                                                    Transcript: {transcriptText}
-                                                </Text>
-                                            ) : null}
                                         </Space>
                                     </Button>
                                 );

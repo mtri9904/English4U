@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "ReDQURuYxjA=",
+  "dgSpecHash": "Tcn6ipzii7M=",
   "success": true,
-  "projectFilePath": "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\english4u-backend\\EnglishExamApp.Application\\EnglishExamApp.Application.csproj",
+  "projectFilePath": "C:\\Users\\Hande\\OneDrive\\Documents\\DoAnTotNghiep\\English4skills\\english4u-backend\\EnglishExamApp.Application\\EnglishExamApp.Application.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\Hande\\.nuget\\packages\\microsoft.entityframeworkcore\\9.0.15\\microsoft.entityframeworkcore.9.0.15.nupkg.sha512",
     "C:\\Users\\Hande\\.nuget\\packages\\microsoft.entityframeworkcore.abstractions\\9.0.15\\microsoft.entityframeworkcore.abstractions.9.0.15.nupkg.sha512",

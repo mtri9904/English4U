@@ -35,6 +35,15 @@ export const SKILL_COLORS: Record<SkillType, string> = {
     Speaking: '#ef4444',
 };
 
+export const getDefaultDurationForSkill = (skillType?: string) => {
+    const normalizedSkill = normalizeSkillName(skillType);
+
+    if (normalizedSkill === 'listening') return 30;
+    if (normalizedSkill === 'speaking') return 15;
+
+    return 60;
+};
+
 export const GROUP_TYPE_OPTIONS: Record<string, { label: string; value: string }[]> = {
     Reading: READING_QUESTION_TYPE_OPTIONS,
     Listening: LISTENING_QUESTION_TYPE_OPTIONS,
@@ -44,7 +53,7 @@ export const EXAM_LIMITS = {
     Reading: { passages: 3, questions: 40 },
     Listening: { parts: 4, questions: 40 },
     Writing: { tasks: 2 },
-    Speaking: { parts: 3 },
+    Speaking: { minParts: 2, parts: 3 },
 } as const;
 
 const normalizeSkillName = (skillType?: string) => (skillType ?? '').trim().toLowerCase();
@@ -98,8 +107,12 @@ export const validateExamStructureLimits = (exam: CreateExamDto) => {
                 errors.push(`${sectionLabel} Reading chỉ được tối đa ${EXAM_LIMITS.Reading.passages} passages.`);
             }
 
-            if (questionCount > EXAM_LIMITS.Reading.questions || maxQuestionNumber > EXAM_LIMITS.Reading.questions) {
-                errors.push(`${sectionLabel} Reading chỉ được tối đa ${EXAM_LIMITS.Reading.questions} câu.`);
+            if (questionCount !== EXAM_LIMITS.Reading.questions) {
+                errors.push(`${sectionLabel} Reading phải có đúng ${EXAM_LIMITS.Reading.questions} câu (hiện có ${questionCount}).`);
+            }
+
+            if (maxQuestionNumber > EXAM_LIMITS.Reading.questions) {
+                errors.push(`${sectionLabel} Reading không được đánh số quá câu ${EXAM_LIMITS.Reading.questions}.`);
             }
         }
 
@@ -112,22 +125,67 @@ export const validateExamStructureLimits = (exam: CreateExamDto) => {
                 errors.push(`${sectionLabel} Listening chỉ được tối đa ${EXAM_LIMITS.Listening.parts} parts.`);
             }
 
-            if (questionCount > EXAM_LIMITS.Listening.questions || maxQuestionNumber > EXAM_LIMITS.Listening.questions) {
-                errors.push(`${sectionLabel} Listening chỉ được tối đa ${EXAM_LIMITS.Listening.questions} câu.`);
+            if (questionCount !== EXAM_LIMITS.Listening.questions) {
+                errors.push(`${sectionLabel} Listening phải có đúng ${EXAM_LIMITS.Listening.questions} câu (hiện có ${questionCount}).`);
+            }
+
+            if (maxQuestionNumber > EXAM_LIMITS.Listening.questions) {
+                errors.push(`${sectionLabel} Listening không được đánh số quá câu ${EXAM_LIMITS.Listening.questions}.`);
             }
         }
 
-        if (normalizedSkill === 'writing' && (section.writingTasks?.length ?? 0) > EXAM_LIMITS.Writing.tasks) {
-            errors.push(`${sectionLabel} Writing chỉ được tối đa ${EXAM_LIMITS.Writing.tasks} tasks.`);
+        if (normalizedSkill === 'writing' && (section.writingTasks?.length ?? 0) !== EXAM_LIMITS.Writing.tasks) {
+            errors.push(`${sectionLabel} Writing phải có đúng ${EXAM_LIMITS.Writing.tasks} parts/tasks.`);
         }
 
-        if (normalizedSkill === 'speaking' && (section.speakingParts?.length ?? 0) > EXAM_LIMITS.Speaking.parts) {
-            errors.push(`${sectionLabel} Speaking chỉ được tối đa ${EXAM_LIMITS.Speaking.parts} parts.`);
+        if (normalizedSkill === 'speaking') {
+            const partCount = section.speakingParts?.length ?? 0;
+            if (partCount < EXAM_LIMITS.Speaking.minParts || partCount > EXAM_LIMITS.Speaking.parts) {
+                errors.push(`${sectionLabel} Speaking phải có từ ${EXAM_LIMITS.Speaking.minParts} đến ${EXAM_LIMITS.Speaking.parts} parts.`);
+            }
         }
     });
 
     return errors;
 };
+
+export const countObjectiveQuestions = (sections: CreateSectionDto[] = []) => (
+    sections.reduce((total, section) => total + countSectionQuestions(section), 0)
+);
+
+export const normalizeObjectiveQuestionPointsForSubmit = (sections: CreateSectionDto[] = []): CreateSectionDto[] => (
+    sections.map((section) => {
+        const normalizedSkill = normalizeSkillName(section.skillType);
+
+        if (normalizedSkill === 'reading') {
+            return {
+                ...section,
+                readingPassages: (section.readingPassages ?? []).map((passage) => ({
+                    ...passage,
+                    questionGroups: passage.questionGroups.map((group) => ({
+                        ...group,
+                        questions: group.questions.map((question) => ({ ...question, points: 1 })),
+                    })),
+                })),
+            };
+        }
+
+        if (normalizedSkill === 'listening') {
+            return {
+                ...section,
+                listeningParts: (section.listeningParts ?? []).map((part) => ({
+                    ...part,
+                    questionGroups: part.questionGroups.map((group) => ({
+                        ...group,
+                        questions: group.questions.map((question) => ({ ...question, points: 1 })),
+                    })),
+                })),
+            };
+        }
+
+        return section;
+    })
+);
 
 export const COMPLEX_LAYOUT_GROUP_TYPES = new Set<string>([
     'TABLE_COMPLETION',
@@ -151,6 +209,52 @@ export const emptyOption = (idx = 0): CreateQuestionOptionDto => ({
     orderIndex: idx,
 });
 
+export const getDefaultMcqOptionCount = (skillType?: string) => (
+    normalizeSkillName(skillType) === 'listening' ? 3 : 4
+);
+
+const buildDefaultOptionsForType = (groupType?: string, skillType?: string): CreateQuestionOptionDto[] => {
+    if (!groupType) return [];
+
+    if (groupType === QUESTION_TYPES.TFNG) {
+        return TFNG_OPTIONS.map((option) => ({ ...option }));
+    }
+
+    if (groupType === QUESTION_TYPES.YNNG) {
+        return YNNG_OPTIONS.map((option) => ({ ...option }));
+    }
+
+    if (groupType === QUESTION_TYPES.MATCHING_CLASSIFICATION) {
+        return [
+            { ...emptyOption(0), optionText: 'in favour' },
+            { ...emptyOption(1), optionText: 'against' },
+        ];
+    }
+
+    if (groupType === QUESTION_TYPES.MATCHING_TABLE || MATCHING_TYPES.has(groupType)) {
+        return [emptyOption(0), emptyOption(1), emptyOption(2), emptyOption(3)];
+    }
+
+    if (groupType === QUESTION_TYPES.MAP_LABELLING) {
+        return [
+            emptyOption(0),
+            emptyOption(1),
+            emptyOption(2),
+            emptyOption(3),
+            emptyOption(4),
+            emptyOption(5),
+            emptyOption(6),
+            emptyOption(7),
+        ];
+    }
+
+    if (SINGLE_CHOICE_TYPES.has(groupType) || MULTI_CHOICE_TYPES.has(groupType)) {
+        return Array.from({ length: getDefaultMcqOptionCount(skillType) }, (_, index) => emptyOption(index));
+    }
+
+    return [];
+};
+
 export const emptyQuestion = (): CreateQuestionDto => ({
     content: '',
     correctAnswer: undefined,
@@ -158,16 +262,16 @@ export const emptyQuestion = (): CreateQuestionDto => ({
     options: [],
 });
 
-export const emptyGroup = (groupType = 'MCQ_SINGLE'): CreateQuestionGroupDto => ({
+export const emptyGroup = (groupType = 'MCQ_SINGLE', skillType?: SkillType): CreateQuestionGroupDto => ({
     groupType,
     instruction: '',
-    questions: [emptyQuestion()],
+    questions: [{ ...emptyQuestion(), options: buildDefaultOptionsForType(groupType, skillType) }],
 });
 
 export const emptyPassage = (): CreateReadingPassageDto => ({
     title: '',
     paragraphsData: '',
-    questionGroups: [emptyGroup()],
+    questionGroups: [emptyGroup('MCQ_SINGLE', 'Reading')],
 });
 
 export const emptyListeningPart = (): CreateListeningPartDto => ({
@@ -175,7 +279,7 @@ export const emptyListeningPart = (): CreateListeningPartDto => ({
     audioUrl: '',
     contextDescription: '',
     transcriptData: '',
-    questionGroups: [emptyGroup()],
+    questionGroups: [emptyGroup('MCQ_SINGLE', 'Listening')],
 });
 
 export const getSharedListeningAudioUrl = (parts: CreateListeningPartDto[] = []) =>
@@ -899,47 +1003,9 @@ export const reorderQuestionNumbers = (groups: CreateQuestionGroupDto[], startQN
     });
 };
 
-export const getOptionsForType = (groupType?: string): CreateQuestionOptionDto[] => {
-    if (!groupType) return [];
-
-    if (groupType === QUESTION_TYPES.TFNG) {
-        return TFNG_OPTIONS.map((option) => ({ ...option }));
-    }
-
-    if (groupType === QUESTION_TYPES.YNNG) {
-        return YNNG_OPTIONS.map((option) => ({ ...option }));
-    }
-
-    if (groupType === QUESTION_TYPES.MATCHING_CLASSIFICATION) {
-        return [
-            { ...emptyOption(0), optionText: 'in favour' },
-            { ...emptyOption(1), optionText: 'against' },
-        ];
-    }
-
-    if (groupType === QUESTION_TYPES.MATCHING_TABLE || MATCHING_TYPES.has(groupType)) {
-        return [emptyOption(0), emptyOption(1), emptyOption(2), emptyOption(3)];
-    }
-
-    if (groupType === QUESTION_TYPES.MAP_LABELLING) {
-        return [
-            emptyOption(0),
-            emptyOption(1),
-            emptyOption(2),
-            emptyOption(3),
-            emptyOption(4),
-            emptyOption(5),
-            emptyOption(6),
-            emptyOption(7),
-        ];
-    }
-
-    if (SINGLE_CHOICE_TYPES.has(groupType) || MULTI_CHOICE_TYPES.has(groupType)) {
-        return [emptyOption(0), emptyOption(1), emptyOption(2), emptyOption(3)];
-    }
-
-    return [];
-};
+export const getOptionsForType = (groupType?: string, skillType?: string): CreateQuestionOptionDto[] => (
+    buildDefaultOptionsForType(groupType, skillType)
+);
 
 import { cleanUpText, buildCleanPastedValue } from '@/shared/utils/input';
 

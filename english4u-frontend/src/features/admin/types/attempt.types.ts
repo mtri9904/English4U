@@ -9,6 +9,7 @@ export interface PracticeSessionResultDto {
     correctQuestions: number;
     accuracyPercent: number;
     status: string;
+    totalBandScore: number | null;
 }
 
 export interface AdminAttemptListItemDto {
@@ -30,6 +31,7 @@ export interface AdminAttemptListItemDto {
     readingScore: number | null;
     listeningScore: number | null;
     totalAutoScore: number | null;
+    totalBandScore: number | null;
 }
 
 export interface AdminAttemptAnswerDto {

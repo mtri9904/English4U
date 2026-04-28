@@ -4,6 +4,7 @@ export { ClientPlaceholderPage } from './pages/ClientPlaceholderPage';
 export { ClientPracticePage } from './pages/ClientPracticePage';
 export { ClientPracticeExamPage } from './pages/ClientPracticeExamPage';
 export { ClientMyExamsPage } from './pages/ClientMyExamsPage';
+export { ClientProfilePage } from './pages/ClientProfilePage';
 export { ClientReadingSessionPage, ClientListeningSessionPage } from './pages/ClientObjectiveSessionRunnerPage';
 export { ClientWritingSessionPage } from './pages/ClientWritingSessionRunnerPage';
 export { ClientSpeakingSessionPage } from './pages/ClientSpeakingSessionRunnerPage';

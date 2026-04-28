@@ -6,6 +6,12 @@ export interface SpeakingVisemeCue {
     endMs: number;
 }
 
+export interface SpeakingWordMarker {
+    word: string;
+    startIndex: number;
+    endIndex: number;
+}
+
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
 const normalizeWord = (value: string) => value.replace(/[^a-z']/gi, '').toLowerCase();
@@ -30,11 +36,15 @@ const toVisemeCode = (chunk: string): SpeakingVisemeCode => {
     }
 
     if (/^(f|v|ph)/.test(normalized)) {
-        return 'G';
+        return 'F';
     }
 
     if (/^(th)/.test(normalized)) {
         return 'D';
+    }
+
+    if (/^(sh|ch|j)/.test(normalized)) {
+        return 'C';
     }
 
     if (/^(r|l|er|ir|ur)/.test(normalized)) {
@@ -42,7 +52,7 @@ const toVisemeCode = (chunk: string): SpeakingVisemeCode => {
     }
 
     if (/^(oo|ou|ow|o|u|w)/.test(normalized)) {
-        return 'F';
+        return 'G';
     }
 
     if (/^(ee|ea|ei|i|y|e)/.test(normalized)) {
@@ -152,6 +162,79 @@ export const buildApproximateVisemeTimeline = (text?: string | null, preferredDu
         });
         return result;
     }, []);
+};
+
+export const buildWordMarkers = (text?: string | null): SpeakingWordMarker[] => {
+    const source = text ?? '';
+    const matches = source.matchAll(/[a-z]+(?:'[a-z]+)?/gi);
+
+    return Array.from(matches, (match) => ({
+        word: match[0],
+        startIndex: match.index ?? 0,
+        endIndex: (match.index ?? 0) + match[0].length,
+    }));
+};
+
+export const resolveWordMarkerAtCharIndex = (markers: SpeakingWordMarker[], charIndex: number) => {
+    if (markers.length === 0) {
+        return null;
+    }
+
+    return markers.find((marker) => charIndex >= marker.startIndex && charIndex < marker.endIndex)
+        ?? markers.find((marker) => charIndex < marker.startIndex)
+        ?? markers[markers.length - 1]
+        ?? null;
+};
+
+export const estimateWordDurationMs = (word: string, rate = 1) => {
+    const normalizedWord = normalizeWord(word);
+    const chunks = splitWordToChunks(normalizedWord);
+    const normalizedRate = clamp(rate, 0.6, 1.5);
+    const durationMs = (Math.max(1, chunks.length) * 92 + Math.max(0, normalizedWord.length - 3) * 18) / normalizedRate;
+    return Math.round(clamp(durationMs, 160, 720));
+};
+
+export const buildWordVisemeTimeline = (
+    word: string,
+    startMs: number,
+    durationMs = estimateWordDurationMs(word),
+): SpeakingVisemeCue[] => {
+    const chunks = splitWordToChunks(word);
+    if (chunks.length === 0) {
+        return [{ code: 'X', startMs, endMs: startMs + Math.max(80, durationMs) }];
+    }
+
+    const leadInMs = Math.min(24, Math.round(durationMs * 0.08));
+    const tailOutMs = Math.min(34, Math.round(durationMs * 0.12));
+    const speechMs = Math.max(80, durationMs - leadInMs - tailOutMs);
+    const chunkWeights = chunks.map((chunk) => Math.max(1, chunk.length));
+    const totalWeight = chunkWeights.reduce((sum, weight) => sum + weight, 0);
+    const cues: SpeakingVisemeCue[] = [];
+    let cursor = startMs;
+
+    if (leadInMs > 0) {
+        cues.push({ code: 'X', startMs: cursor, endMs: cursor + leadInMs });
+        cursor += leadInMs;
+    }
+
+    chunks.forEach((chunk, index) => {
+        const isLastChunk = index === chunks.length - 1;
+        const chunkDurationMs = isLastChunk
+            ? Math.max(48, startMs + durationMs - tailOutMs - cursor)
+            : Math.max(48, Math.round((speechMs * chunkWeights[index]) / totalWeight));
+        cues.push({
+            code: toVisemeCode(chunk),
+            startMs: cursor,
+            endMs: cursor + chunkDurationMs,
+        });
+        cursor += chunkDurationMs;
+    });
+
+    if (cursor < startMs + durationMs) {
+        cues.push({ code: 'X', startMs: cursor, endMs: startMs + durationMs });
+    }
+
+    return cues;
 };
 
 export const scaleVisemeTimeline = (timeline: SpeakingVisemeCue[], targetDurationMs: number): SpeakingVisemeCue[] => {

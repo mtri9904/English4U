@@ -1,4 +1,5 @@
 using EnglishExamApp.API.Realtime;
+using EnglishExamApp.Application.DTOs.Users;
 using EnglishExamApp.Application.Interfaces;
 using EnglishExamApp.Application.Utilities;
 using Microsoft.AspNetCore.Mvc;
@@ -44,10 +45,11 @@ public class UserController(
     [HttpGet("profile")]
     public async Task<IResult> GetProfile([FromHeader(Name = "X-User-Id")] string? userIdStr, CancellationToken cancellationToken)
     {
-        if (!Guid.TryParse(userIdStr, out var userId)) 
+        if (!Guid.TryParse(userIdStr, out var userId))
             return TypedResults.Unauthorized();
 
         var rawProfile = await context.Users
+            .Where(u => u.Id == userId)
             .Select(u => new
             {
                 u.Id,
@@ -62,16 +64,100 @@ public class UserController(
                 u.IsOnline,
                 u.LastSeenAt,
                 u.LastLoginAt,
-                Role = u.UserRoles.FirstOrDefault()!.Role.Name,
-                u.CreatedAt
+                Role = u.UserRoles.Select(userRole => userRole.Role.Name).FirstOrDefault(),
+                u.CreatedAt,
+                u.ExperiencePoints,
+                u.DailyStreakCount,
+                u.LongestStreakCount,
+                u.LastActivityAt
             })
-            .FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+            .FirstOrDefaultAsync(cancellationToken);
 
         if (rawProfile is null)
             return TypedResults.NotFound();
 
-        var profile = new
+        var completedSessions = await context.ExamSessions
+            .AsNoTracking()
+            .Where(session =>
+                session.UserId == userId
+                && (session.Status == "Completed" || session.Status == "Scored"))
+            .Select(session => new
+            {
+                session.Id,
+                session.ExamId,
+                ExamTitle = session.Exam.Title,
+                SkillType = session.Exam.ExamSections
+                    .OrderBy(section => section.OrderIndex)
+                    .Select(section => section.SkillType)
+                    .FirstOrDefault() ?? "PRACTICE",
+                CompletedAt = session.EndedAt ?? session.StartedAt,
+                LatestBandScore = session.ScoringResults
+                    .OrderByDescending(result => result.ScoredAt)
+                    .Select(result => result.TotalBandScore)
+                    .FirstOrDefault(),
+                session.StartedAt,
+                session.EndedAt
+            })
+            .OrderByDescending(session => session.CompletedAt)
+            .ToListAsync(cancellationToken);
+
+        var completedSessionCount = completedSessions.Count;
+        var uniqueExamCompletedCount = completedSessions
+            .Select(session => session.ExamId)
+            .Distinct()
+            .Count();
+        var scoredBandValues = completedSessions
+            .Where(session => session.LatestBandScore.HasValue)
+            .Select(session => session.LatestBandScore!.Value)
+            .ToList();
+        double? averageBandScore = scoredBandValues.Count > 0
+            ? Math.Round(scoredBandValues.Average(), 1)
+            : null;
+        double? bestBandScore = scoredBandValues.Count > 0
+            ? Math.Round(scoredBandValues.Max(), 1)
+            : null;
+        var totalPracticeMinutes = completedSessions.Sum(session =>
         {
+            if (session.EndedAt is null)
+            {
+                return 0;
+            }
+
+            var duration = session.EndedAt.Value - session.StartedAt;
+            return Math.Max(1, (int)Math.Ceiling(duration.TotalMinutes));
+        });
+
+        var gamificationProgress = UserGamificationCalculator.BuildProgress(rawProfile.ExperiencePoints);
+        var gamification = new UserGamificationDto(
+            gamificationProgress.ExperiencePoints,
+            gamificationProgress.CurrentLevel,
+            gamificationProgress.CurrentLevelStartExperience,
+            gamificationProgress.NextLevelExperience,
+            gamificationProgress.ExperienceToNextLevel,
+            gamificationProgress.LevelProgressPercent,
+            rawProfile.DailyStreakCount,
+            rawProfile.LongestStreakCount,
+            VietnamDateTimeFormatter.ToDisplay(rawProfile.LastActivityAt));
+        var learning = new UserLearningSnapshotDto(
+            completedSessionCount,
+            uniqueExamCompletedCount,
+            averageBandScore,
+            bestBandScore,
+            totalPracticeMinutes);
+        var recentExamActivities = completedSessions
+            .Take(5)
+            .Select(session => new UserProfileRecentExamDto(
+                session.Id,
+                session.ExamId,
+                session.ExamTitle,
+                session.SkillType,
+                VietnamDateTimeFormatter.ToDisplay(session.CompletedAt)!,
+                session.LatestBandScore.HasValue
+                    ? Math.Round(session.LatestBandScore.Value, 1)
+                    : null))
+            .ToList();
+
+        var profile = new UserProfileDto(
             rawProfile.Id,
             rawProfile.Email,
             rawProfile.DisplayName,
@@ -82,11 +168,13 @@ public class UserController(
             rawProfile.Notes,
             rawProfile.IsActive,
             rawProfile.IsOnline,
-            LastSeenAt = VietnamDateTimeFormatter.ToDisplay(rawProfile.LastSeenAt),
-            LastLoginAt = VietnamDateTimeFormatter.ToDisplay(rawProfile.LastLoginAt),
-            Role = rawProfile.Role,
-            CreatedAt = VietnamDateTimeFormatter.ToDisplay(rawProfile.CreatedAt),
-        };
+            VietnamDateTimeFormatter.ToDisplay(rawProfile.LastSeenAt),
+            VietnamDateTimeFormatter.ToDisplay(rawProfile.LastLoginAt),
+            rawProfile.Role,
+            VietnamDateTimeFormatter.ToDisplay(rawProfile.CreatedAt)!,
+            gamification,
+            learning,
+            recentExamActivities);
 
         return TypedResults.Ok(profile);
     }

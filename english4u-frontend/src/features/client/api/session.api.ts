@@ -1,4 +1,5 @@
 import { axiosInstance } from '@/apis/axios.instance';
+import { userKeys } from '@/features/admin/api/user.api';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
     PracticeSessionDto,
@@ -92,6 +93,12 @@ export const sessionApi = {
         });
         return response.data;
     },
+    rescoreSpeaking: async (sessionId: string): Promise<PracticeSessionResultDto> => {
+        const response = await axiosInstance.post<PracticeSessionResultDto>(`/practice/sessions/${sessionId}/rescore-speaking`, undefined, {
+            timeout: 5 * 60 * 1000,
+        });
+        return response.data;
+    },
 };
 
 export const useMyPracticeSessionsQuery = () =>
@@ -154,6 +161,7 @@ export const useSubmitReadingListeningMutation = () => {
         onSuccess: (result) => {
             queryClient.invalidateQueries({ queryKey: sessionKeys.all });
             queryClient.invalidateQueries({ queryKey: sessionKeys.detail(result.sessionId) });
+            queryClient.invalidateQueries({ queryKey: userKeys.profile });
         },
     });
 };
@@ -166,6 +174,7 @@ export const useSubmitWritingMutation = () => {
         onSuccess: (result) => {
             queryClient.invalidateQueries({ queryKey: sessionKeys.all });
             queryClient.invalidateQueries({ queryKey: sessionKeys.detail(result.sessionId) });
+            queryClient.invalidateQueries({ queryKey: userKeys.profile });
         },
     });
 };
@@ -178,6 +187,20 @@ export const useSubmitSpeakingMutation = () => {
         onSuccess: (result) => {
             queryClient.invalidateQueries({ queryKey: sessionKeys.all });
             queryClient.invalidateQueries({ queryKey: sessionKeys.detail(result.sessionId) });
+            queryClient.invalidateQueries({ queryKey: userKeys.profile });
+        },
+    });
+};
+
+export const useRescoreSpeakingMutation = () => {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: sessionApi.rescoreSpeaking,
+        onSuccess: (result) => {
+            queryClient.invalidateQueries({ queryKey: sessionKeys.all });
+            queryClient.invalidateQueries({ queryKey: sessionKeys.detail(result.sessionId) });
+            queryClient.invalidateQueries({ queryKey: userKeys.profile });
         },
     });
 };

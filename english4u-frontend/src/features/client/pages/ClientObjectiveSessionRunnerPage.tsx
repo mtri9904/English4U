@@ -198,6 +198,51 @@ const parseFlowchartAssets = (assetsData?: string | null) => {
     return { imageUrl: '', answerMode: 'text_input' as const };
 };
 
+const isImageUrl = (value?: string | null) => /^https?:\/\/.+/i.test((value ?? '').trim());
+
+const parseAssetImageUrls = (assetsData?: string | null) => {
+    if (!assetsData) {
+        return [];
+    }
+
+    try {
+        const parsed = JSON.parse(assetsData) as unknown;
+        if (typeof parsed === 'string') {
+            return isImageUrl(parsed) ? [parsed.trim()] : [];
+        }
+
+        if (Array.isArray(parsed)) {
+            return parsed
+                .filter((item): item is string => typeof item === 'string')
+                .map((item) => item.trim())
+                .filter((item) => isImageUrl(item));
+        }
+
+        if (parsed && typeof parsed === 'object') {
+            const singleImageCandidates = [
+                (parsed as { imageUrl?: unknown }).imageUrl,
+                (parsed as { url?: unknown }).url,
+                (parsed as { assetUrl?: unknown }).assetUrl,
+            ];
+            const imageList = Array.isArray((parsed as { images?: unknown }).images)
+                ? (parsed as { images: unknown[] }).images
+                : [];
+
+            return [
+                ...singleImageCandidates,
+                ...imageList,
+            ]
+                .filter((item): item is string => typeof item === 'string')
+                .map((item) => item.trim())
+                .filter((item) => isImageUrl(item));
+        }
+    } catch {
+        return isImageUrl(assetsData) ? [assetsData.trim()] : [];
+    }
+
+    return [];
+};
+
 const getSharedListeningAudioUrl = (parts: PracticeSessionListeningPartDto[] = []) =>
     parts
         .map((part) => (part.audioUrl ?? '').trim())
@@ -1570,6 +1615,7 @@ export const ReadingBody = ({
     renderQuestionAction?: RenderQuestionAction;
 }) => {
     const passage = passages[activePassageIndex];
+    const passageAssetImages = parseAssetImageUrls(passage?.assetsData);
 
     if (!passage) {
         return (
@@ -1593,6 +1639,33 @@ export const ReadingBody = ({
                         <Title level={4} style={{ margin: 0, color: '#15803d' }}>
                             Passage {passage.passageNumber ?? activePassageIndex + 1}: {passage.title || 'Reading passage'}
                         </Title>
+
+                        {passageAssetImages.length > 0 ? (
+                            <div
+                                style={{
+                                    display: 'grid',
+                                    gap: 12,
+                                }}
+                            >
+                                {passageAssetImages.map((imageUrl, index) => (
+                                    <div
+                                        key={`${passage.id}-asset-${index}`}
+                                        style={{
+                                            border: '1px solid #e2e8f0',
+                                            borderRadius: 16,
+                                            padding: 12,
+                                            background: '#fff',
+                                        }}
+                                    >
+                                        <img
+                                            src={imageUrl}
+                                            alt={`Passage visual ${index + 1}`}
+                                            style={{ width: '100%', borderRadius: 12, objectFit: 'contain', maxHeight: 420 }}
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+                        ) : null}
 
                         {passage.paragraphsData ? (
                             <div
@@ -2094,7 +2167,7 @@ const ObjectiveRunnerPage = ({ expectedSkill }: { expectedSkill: 'READING' | 'LI
                         type="success"
                         showIcon
                         message="Session này không còn ở trạng thái đang làm."
-                        description="Bạn có thể mở trang kết quả để xem điểm objective và thông tin đã nộp."
+                        description="Bạn có thể mở trang kết quả để xem band IELTS, raw score và thông tin đã nộp."
                     />
                     <Button type="primary" onClick={() => navigate(`/app/sessions/${sessionId}/submit`)}>
                         Xem trang submit

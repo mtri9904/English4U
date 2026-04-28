@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using EnglishExamApp.Application.DTOs.Exams;
 using EnglishExamApp.Application.Interfaces;
+using EnglishExamApp.Application.Utilities;
 using EnglishExamApp.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -143,6 +144,25 @@ public sealed class AiScoringHttpService(
 
     public async Task ScoreSpeakingAsync(Guid sessionId, CancellationToken cancellationToken = default)
     {
+        var examId = await context.ExamSessions
+            .AsNoTracking()
+            .Where(session => session.Id == sessionId)
+            .Select(session => (Guid?)session.ExamId)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (examId is null)
+            return;
+
+        var speakingQuestions = await context.SpeakingQuestions
+            .Where(question => question.Part.Section.ExamId == examId.Value)
+            .Include(question => question.Part)
+            .OrderBy(question => question.Part.PartNumber)
+            .ThenBy(question => question.OrderIndex)
+            .ToListAsync(cancellationToken);
+
+        if (speakingQuestions.Count == 0)
+            return;
+
         var speakingAnswers = await context.UserAnswers
             .Where(a => a.SessionId == sessionId && a.SpeakingQuestionId != null)
             .Include(a => a.SpeakingQuestion)
@@ -151,19 +171,57 @@ public sealed class AiScoringHttpService(
                 .ThenInclude(record => record.SpeechTranscripts)
             .ToListAsync(cancellationToken);
 
-        if (speakingAnswers.Count == 0)
-            return;
+        var answersByQuestionId = speakingAnswers
+            .Where(answer => answer.SpeakingQuestionId.HasValue)
+            .GroupBy(answer => answer.SpeakingQuestionId!.Value)
+            .ToDictionary(
+                group => group.Key,
+                group => group.OrderByDescending(answer => answer.SubmittedAt).First());
+
+        foreach (var question in speakingQuestions)
+        {
+            if (answersByQuestionId.ContainsKey(question.Id))
+                continue;
+
+            var answer = new UserAnswer
+            {
+                Id = Guid.NewGuid(),
+                SessionId = sessionId,
+                SpeakingQuestionId = question.Id,
+                SpeakingQuestion = question,
+                ScoreEarned = 0,
+                SubmittedAt = DateTime.UtcNow,
+            };
+
+            context.UserAnswers.Add(answer);
+            answersByQuestionId[question.Id] = answer;
+        }
 
         var scoredItems = new List<(UserAnswer Answer, AiScoreResponse Result, int PartNumber)>();
 
-        foreach (var answer in speakingAnswers)
+        foreach (var question in speakingQuestions)
         {
+            var answer = answersByQuestionId[question.Id];
+            answer.SpeakingQuestion ??= question;
+            var questionPartNumber = question.Part.PartNumber ?? 0;
+
             var audioRecord = answer.UserAudioRecords
                 .OrderByDescending(record => record.DurationSeconds ?? 0)
                 .ThenByDescending(record => record.Id)
                 .FirstOrDefault();
             if (audioRecord is null || string.IsNullOrWhiteSpace(audioRecord.AudioUrl))
+            {
+                var noResponseResult = BuildNoResponseSpeakingScoreResponse(sessionId, answer.Id, audioRecord?.DurationSeconds);
+                await SaveFeedbacks(answer.Id, noResponseResult, "Speaking", cancellationToken);
+                answer.ScoreEarned = noResponseResult.OverallBand;
+                scoredItems.Add((answer, noResponseResult, questionPartNumber));
+
+                logger.LogInformation(
+                    "Speaking answer {AnswerId} scored as no response because no audio was submitted.",
+                    answer.Id);
+
                 continue;
+            }
 
             using var formContent = new MultipartFormDataContent();
             Stream? audioStream = null;
@@ -176,8 +234,19 @@ public sealed class AiScoringHttpService(
                 if (!string.IsNullOrWhiteSpace(questionPrompt))
                     formContent.Add(new StringContent(questionPrompt), "question_prompt");
 
-                if (answer.SpeakingQuestion?.Part.PartNumber is int partNumber)
-                    formContent.Add(new StringContent(partNumber.ToString(CultureInfo.InvariantCulture)), "part_number");
+                if (questionPartNumber > 0)
+                    formContent.Add(new StringContent(questionPartNumber.ToString(CultureInfo.InvariantCulture)), "part_number");
+
+                var promptType = GetSpeakingPromptType(questionPartNumber, answer.SpeakingQuestion);
+                formContent.Add(new StringContent(promptType), "prompt_type");
+
+                var targetDurationSeconds = GetSpeakingTargetDurationSeconds(questionPartNumber, promptType);
+                if (targetDurationSeconds.HasValue)
+                {
+                    formContent.Add(
+                        new StringContent(targetDurationSeconds.Value.ToString(CultureInfo.InvariantCulture)),
+                        "target_duration_seconds");
+                }
 
                 if (audioRecord.DurationSeconds is double durationSeconds)
                 {
@@ -225,6 +294,7 @@ public sealed class AiScoringHttpService(
                 if (result is null) continue;
                 result = NormalizeSpeakingScoreResponse(sessionId, answer.Id, result);
 
+                SpeechTranscript? evidenceTranscript = null;
                 if (!string.IsNullOrWhiteSpace(result.TranscriptText))
                 {
                     var existingTranscript = audioRecord.SpeechTranscripts
@@ -243,12 +313,52 @@ public sealed class AiScoringHttpService(
                     }
 
                     existingTranscript.TranscriptText = result.TranscriptText.Trim();
+                    evidenceTranscript = existingTranscript;
+                }
+
+                if (result.SpeakingEvidence is not null)
+                {
+                    audioRecord.SpeechRatio = result.SpeakingEvidence.SpeechRatio;
+                    audioRecord.AudioQualityData = result.SpeakingEvidence.AudioQuality is not null
+                        ? JsonSerializer.Serialize(result.SpeakingEvidence.AudioQuality, JsonOptions)
+                        : null;
+
+                    evidenceTranscript ??= audioRecord.SpeechTranscripts
+                        .OrderByDescending(transcript => transcript.Id)
+                        .FirstOrDefault();
+
+                    if (evidenceTranscript is null)
+                    {
+                        evidenceTranscript = new SpeechTranscript
+                        {
+                            Id = Guid.NewGuid(),
+                            AudioRecordId = audioRecord.Id,
+                            TranscriptText = string.IsNullOrWhiteSpace(result.TranscriptText)
+                                ? null
+                                : result.TranscriptText.Trim(),
+                        };
+                        context.SpeechTranscripts.Add(evidenceTranscript);
+                        audioRecord.SpeechTranscripts.Add(evidenceTranscript);
+                    }
+
+                    evidenceTranscript.ConfidenceScore = result.SpeakingEvidence.AsrConfidence;
+                    evidenceTranscript.WordTimestampsData = result.SpeakingEvidence.WordTimestamps is { Count: > 0 }
+                        ? JsonSerializer.Serialize(result.SpeakingEvidence.WordTimestamps, JsonOptions)
+                        : null;
+                    evidenceTranscript.PauseStatsData = result.SpeakingEvidence.PauseStats is not null
+                        ? JsonSerializer.Serialize(result.SpeakingEvidence.PauseStats, JsonOptions)
+                        : null;
+
+                    await SavePhonemeAnalyses(
+                        evidenceTranscript,
+                        result.SpeakingEvidence.PronunciationAnalysis,
+                        cancellationToken);
                 }
 
                 await SaveFeedbacks(answer.Id, result, "Speaking", cancellationToken);
 
                 answer.ScoreEarned = result.OverallBand;
-                scoredItems.Add((answer, result, answer.SpeakingQuestion?.Part.PartNumber ?? 0));
+                scoredItems.Add((answer, result, questionPartNumber));
 
                 logger.LogInformation(
                     "Speaking scored for answer {AnswerId}: band {Band}",
@@ -262,14 +372,94 @@ public sealed class AiScoringHttpService(
 
         if (scoredItems.Count > 0)
         {
+            var sessionLevelResult = await TryRequestSpeakingSessionScoreAsync(
+                sessionId,
+                scoredItems,
+                cancellationToken);
+
             await UpdateScoringResult(
                 sessionId,
-                speakingScore: BuildSpeakingOverallBand(scoredItems),
-                overallFeedback: BuildSpeakingOverallFeedbackPayload(scoredItems),
+                speakingScore: sessionLevelResult?.OverallBand ?? BuildSpeakingOverallBand(scoredItems),
+                overallFeedback: !string.IsNullOrWhiteSpace(sessionLevelResult?.OverallFeedback)
+                    ? sessionLevelResult.OverallFeedback
+                    : BuildSpeakingOverallFeedbackPayload(scoredItems),
                 cancellationToken: cancellationToken);
         }
 
         await context.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task<AiScoreResponse?> TryRequestSpeakingSessionScoreAsync(
+        Guid sessionId,
+        IReadOnlyList<(UserAnswer Answer, AiScoreResponse Result, int PartNumber)> scoredItems,
+        CancellationToken cancellationToken)
+    {
+        if (scoredItems.Count == 0)
+            return null;
+
+        var request = new AiScoreSpeakingSessionRequest(
+            sessionId.ToString(),
+            scoredItems.Select(item =>
+            {
+                var question = item.Answer.SpeakingQuestion;
+                var promptType = GetSpeakingPromptType(item.PartNumber, question);
+                var audioRecord = item.Answer.UserAudioRecords
+                    .OrderByDescending(record => record.DurationSeconds ?? 0)
+                    .ThenByDescending(record => record.Id)
+                    .FirstOrDefault();
+                var transcriptText = !string.IsNullOrWhiteSpace(item.Result.TranscriptText)
+                    ? item.Result.TranscriptText
+                    : audioRecord?.SpeechTranscripts
+                        .OrderByDescending(transcript => transcript.Id)
+                        .Select(transcript => transcript.TranscriptText)
+                        .FirstOrDefault(text => !string.IsNullOrWhiteSpace(text));
+
+                return new AiScoreSpeakingSessionAnswer(
+                    item.Answer.Id.ToString(),
+                    question?.Content,
+                    transcriptText,
+                    item.PartNumber > 0 ? item.PartNumber : null,
+                    promptType,
+                    audioRecord?.DurationSeconds,
+                    GetSpeakingTargetDurationSeconds(item.PartNumber, promptType),
+                    item.Result.Rubrics,
+                    IsNoResponseSpeakingResult(item.Result));
+            }).ToList());
+
+        try
+        {
+            using var response = await httpClient.PostAsJsonAsync(
+                "/api/ai/score-speaking-session",
+                request,
+                JsonOptions,
+                cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
+                var detail = ExtractAiServiceErrorDetail(errorBody);
+                logger.LogWarning(
+                    "AI speaking session aggregation failed with status {StatusCode}: {Detail}",
+                    (int)response.StatusCode,
+                    string.IsNullOrWhiteSpace(detail) ? errorBody : detail);
+                return null;
+            }
+
+            var result = await response.Content.ReadFromJsonAsync<AiScoreResponse>(JsonOptions, cancellationToken);
+            return result is null
+                ? null
+                : NormalizeSpeakingScoreResponse(sessionId, sessionId, result);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            logger.LogWarning("AI speaking session aggregation timed out for session {SessionId}.", sessionId);
+            return null;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or JsonException or InvalidOperationException)
+        {
+            logger.LogWarning(ex, "AI speaking session aggregation failed for session {SessionId}.", sessionId);
+            return null;
+        }
     }
 
     public async Task<GeneratedSpeakingPromptAudioDto?> GenerateSpeakingPromptAudioAsync(
@@ -438,6 +628,44 @@ public sealed class AiScoringHttpService(
                 alignment.Confidence)).ToList());
     }
 
+    private async Task SavePhonemeAnalyses(
+        SpeechTranscript transcript,
+        AiSpeakingPronunciationAnalysis? pronunciationAnalysis,
+        CancellationToken cancellationToken)
+    {
+        var existingRows = await context.PhonemeAnalyses
+            .Where(item => item.TranscriptId == transcript.Id)
+            .ToListAsync(cancellationToken);
+        context.PhonemeAnalyses.RemoveRange(existingRows);
+
+        var issues = pronunciationAnalysis?.Issues?
+            .Where(issue => !string.IsNullOrWhiteSpace(issue.Word))
+            .Take(24)
+            .ToList() ?? [];
+
+        foreach (var issue in issues)
+        {
+            context.PhonemeAnalyses.Add(new PhonemeAnalysis
+            {
+                Id = Guid.NewGuid(),
+                TranscriptId = transcript.Id,
+                Word = TruncateForColumn(issue.Word, 100),
+                ExpectedPhoneme = TruncateForColumn(issue.ExpectedPhoneme, 100),
+                ActualPhoneme = TruncateForColumn(issue.ActualPhoneme, 100),
+                IsCorrect = issue.IsCorrect
+            });
+        }
+    }
+
+    private static string? TruncateForColumn(string? value, int maxLength)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var trimmed = value.Trim();
+        return trimmed.Length <= maxLength ? trimmed : trimmed[..maxLength];
+    }
+
     private async Task SaveFeedbacks(Guid answerId, AiScoreResponse result, string skillType, CancellationToken cancellationToken)
     {
         var existingFeedbacks = await context.AiFeedbacks
@@ -471,7 +699,11 @@ public sealed class AiScoringHttpService(
                 RubricId = scoringRubric.Id,
                 BandScore = ClampBand(rubric.Band),
                 AiComment = rubric.Comment,
-                Improvements = rubric.Improvements
+                Improvements = rubric.Improvements,
+                ConfidenceScore = rubric.Confidence,
+                EvidenceData = rubric.Evidence is { Count: > 0 }
+                    ? JsonSerializer.Serialize(rubric.Evidence, JsonOptions)
+                    : null
             });
         }
     }
@@ -505,17 +737,11 @@ public sealed class AiScoringHttpService(
         if (!string.IsNullOrWhiteSpace(overallFeedback))
             scoringResult.OverallFeedback = overallFeedback;
 
-        var availableScores = new[]
-        {
+        scoringResult.TotalBandScore = IeltsScoringCalculator.CalculateOverallBand(
             scoringResult.ReadingScore,
             scoringResult.ListeningScore,
             scoringResult.WritingScore,
-            scoringResult.SpeakingScore
-        }.Where(score => score.HasValue).Select(score => score!.Value).ToList();
-
-        scoringResult.TotalBandScore = availableScores.Count == 0
-            ? null
-            : RoundIeltsBand(availableScores.Average());
+            scoringResult.SpeakingScore);
         scoringResult.ScoredAt = DateTime.UtcNow;
 
         var session = await context.ExamSessions
@@ -1087,6 +1313,87 @@ public sealed class AiScoringHttpService(
         };
     }
 
+    private static string GetSpeakingPromptType(int partNumber, SpeakingQuestion? question)
+    {
+        if (partNumber == 2 && !string.IsNullOrWhiteSpace(question?.CueCardPoints))
+        {
+            return "part2_long_turn";
+        }
+
+        return partNumber switch
+        {
+            1 => "part1_short_answer",
+            2 => "part2_follow_up",
+            3 => "part3_discussion",
+            _ => "unknown"
+        };
+    }
+
+    private static int? GetSpeakingTargetDurationSeconds(int partNumber, string promptType) =>
+        promptType switch
+        {
+            "part2_long_turn" => 120,
+            "part2_follow_up" => 35,
+            "part1_short_answer" => 30,
+            "part3_discussion" => 60,
+            _ => partNumber switch
+            {
+                1 => 30,
+                2 => 35,
+                3 => 60,
+                _ => null
+            }
+        };
+
+    private static AiScoreResponse BuildNoResponseSpeakingScoreResponse(Guid sessionId, Guid answerId, double? durationSeconds)
+    {
+        var durationText = durationSeconds.HasValue && durationSeconds.Value > 0
+            ? $" Bản ghi dài khoảng {durationSeconds.Value:0.#} giây nhưng không có câu trả lời nói đủ rõ."
+            : " Prompt này không có bản ghi câu trả lời.";
+        var evidence = new[]
+        {
+            "no_response=true",
+            durationSeconds.HasValue ? $"duration_seconds={durationSeconds.Value:0.#}" : "duration_seconds=n/a",
+            "audio_quality=no_audio"
+        };
+
+        return new AiScoreResponse(
+            sessionId.ToString(),
+            answerId.ToString(),
+            1.0,
+            [
+                new AiRubricScore(
+                    "Fluency and Coherence",
+                    1.0,
+                    $"Không có câu trả lời nói có thể đánh giá về độ trôi chảy hoặc mạch lạc.{durationText}",
+                    "Khi bí ý, hãy nói tối thiểu 1-2 câu trực tiếp về việc bạn chưa chắc, rồi đưa một ví dụ hoặc lý do đơn giản.",
+                    0.9,
+                    evidence),
+                new AiRubricScore(
+                    "Lexical Resource",
+                    1.0,
+                    "Không có đủ từ vựng được nói ra để thể hiện khả năng diễn đạt.",
+                    "Chuẩn bị một vài cụm mở đầu an toàn như I am not very familiar with this topic, but I think... để vẫn tạo được câu trả lời.",
+                    0.9,
+                    evidence),
+                new AiRubricScore(
+                    "Grammatical Range and Accuracy",
+                    1.0,
+                    "Không có ngôn ngữ đủ dài để đánh giá cấu trúc câu hoặc độ chính xác ngữ pháp.",
+                    "Ưu tiên tạo câu đơn hoàn chỉnh với chủ ngữ và động từ trước, sau đó thêm because hoặc for example để mở rộng.",
+                    0.9,
+                    evidence),
+                new AiRubricScore(
+                    "Pronunciation",
+                    1.0,
+                    "Không có lời nói đủ rõ để đánh giá phát âm ở mức câu trả lời.",
+                    "Nói rõ từng từ khóa và giữ âm lượng ổn định; nếu chưa nghĩ ra ý, vẫn nên nói một câu ngắn thay vì im lặng.",
+                    0.9,
+                    evidence)
+            ],
+            "Câu trả lời được chấm như no response. Việc không trả lời làm giảm điểm vì không có đủ bằng chứng ngôn ngữ để chấm các tiêu chí Speaking.");
+    }
+
     private static bool NeedsVietnameseFeedbackNormalization(AiScoreResponse result)
     {
         var feedbackTexts = new List<string?>();
@@ -1232,12 +1539,28 @@ public sealed class AiScoringHttpService(
         var overallBand = BuildSpeakingOverallBand(scoredItems);
         lines.Add(
             $"Band Speaking tổng quan khoảng {overallBand:0.0}. "
-            + "Điểm được tổng hợp theo 4 tiêu chí IELTS và cân bằng theo từng Part đã trả lời.");
+            + "Điểm được tổng hợp theo 4 tiêu chí IELTS và cân bằng theo từng Part trong session. "
+            + "Nội dung, từ vựng và ngữ pháp dựa trên transcript tự động; fluency và pronunciation dùng thêm tín hiệu ASR từ audio. "
+            + "Nếu audio không tạo được transcript, backend chấm no response và không suy đoán nội dung.");
 
         foreach (var partGroup in scoredItems.GroupBy(item => item.PartNumber).OrderBy(group => group.Key))
         {
-            var criterionBands = BuildSpeakingCriterionAverageMap(partGroup.Select(item => item.Result));
+            var partItems = partGroup.ToList();
+            var noResponseCount = partItems.Count(item => IsNoResponseSpeakingResult(item.Result));
+            var ratableCount = partItems.Count - noResponseCount;
+            var criterionBands = BuildSpeakingCriterionAverageMap(partItems.Select(item => item.Result));
             var partBand = RoundIeltsBand(criterionBands.Values.Average());
+
+            if (ratableCount == 0)
+            {
+                lines.Add(
+                    $"{FormatSpeakingPartLabel(partGroup.Key)} · Band khoảng {partBand:0.0}. "
+                    + $"Không có prompt nào trong part này có câu trả lời đủ dữ liệu để đánh giá ({noResponseCount}/{partItems.Count} prompt no response). "
+                    + "Không nêu điểm mạnh/yếu theo tiêu chí vì backend không có đủ bằng chứng ngôn ngữ từ audio/transcript. "
+                    + "Cần trả lời tối thiểu 1-2 câu rõ tiếng Anh cho mỗi prompt để có thể chấm Fluency, Lexical Resource, Grammar và Pronunciation.");
+                continue;
+            }
+
             var strongestCriteria = criterionBands
                 .OrderByDescending(item => item.Value)
                 .ThenBy(item => item.Key, StringComparer.Ordinal)
@@ -1251,14 +1574,42 @@ public sealed class AiScoringHttpService(
                 .Select(item => item.Key)
                 .ToList();
 
+            var responseCoverageText = noResponseCount > 0
+                ? $" Có {noResponseCount}/{partItems.Count} prompt no response nên điểm part bị kéo xuống."
+                : string.Empty;
+
             lines.Add(
-                $"{FormatSpeakingPartLabel(partGroup.Key)} · Band khoảng {partBand:0.0}. "
-                + $"Điểm mạnh tương đối: {string.Join(", ", strongestCriteria)}. "
+                $"{FormatSpeakingPartLabel(partGroup.Key)} · Band khoảng {partBand:0.0}.{responseCoverageText} "
+                + $"Dựa trên {ratableCount} prompt có transcript/audio đủ dữ liệu, điểm mạnh tương đối: {string.Join(", ", strongestCriteria)}. "
                 + $"Cần ưu tiên: {string.Join(", ", weakestCriteria.Select(GetSpeakingCriteriaDisplayName))}. "
                 + BuildSpeakingPartImprovementSummary(partGroup.Key, weakestCriteria));
         }
 
         return string.Join(Environment.NewLine + Environment.NewLine, lines);
+    }
+
+    private static bool IsNoResponseSpeakingResult(AiScoreResponse result)
+    {
+        var rubrics = result.Rubrics ?? [];
+        return result.OverallBand <= 1.0
+            && rubrics.Count >= SpeakingCriteria.Length
+            && rubrics.All(rubric => rubric.Band <= 1.0)
+            && (
+                ContainsNoResponseSignal(result.OverallFeedback)
+                || rubrics.Any(rubric => ContainsNoResponseSignal(rubric.Comment))
+            );
+    }
+
+    private static bool ContainsNoResponseSignal(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        var normalized = value.ToLowerInvariant();
+        return normalized.Contains("no response", StringComparison.Ordinal)
+            || normalized.Contains("không có câu trả lời", StringComparison.Ordinal)
+            || normalized.Contains("không có lời nói", StringComparison.Ordinal)
+            || normalized.Contains("không có đủ", StringComparison.Ordinal);
     }
 
     private static string FormatSpeakingPartLabel(int partNumber) =>

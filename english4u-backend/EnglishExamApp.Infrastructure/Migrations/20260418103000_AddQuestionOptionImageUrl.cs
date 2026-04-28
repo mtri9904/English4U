@@ -12,19 +12,24 @@ namespace EnglishExamApp.Infrastructure.Migrations
     {
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<string>(
-                name: "imageUrl",
-                table: "question_options",
-                type: "nvarchar(500)",
-                maxLength: 500,
-                nullable: true);
+            migrationBuilder.Sql("""
+                IF COL_LENGTH('question_options', 'imageUrl') IS NULL
+                BEGIN
+                    ALTER TABLE [question_options]
+                    ADD [imageUrl] nvarchar(500) NULL;
+                END
+                """);
         }
 
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "imageUrl",
-                table: "question_options");
+            migrationBuilder.Sql("""
+                IF COL_LENGTH('question_options', 'imageUrl') IS NOT NULL
+                BEGIN
+                    ALTER TABLE [question_options]
+                    DROP COLUMN [imageUrl];
+                END
+                """);
         }
     }
 }

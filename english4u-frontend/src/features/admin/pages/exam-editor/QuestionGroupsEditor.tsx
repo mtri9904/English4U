@@ -136,11 +136,12 @@ export const QuestionGroupsEditor = ({
     const wouldExceedQuestionLimit = (currentGroupQuestionCount: number, nextGroupQuestionCount: number) =>
         maxQuestionCount != null
         && totalQuestionCount - currentGroupQuestionCount + nextGroupQuestionCount > maxQuestionCount;
+    const getSkillOptionsForType = (groupType?: string) => getOptionsForType(groupType, skill);
 
 
 
     const applyGroupTypeToQuestions = (questions: CreateQuestionDto[], groupType?: string) => {
-        const defaultOptions = getOptionsForType(groupType);
+        const defaultOptions = getSkillOptionsForType(groupType);
         const hasDefaultOptions = defaultOptions.length > 0;
         const isPresetType = groupType === QUESTION_TYPES.TFNG || groupType === QUESTION_TYPES.YNNG;
 
@@ -342,14 +343,6 @@ const setListeningMcqOptionInputMode = (
                             </Radio.Group>
                         </div>
                     )}
-                    <InputNumber
-                        value={question.points}
-                        min={0}
-                        size="small"
-                        style={{ width: 70 }}
-                        placeholder="Điểm"
-                        onChange={(value) => updateQuestion({ points: value ?? 1 })}
-                    />
                     {group.questions.length > 1 && (
                         <Button
                             type="text"
@@ -777,7 +770,7 @@ const setListeningMcqOptionInputMode = (
                                         let nextAssetsData = group.assetsData;
 
                                         if (value === QUESTION_TYPES.MATCHING_CLASSIFICATION && previousType !== value) {
-                                            const classificationOptions = getOptionsForType(value);
+                                            const classificationOptions = getSkillOptionsForType(value);
                                             const baseQuestions = nextQuestions.length > 0
                                                 ? nextQuestions
                                                 : [{ ...emptyQuestion(), questionNumber: groupStartNum, options: classificationOptions }];
@@ -808,7 +801,7 @@ const setListeningMcqOptionInputMode = (
                                         if (!nextIsComplex && previousIsComplex && nextQuestions.length === 0) {
                                             nextQuestions = [{
                                                 ...emptyQuestion(),
-                                                options: getOptionsForType(value),
+                                                options: getSkillOptionsForType(value),
                                             }];
                                         }
 
@@ -834,7 +827,7 @@ const setListeningMcqOptionInputMode = (
                                         }
 
                                         if (nextIsMapLabelling) {
-                                            const mapOptions = getOptionsForType(value);
+                                            const mapOptions = getSkillOptionsForType(value);
                                             if (nextQuestions.length === 0) {
                                                 nextQuestions = [{
                                                     ...emptyQuestion(),
@@ -863,13 +856,13 @@ const setListeningMcqOptionInputMode = (
                                         if (nextIsMultiQuestionMulti) {
                                             const baseQuestions = nextQuestions.length > 0
                                                 ? nextQuestions
-                                                : [{ ...emptyQuestion(), questionNumber: groupStartNum, options: getOptionsForType(value) }];
+                                                : [{ ...emptyQuestion(), questionNumber: groupStartNum, options: getSkillOptionsForType(value) }];
                                             nextQuestions = baseQuestions.map((question, index) => ({
                                                 ...question,
                                                 questionNumber: question.questionNumber ?? groupStartNum + index,
                                                 options: question.options.length > 0
                                                     ? question.options
-                                                    : getOptionsForType(value),
+                                                    : getSkillOptionsForType(value),
                                             }));
                                             nextContentData = undefined;
                                         }
@@ -877,14 +870,14 @@ const setListeningMcqOptionInputMode = (
                                         if (nextIsSharedMultiSelect) {
                                             const baseQuestions = nextQuestions.length > 0
                                                 ? nextQuestions
-                                                : [{ ...emptyQuestion(), questionNumber: groupStartNum, options: getOptionsForType(value) }];
+                                                : [{ ...emptyQuestion(), questionNumber: groupStartNum, options: getSkillOptionsForType(value) }];
                                             nextQuestions = baseQuestions.map((question, index) => ({
                                                 ...question,
                                                 content: '',
                                                 questionNumber: question.questionNumber ?? groupStartNum + index,
                                                 options: question.options.length > 0
                                                     ? question.options
-                                                    : getOptionsForType(value),
+                                                    : getSkillOptionsForType(value),
                                             }));
                                             nextContentData = hasMultiSelectLayout(group.contentData)
                                                 ? group.contentData
@@ -1541,7 +1534,7 @@ const setListeningMcqOptionInputMode = (
                                             const updatedGroups = [...groups];
                                             const newQuestion = {
                                                 ...emptyQuestion(),
-                                                options: getOptionsForType(group.groupType),
+                                                options: getSkillOptionsForType(group.groupType),
                                             };
                                             updatedGroups[groupIdx] = {
                                                 ...group,
@@ -1580,7 +1573,7 @@ const setListeningMcqOptionInputMode = (
                         return;
                     }
 
-                    onUpdate([...groups, emptyGroup()]);
+                    onUpdate([...groups, emptyGroup(QUESTION_TYPES.MCQ_SINGLE, skill)]);
                 }}
             >
                 THÊM NHÓM CÂU HỎI MỚI (PHẦN NÀY)

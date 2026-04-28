@@ -84,8 +84,11 @@ export const AttemptManagementPage = () => {
         const inProgress = attempts.filter((item) => item.status === 'InProgress').length;
         const completed = attempts.filter((item) => item.status === 'Completed').length;
         const submitted = attempts.filter((item) => item.status === 'Submitted').length;
-        const avgScore = attempts.length > 0
-            ? attempts.reduce((total, item) => total + (item.totalAutoScore ?? 0), 0) / attempts.length
+        const scoredAttempts = attempts
+            .map((item) => item.totalBandScore)
+            .filter((score): score is number => score != null);
+        const avgScore = scoredAttempts.length > 0
+            ? scoredAttempts.reduce((total, score) => total + score, 0) / scoredAttempts.length
             : 0;
 
         return { total: attempts.length, inProgress, completed, submitted, avgScore };
@@ -136,11 +139,11 @@ export const AttemptManagementPage = () => {
             render: (value: string) => <Tag color={statusColorMap[value] || 'default'}>{value}</Tag>,
         },
         {
-            title: 'Diem objective',
-            key: 'totalAutoScore',
+            title: 'Band',
+            key: 'totalBandScore',
             render: (_, record) => (
                 <div style={{ fontWeight: 700 }}>
-                    {record.totalAutoScore != null ? record.totalAutoScore.toFixed(1) : '0.0'}
+                    {record.totalBandScore != null ? record.totalBandScore.toFixed(1) : '—'}
                 </div>
             ),
         },
@@ -204,7 +207,7 @@ export const AttemptManagementPage = () => {
                 </Col>
                 <Col xs={12} md={6}>
                     <Card style={{ borderRadius: 20 }}>
-                        <Statistic title="Diem TB objective" value={Number.isFinite(stats.avgScore) ? stats.avgScore.toFixed(1) : '0.0'} />
+                        <Statistic title="Band TB" value={Number.isFinite(stats.avgScore) ? stats.avgScore.toFixed(1) : '0.0'} />
                     </Card>
                 </Col>
             </Row>
@@ -284,7 +287,7 @@ export const AttemptManagementPage = () => {
                             </Col>
                             <Col xs={12} md={6}>
                                 <Card size="small" style={{ borderRadius: 16 }}>
-                                    <Statistic title="Diem objective" value={selectedAttempt.result?.totalAutoScore?.toFixed(1) || '0.0'} />
+                                    <Statistic title="Band" value={selectedAttempt.result?.totalBandScore?.toFixed(1) || '—'} />
                                 </Card>
                             </Col>
                             <Col xs={12} md={6}>
@@ -323,7 +326,7 @@ export const AttemptManagementPage = () => {
                                                     </Tag>
                                                 )}
                                             </Space>
-                                            <Text type="secondary">{answer.scoreEarned} diem</Text>
+                                            <Text type="secondary">{answer.scoreEarned} điểm câu</Text>
                                         </Space>
                                         {answer.questionContent ? (
                                             <Paragraph style={{ margin: '8px 0 6px', color: '#334155' }}>

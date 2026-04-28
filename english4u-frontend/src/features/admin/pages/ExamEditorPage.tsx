@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Card, Divider, FloatButton, Input, InputNumber, Result, Select, Spin, Tag, message } from 'antd';
+import { useEffect, useRef, useState } from 'react';
+import { Button, Card, FloatButton, Input, InputNumber, Result, Select, Spin, Tag, message } from 'antd';
 import { ArrowLeftOutlined, SaveOutlined, VerticalAlignTopOutlined } from '@ant-design/icons';
 import { motion } from 'framer-motion';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -15,9 +15,14 @@ import type { CreateExamDto, CreateQuestionGroupDto, CreateSectionDto } from '..
 import type { SkillType } from '../constants/questionTypes';
 import {
     emptySection,
+    countObjectiveQuestions,
+    countSectionQuestions,
+    EXAM_LIMITS,
     normalizeListeningPartsToSharedAudio,
+    normalizeObjectiveQuestionPointsForSubmit,
     sanitizeSpeakingSectionsForSubmit,
     SKILL_COLORS,
+    getDefaultDurationForSkill,
     validateExamStructureLimits,
 } from './exam-editor/examEditor.helpers';
 import { serializeListeningTranscriptData, splitListeningTranscriptSegmentsByPart } from '@/shared/lib/listeningTranscript';
@@ -76,26 +81,6 @@ export const ExamEditorPage = () => {
         isPublished: false,
         sections: [emptySection('Reading')],
     });
-
-    const calculatedTotalPoints = useMemo(() => {
-        const sumQuestionPoints = (questionGroups: { questions: { points: number }[] }[] = []) => {
-            return questionGroups.reduce((groupAcc, group) => (
-                groupAcc + group.questions.reduce((questionAcc, question) => questionAcc + (question.points ?? 0), 0)
-            ), 0);
-        };
-
-        return form.sections.reduce((sectionAcc, section) => {
-            const readingPoints = (section.readingPassages ?? []).reduce((passageAcc, passage) => (
-                passageAcc + sumQuestionPoints(passage.questionGroups as { questions: { points: number }[] }[])
-            ), 0);
-
-            const listeningPoints = (section.listeningParts ?? []).reduce((partAcc, part) => (
-                partAcc + sumQuestionPoints(part.questionGroups as { questions: { points: number }[] }[])
-            ), 0);
-
-            return sectionAcc + readingPoints + listeningPoints;
-        }, 0);
-    }, [form.sections]);
 
     useEffect(() => {
         if (isEdit && initialData) {
@@ -159,10 +144,8 @@ export const ExamEditorPage = () => {
             return;
         }
 
-        const submitData: CreateExamDto = {
-            ...form,
-            totalPoints: calculatedTotalPoints,
-            sections: sanitizeSpeakingSectionsForSubmit(
+        const normalizedSections = normalizeObjectiveQuestionPointsForSubmit(
+            sanitizeSpeakingSectionsForSubmit(
                 form.sections
                     .map(normalizeSectionQuestionTypes)
                     .map((section) => (
@@ -171,6 +154,11 @@ export const ExamEditorPage = () => {
                             : section
                     )),
             ),
+        );
+        const submitData: CreateExamDto = {
+            ...form,
+            totalPoints: countObjectiveQuestions(normalizedSections),
+            sections: normalizedSections,
         };
         const limitErrors = validateExamStructureLimits(submitData);
         if (limitErrors.length > 0) {
@@ -282,11 +270,18 @@ export const ExamEditorPage = () => {
 
     const activeSection = form.sections[0] ?? emptySection('Reading');
     const activeSkill = (normalizeSkillType(activeSection.skillType) || 'Reading') as SkillType;
+    const activeObjectiveQuestionCount = countSectionQuestions(activeSection, activeSkill);
+    const activeQuestionLimit = activeSkill === 'Reading'
+        ? EXAM_LIMITS.Reading.questions
+        : activeSkill === 'Listening'
+            ? EXAM_LIMITS.Listening.questions
+            : null;
     const hasLegacyMultiSection = (initialData?.sections?.length ?? 0) > 1;
 
     const handleChangeSkill = (value: SkillType) => {
         setGlobalAudioUrl(null);
         updateForm({
+            durationMinutes: getDefaultDurationForSkill(value),
             sections: [{ ...emptySection(value), orderIndex: 0 }],
         });
     };
@@ -359,41 +354,47 @@ export const ExamEditorPage = () => {
                         placeholder="Mô tả đề thi..."
                         autoSize={{ minRows: 2, maxRows: 4 }}
                     />
-                    <div style={{ display: 'flex', gap: '12px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px', alignItems: 'end' }}>
                         <div>
                             <label style={{ fontWeight: 600, fontSize: '0.8125rem', color: '#334155', display: 'block', marginBottom: '4px' }}>Thời gian (phút)</label>
                             <InputNumber value={form.durationMinutes} onChange={(value) => updateForm({ durationMinutes: value ?? 60 })} min={1} style={{ width: '100%' }} />
                         </div>
                         <div>
-                            <label style={{ fontWeight: 600, fontSize: '0.8125rem', color: '#334155', display: 'block', marginBottom: '4px' }}>Tổng điểm</label>
-                            <InputNumber value={calculatedTotalPoints} readOnly controls={false} style={{ width: '100%', background: '#f8fafc' }} />
+                            <label style={{ fontWeight: 600, fontSize: '0.8125rem', color: '#334155', display: 'block', marginBottom: '4px' }}>
+                                Kỹ năng đề thi
+                            </label>
+                            <Select
+                                value={activeSkill}
+                                style={{ width: '100%' }}
+                                onChange={handleChangeSkill}
+                                options={[
+                                    { label: '📖 Reading', value: 'Reading' },
+                                    { label: '🎧 Listening', value: 'Listening' },
+                                    { label: '✍️ Writing', value: 'Writing' },
+                                    { label: '🎤 Speaking', value: 'Speaking' },
+                                ]}
+                            />
                         </div>
-                    </div>
-
-                    <Divider style={{ margin: '8px 0' }} />
-
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-                        <div>
-                            <div style={{ fontWeight: 700, color: '#0f172a', marginBottom: 4 }}>
-                                Cấu hình kỹ năng
-                            </div>
-                            <div style={{ color: '#64748b', fontSize: '0.875rem' }}>
-                                Mỗi đề thi chỉ gồm một kỹ năng và một section tương ứng.
-                            </div>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8, minHeight: 32 }}>
+                            {activeQuestionLimit != null && (
+                                <Tag color={activeObjectiveQuestionCount > activeQuestionLimit ? 'red' : 'green'} style={{ margin: 0 }}>
+                                    {activeSkill} {activeObjectiveQuestionCount}/{activeQuestionLimit} câu
+                                </Tag>
+                            )}
+                            <Tag
+                                style={{
+                                    borderRadius: 999,
+                                    padding: '6px 12px',
+                                    margin: 0,
+                                    border: 'none',
+                                    background: `${SKILL_COLORS[activeSkill] || '#0ea5e9'}18`,
+                                    color: SKILL_COLORS[activeSkill] || '#0ea5e9',
+                                    fontWeight: 700,
+                                }}
+                            >
+                                {activeSkill}
+                            </Tag>
                         </div>
-                        <Tag
-                            style={{
-                                borderRadius: 999,
-                                padding: '6px 12px',
-                                margin: 0,
-                                border: 'none',
-                                background: `${SKILL_COLORS[activeSkill] || '#0ea5e9'}18`,
-                                color: SKILL_COLORS[activeSkill] || '#0ea5e9',
-                                fontWeight: 700,
-                            }}
-                        >
-                            {activeSkill}
-                        </Tag>
                     </div>
 
                     {hasLegacyMultiSection && (
@@ -412,39 +413,6 @@ export const ExamEditorPage = () => {
                     )}
 
                     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '10px', marginBottom: '12px' }}>
-                            <div>
-                                <label style={{ fontWeight: 600, fontSize: '0.8125rem', color: '#334155', display: 'block', marginBottom: '4px' }}>
-                                    Kỹ năng đề thi
-                                </label>
-                                <Select
-                                    value={activeSkill}
-                                    style={{ width: '100%' }}
-                                    onChange={handleChangeSkill}
-                                    options={[
-                                        { label: '📖 Reading', value: 'Reading' },
-                                        { label: '🎧 Listening', value: 'Listening' },
-                                        { label: '✍️ Writing', value: 'Writing' },
-                                        { label: '🎤 Speaking', value: 'Speaking' },
-                                    ]}
-                                />
-                            </div>
-                            <div>
-                                <label style={{ fontWeight: 600, fontSize: '0.8125rem', color: '#334155', display: 'block', marginBottom: '4px' }}>
-                                    Tiêu đề section
-                                </label>
-                                <Input
-                                    value={activeSection.title ?? ''}
-                                    placeholder="Tiêu đề section"
-                                    onPaste={e => {
-                                        const newVal = getCleanPastedInputValue(e, activeSection.title || '');
-                                        if (newVal === null) return;
-                                        updateSection(0, { title: newVal });
-                                    }}
-                                    onChange={(event) => updateSection(0, { title: event.target.value })}
-                                />
-                            </div>
-                        </div>
                         {renderSectionContent(activeSection, 0)}
                     </motion.div>
                 </div>

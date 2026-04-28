@@ -5117,11 +5117,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\english4u-backend\\EnglishExamApp.API\\EnglishExamApp.API.csproj",
+      "projectUniqueName": "C:\\Users\\Hande\\OneDrive\\Documents\\DoAnTotNghiep\\English4skills\\english4u-backend\\EnglishExamApp.API\\EnglishExamApp.API.csproj",
       "projectName": "EnglishExamApp.API",
-      "projectPath": "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\english4u-backend\\EnglishExamApp.API\\EnglishExamApp.API.csproj",
+      "projectPath": "C:\\Users\\Hande\\OneDrive\\Documents\\DoAnTotNghiep\\English4skills\\english4u-backend\\EnglishExamApp.API\\EnglishExamApp.API.csproj",
       "packagesPath": "C:\\Users\\Hande\\.nuget\\packages\\",
-      "outputPath": "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\english4u-backend\\EnglishExamApp.API\\obj\\",
+      "outputPath": "C:\\Users\\Hande\\OneDrive\\Documents\\DoAnTotNghiep\\English4skills\\english4u-backend\\EnglishExamApp.API\\obj\\",
       "projectStyle": "PackageReference",
       "configFilePaths": [
         "C:\\Users\\Hande\\AppData\\Roaming\\NuGet\\NuGet.Config",
@@ -5138,11 +5138,11 @@
         "net9.0": {
           "targetAlias": "net9.0",
           "projectReferences": {
-            "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\english4u-backend\\EnglishExamApp.Application\\EnglishExamApp.Application.csproj": {
-              "projectPath": "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\english4u-backend\\EnglishExamApp.Application\\EnglishExamApp.Application.csproj"
+            "C:\\Users\\Hande\\OneDrive\\Documents\\DoAnTotNghiep\\English4skills\\english4u-backend\\EnglishExamApp.Application\\EnglishExamApp.Application.csproj": {
+              "projectPath": "C:\\Users\\Hande\\OneDrive\\Documents\\DoAnTotNghiep\\English4skills\\english4u-backend\\EnglishExamApp.Application\\EnglishExamApp.Application.csproj"
             },
-            "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\english4u-backend\\EnglishExamApp.Infrastructure\\EnglishExamApp.Infrastructure.csproj": {
-              "projectPath": "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\english4u-backend\\EnglishExamApp.Infrastructure\\EnglishExamApp.Infrastructure.csproj"
+            "C:\\Users\\Hande\\OneDrive\\Documents\\DoAnTotNghiep\\English4skills\\english4u-backend\\EnglishExamApp.Infrastructure\\EnglishExamApp.Infrastructure.csproj": {
+              "projectPath": "C:\\Users\\Hande\\OneDrive\\Documents\\DoAnTotNghiep\\English4skills\\english4u-backend\\EnglishExamApp.Infrastructure\\EnglishExamApp.Infrastructure.csproj"
             }
           }
         }

@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { Modal, Input, Select, InputNumber, Button, Divider, message, Upload, Tabs, Tag } from 'antd';
 import { PlusOutlined, MinusCircleOutlined, SoundOutlined, PictureOutlined, BoldOutlined, CloseOutlined } from '@ant-design/icons';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -33,12 +33,13 @@ import {
     applySharedListeningAudioUrl, getSharedListeningAudioUrl, normalizeListeningPartsToSharedAudio,
     reorderQuestionNumbers, emptyWritingTask, emptySpeakingQuestion, emptySpeakingPart,
     emptySection, GROUP_TYPE_OPTIONS, SKILL_COLORS, getOptionsForType, EXAM_LIMITS, getMaxQuestionNumber,
-    applyBoldToTextarea, sanitizeSpeakingSectionsForSubmit, validateExamStructureLimits,
+    applyBoldToTextarea, countObjectiveQuestions, getDefaultDurationForSkill, normalizeObjectiveQuestionPointsForSubmit, sanitizeSpeakingSectionsForSubmit, validateExamStructureLimits,
 } from '../pages/exam-editor/examEditor.helpers';
 import { FlowchartCompletionEditor } from '../pages/exam-editor/FlowchartCompletionEditor';
 import { ListeningMultiSelectEditor } from '../pages/exam-editor/ListeningMultiSelectEditor';
 import { parseWritingTaskAssetsData, serializeWritingTaskAssetsData } from '@/shared/lib/writingTaskAssets';
 import { serializeListeningTranscriptData, splitListeningTranscriptSegmentsByPart } from '@/shared/lib/listeningTranscript';
+import type { TiptapQxEditorRef } from './TiptapQxEditor';
 
 const buildBlankOptions = (count: number, existingOptions: CreateQuestionDto['options'] = []) =>
     Array.from({ length: count }, (_, index) => ({
@@ -177,6 +178,7 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
     const createMutation = useCreateExamMutation();
     const updateMutation = useUpdateExamMutation();
     const generateListeningTranscriptMutation = useGenerateListeningTranscriptMutation();
+    const activeEditorRef = useRef<TiptapQxEditorRef | null>(null);
     const [uploading, setUploading] = useState(false);
     const [globalAudioUrl, setGlobalAudioUrl] = useState<string | null>(null);
     const [generatingListeningTranscriptKey, setGeneratingListeningTranscriptKey] = useState<string | null>(null);
@@ -258,22 +260,26 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
 
     const handleSubmit = async () => {
         if (!form.title.trim()) { message.warning('Vui lòng nhập tên đề thi!'); return; }
-        const limitErrors = validateExamStructureLimits(form);
+        const normalizedSections = normalizeObjectiveQuestionPointsForSubmit(
+            sanitizeSpeakingSectionsForSubmit(
+                form.sections.map((section) => (
+                    section.skillType === 'Listening'
+                        ? { ...section, listeningParts: normalizeListeningPartsToSharedAudio(section.listeningParts ?? []) }
+                        : section
+                )),
+            ),
+        );
+        const normalizedForm: CreateExamDto = {
+            ...form,
+            totalPoints: countObjectiveQuestions(normalizedSections),
+            sections: normalizedSections,
+        };
+        const limitErrors = validateExamStructureLimits(normalizedForm);
         if (limitErrors.length > 0) {
             message.error(limitErrors[0]);
             return;
         }
         try {
-            const normalizedForm: CreateExamDto = {
-                ...form,
-                sections: sanitizeSpeakingSectionsForSubmit(
-                    form.sections.map((section) => (
-                        section.skillType === 'Listening'
-                            ? { ...section, listeningParts: normalizeListeningPartsToSharedAudio(section.listeningParts ?? []) }
-                            : section
-                    )),
-                ),
-            };
             if (isEdit && initialData) {
                 await updateMutation.mutateAsync({ id: initialData.id, data: normalizedForm });
                 message.success('Cập nhật đề thi thành công!');
@@ -536,9 +542,6 @@ const setListeningMcqOptionInputMode = (
                             ) : null}
                         />
                     </div>
-                    <div style={{ marginTop: '8px', fontSize: '0.75rem', color: '#4338ca', lineHeight: 1.6 }}>
-                        Listening giờ chỉ dùng một file audio cho toàn bộ bài. Các Part bên dưới chỉ còn để chia nhóm câu hỏi và nội dung hiển thị.
-                    </div>
                 </div>
                 {parts.map((part, pIdx) => (
                     <div key={pIdx} style={{ background: '#fff', borderRadius: '12px', padding: '16px', border: '1px solid #e2e8f0' }}>
@@ -759,9 +762,6 @@ const setListeningMcqOptionInputMode = (
                                         ) : null}
                                     />
                                 </div>
-                                <div style={{ marginTop: '10px', fontSize: '0.75rem', color: '#a16207', lineHeight: 1.6 }}>
-                                    Khi lưu đề, hệ thống sẽ tự đọc ảnh biểu đồ ở nền để chuẩn bị dữ liệu cho AI chấm và AI gia sư.
-                                </div>
                             </div>
                         )}
                     </div>
@@ -899,6 +899,7 @@ const setListeningMcqOptionInputMode = (
         startQNum: number = 1
     ) => {
         const typeOptions = GROUP_TYPE_OPTIONS[skill] ?? [];
+        const getSkillOptionsForType = (groupType?: string) => getOptionsForType(groupType, skill);
         let runningQNum = startQNum;
         return (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -1041,11 +1042,11 @@ const setListeningMcqOptionInputMode = (
                                                     ...emptyQuestion(),
                                                     questionNumber: groupStartNum + index,
                                                 })))
-                                                : group.questions.map(q => ({ ...q, options: q.options.length > 0 ? q.options : getOptionsForType(v) }));
+                                                : group.questions.map(q => ({ ...q, options: q.options.length > 0 ? q.options : getSkillOptionsForType(v) }));
                                         let nextContentData = group.contentData;
 
                                         if (v === QUESTION_TYPES.MATCHING_CLASSIFICATION && previousType !== v) {
-                                            const classificationOptions = getOptionsForType(v);
+                                            const classificationOptions = getSkillOptionsForType(v);
                                             const baseQuestions = nextQuestions.length > 0
                                                 ? nextQuestions
                                                 : [{ ...emptyQuestion(), questionNumber: groupStartNum, options: classificationOptions }];
@@ -1059,11 +1060,11 @@ const setListeningMcqOptionInputMode = (
                                         if (nextIsMultiQuestionMulti) {
                                             const baseQuestions = nextQuestions.length > 0
                                                 ? nextQuestions
-                                                : [{ ...emptyQuestion(), questionNumber: groupStartNum, options: getOptionsForType(v) }];
+                                                : [{ ...emptyQuestion(), questionNumber: groupStartNum, options: getSkillOptionsForType(v) }];
                                             nextQuestions = baseQuestions.map((question, index) => ({
                                                 ...question,
                                                 questionNumber: question.questionNumber ?? groupStartNum + index,
-                                                options: question.options.length > 0 ? question.options : getOptionsForType(v),
+                                                options: question.options.length > 0 ? question.options : getSkillOptionsForType(v),
                                             }));
                                             nextContentData = undefined;
                                         }
@@ -1071,12 +1072,12 @@ const setListeningMcqOptionInputMode = (
                                         if (nextIsSharedMultiSelect) {
                                             const baseQuestions = nextQuestions.length > 0
                                                 ? nextQuestions
-                                                : [{ ...emptyQuestion(), questionNumber: groupStartNum, options: getOptionsForType(v) }];
+                                                : [{ ...emptyQuestion(), questionNumber: groupStartNum, options: getSkillOptionsForType(v) }];
                                             nextQuestions = baseQuestions.map((question, index) => ({
                                                 ...question,
                                                 content: '',
                                                 questionNumber: question.questionNumber ?? groupStartNum + index,
-                                                options: question.options.length > 0 ? question.options : getOptionsForType(v),
+                                                options: question.options.length > 0 ? question.options : getSkillOptionsForType(v),
                                             }));
                                             nextContentData = hasMultiSelectLayout(group.contentData)
                                                 ? group.contentData
@@ -1240,6 +1241,8 @@ const setListeningMcqOptionInputMode = (
                                     groups={groups}
                                     groupIdx={gIdx}
                                     groupStartNum={groupStartNum}
+                                    nextQNum={runningQNum}
+                                    activeEditorRef={activeEditorRef}
                                     onUpdate={onUpdate}
                                     uploading={uploading}
                                     handleUploadFile={handleUploadFile}
@@ -1292,11 +1295,6 @@ const setListeningMcqOptionInputMode = (
                                                                     onUpdate(updated);
                                                                 }} />
                                                             )}
-                                                            <InputNumber size="small" value={q.points} min={1} style={{ width: '55px' }} onChange={v => {
-                                                                const updated = [...groups];
-                                                                updated[gIdx].questions[qIdx] = { ...q, points: v ?? 1 };
-                                                                onUpdate(updated);
-                                                            }} />
                                                         </div>
                                                     ))}
                                                     {group.questions.length === 0 && <span style={{ color: '#64748b', fontSize: '0.8125rem' }}>Chưa có ô trống nào.</span>}
@@ -1351,11 +1349,6 @@ const setListeningMcqOptionInputMode = (
                                                                 onUpdate(updated);
                                                             }} />
                                                         )}
-                                                        <InputNumber size="small" value={q.points} min={1} style={{ width: '55px' }} onChange={v => {
-                                                            const updated = [...groups];
-                                                            updated[gIdx].questions[qIdx] = { ...q, points: v || 1 };
-                                                            onUpdate(updated);
-                                                        }} />
                                                         <Button type="text" danger icon={<MinusCircleOutlined />} size="small"
                                                             onClick={() => {
                                                                 const updated = [...groups];
@@ -1505,12 +1498,12 @@ const setListeningMcqOptionInputMode = (
                             {/* Standard Question List (for non-complex non-matching types) */}
                             {!isComplexLayout && !isMatchingType && !isFlowchartType && !usesLegacySharedMultiSelectLayout && (
                                 <div style={{ marginTop: '10px' }}>
-                                    {group.questions.map((q, qIdx) => renderQuestion(q, qIdx, group, gIdx, groups, onUpdate, groupStartNum))}
+                                    {group.questions.map((q, qIdx) => renderQuestion(q, qIdx, group, gIdx, groups, onUpdate, groupStartNum, skill))}
                                     {group.groupType !== QUESTION_TYPES.MCQ_CHOOSE_N && (
                                         <Button type="dashed" icon={<PlusOutlined />} block size="small" style={{ marginTop: '8px' }}
                                             onClick={() => {
                                                 const updated = [...groups];
-                                                const newQ = { ...emptyQuestion(), questionNumber: runningQNum, options: getOptionsForType(group.groupType) };
+                                                const newQ = { ...emptyQuestion(), questionNumber: runningQNum, options: getSkillOptionsForType(group.groupType) };
                                                 updated[gIdx] = { ...group, questions: [...group.questions, newQ] };
                                                 onUpdate(updated);
                                             }}>Thêm câu hỏi</Button>
@@ -1521,7 +1514,7 @@ const setListeningMcqOptionInputMode = (
                     );
                 })}
                 <Button type="dashed" size="small" icon={<PlusOutlined />} block
-                    onClick={() => onUpdate([...groups, emptyGroup()])}>
+                    onClick={() => onUpdate([...groups, emptyGroup(QUESTION_TYPES.MCQ_SINGLE, skill)])}>
                     Thêm nhóm câu hỏi
                 </Button>
             </div>
@@ -1534,6 +1527,7 @@ const setListeningMcqOptionInputMode = (
         groups: CreateQuestionGroupDto[],
         onUpdate: (groups: CreateQuestionGroupDto[]) => void,
         groupStartNum: number,
+        skill: 'Reading' | 'Listening',
     ) => {
         const gType = group.groupType ?? '';
         const hasOpts = SINGLE_CHOICE_TYPES.has(gType) || MULTI_CHOICE_TYPES.has(gType) || MATCHING_TYPES.has(gType);
@@ -1605,8 +1599,6 @@ const setListeningMcqOptionInputMode = (
                             </Radio.Group>
                         </div>
                     )}
-                    <InputNumber value={q.points} min={0} size="small" style={{ width: 70 }} placeholder="Điểm"
-                        onChange={v => updateQ({ points: v ?? 1 })} />
                     {group.questions.length > 1 && (
                         <Button type="text" danger icon={<MinusCircleOutlined />} size="small"
                             onClick={() => {
@@ -1825,10 +1817,6 @@ const setListeningMcqOptionInputMode = (
                         <label style={{ fontWeight: 600, fontSize: '0.8125rem', color: '#334155' }}>Thời gian (phút)</label>
                         <InputNumber value={form.durationMinutes} onChange={v => updateForm({ durationMinutes: v ?? 60 })} min={1} style={{ width: '100%' }} />
                     </div>
-                    <div>
-                        <label style={{ fontWeight: 600, fontSize: '0.8125rem', color: '#334155' }}>Tổng điểm</label>
-                        <InputNumber value={form.totalPoints} onChange={v => updateForm({ totalPoints: v ?? 0 })} min={0} style={{ width: '100%' }} />
-                    </div>
                 </div>
 
                 <Divider style={{ margin: '8px 0' }} />
@@ -1854,7 +1842,7 @@ const setListeningMcqOptionInputMode = (
                                                     newSection.orderIndex = sIdx;
                                                     const updated = [...form.sections];
                                                     updated[sIdx] = newSection;
-                                                    setForm(prev => ({ ...prev, sections: updated }));
+                                                    setForm(prev => ({ ...prev, durationMinutes: getDefaultDurationForSkill(v), sections: updated }));
                                                 }}
                                                 options={[
                                                     { label: 'Reading', value: 'Reading', disabled: form.sections.some((sec, i) => sec.skillType === 'Reading' && i !== sIdx) },
@@ -1862,13 +1850,6 @@ const setListeningMcqOptionInputMode = (
                                                     { label: 'Writing', value: 'Writing', disabled: form.sections.some((sec, i) => sec.skillType === 'Writing' && i !== sIdx) },
                                                     { label: 'Speaking', value: 'Speaking', disabled: form.sections.some((sec, i) => sec.skillType === 'Speaking' && i !== sIdx) },
                                                 ].map(o => ({ ...o, label: (o.value === 'Reading' ? '📖 ' : o.value === 'Listening' ? '🎧 ' : o.value === 'Writing' ? '✍️ ' : '🎤 ') + o.label + (o.disabled ? ' (Đã có)' : '') }))} />
-                                            <Input value={section.title ?? ''} style={{ flex: 1 }} placeholder="Tiêu đề section"
-                                                onPaste={e => {
-                                                    const newVal = getCleanPastedInputValue(e, section.title || '');
-                                                    if (newVal === null) return;
-                                                    updateSection(sIdx, { title: newVal });
-                                                }}
-                                                onChange={e => updateSection(sIdx, { title: e.target.value })} />
                                         </div>
                                         {renderSectionContent(section, sIdx)}
                                     </motion.div>

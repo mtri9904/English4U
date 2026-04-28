@@ -647,7 +647,6 @@ const QuestionItem = ({
                         {getQuestionTypeLabel(gType, skillType)}
                     </Tag>
                 )}
-                <span style={{ marginLeft: 'auto', fontSize: '0.875rem', color: '#94a3b8' }}>{q.points} điểm</span>
             </div>
             {q.content?.trim() ? (
                 <p style={{ margin: '4px 0 0', color: '#475569', fontSize: '0.9375rem', whiteSpace: 'pre-wrap' }}>
@@ -1370,6 +1369,11 @@ export const ExamDetailPage = () => {
 
     const primarySection = exam.sections[0];
     const hasLegacyMultiSection = exam.sections.length > 1;
+    const primarySkill = (primarySection?.skillType ?? '').trim().toUpperCase();
+    const isObjectiveSection = primarySkill === 'READING' || primarySkill === 'LISTENING';
+    const scoreSummaryLabel = isObjectiveSection
+        ? `📊 Số câu objective: ${exam.totalPoints ?? '—'}`
+        : '📊 Band khi nộp: 0-9';
 
     return (
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
@@ -1392,7 +1396,7 @@ export const ExamDetailPage = () => {
                         </Tag>
                     ) : null}
                     <span style={{ opacity: 0.9, fontSize: '1rem' }}>⏱ {exam.durationMinutes ?? '—'} phút</span>
-                    <span style={{ opacity: 0.9, fontSize: '1rem' }}>📊 {exam.totalPoints ?? '—'} điểm</span>
+                    <span style={{ opacity: 0.9, fontSize: '1rem' }}>{scoreSummaryLabel}</span>
                     <span style={{ opacity: 0.9, fontSize: '1rem' }}>{exam.isPublished ? '✅ Đã xuất bản' : '📝 Nháp'}</span>
                 </div>
             </div>

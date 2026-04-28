@@ -22,6 +22,20 @@ export interface PracticeSessionStartDto {
     isResumed: boolean;
 }
 
+export interface PracticeSessionRewardDto {
+    experienceAwarded: number;
+    isFirstExamCompletion: boolean;
+    levelUpOccurred: boolean;
+    experiencePoints: number;
+    currentLevel: number;
+    currentLevelStartExperience: number;
+    nextLevelExperience: number;
+    experienceToNextLevel: number;
+    levelProgressPercent: number;
+    dailyStreakCount: number;
+    longestStreakCount: number;
+}
+
 export interface PracticeSessionResultDto {
     sessionId: string;
     readingScore: number | null;
@@ -36,6 +50,8 @@ export interface PracticeSessionResultDto {
     writingScore: number | null;
     overallFeedback: string | null;
     speakingScore: number | null;
+    totalBandScore: number | null;
+    reward: PracticeSessionRewardDto | null;
 }
 
 export interface PracticeSessionFeedbackDto {
@@ -43,6 +59,15 @@ export interface PracticeSessionFeedbackDto {
     bandScore: number;
     comment: string | null;
     improvements: string | null;
+    confidenceScore?: number | null;
+    evidence?: string[] | null;
+}
+
+export interface PracticeSessionSpeakingWordTimestampDto {
+    word: string;
+    start: number | null;
+    end: number | null;
+    probability: number | null;
 }
 
 export interface PracticeSessionSpeakingAnalyticsDto {
@@ -53,6 +78,14 @@ export interface PracticeSessionSpeakingAnalyticsDto {
     estimatedFluencyBand: number | null;
     paceLabel: 'insufficient_data' | 'slow' | 'balanced' | 'fast' | 'very_fast';
     coverageLabel: 'insufficient_data' | 'too_short' | 'on_target' | 'exceeds_target';
+    meanWordConfidence?: number | null;
+    speechRatio?: number | null;
+    pauseCount?: number | null;
+    longPauseCount?: number | null;
+    totalPauseSeconds?: number | null;
+    audioQualityLabel?: string | null;
+    audioQualityWarnings?: string[] | null;
+    wordTimestamps?: PracticeSessionSpeakingWordTimestampDto[] | null;
 }
 
 export interface PracticeSessionSpeakingPromptCueDto {
@@ -210,6 +243,7 @@ export interface PracticeSessionListItemDto {
     totalAutoScore: number | null;
     writingScore: number | null;
     speakingScore: number | null;
+    totalBandScore: number | null;
 }
 
 export interface UploadPracticeSpeakingRecordingDto {

@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "7YRau8apsRk=",
+  "dgSpecHash": "9zKXpEwgcbo=",
   "success": true,
-  "projectFilePath": "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\english4u-backend\\EnglishExamApp.Domain\\EnglishExamApp.Domain.csproj",
+  "projectFilePath": "C:\\Users\\Hande\\OneDrive\\Documents\\DoAnTotNghiep\\English4skills\\english4u-backend\\EnglishExamApp.Domain\\EnglishExamApp.Domain.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\Hande\\.nuget\\packages\\microsoft.netcore.app.ref\\9.0.13\\microsoft.netcore.app.ref.9.0.13.nupkg.sha512",
     "C:\\Users\\Hande\\.nuget\\packages\\microsoft.windowsdesktop.app.ref\\9.0.13\\microsoft.windowsdesktop.app.ref.9.0.13.nupkg.sha512",

@@ -13,3 +13,15 @@ C:\Users\Hande\OneDrive\Documents\English4skills\english4u-backend\EnglishExamAp
 C:\temp_build_output.txt\EnglishExamApp.Domain.deps.json
 C:\temp_build_output.txt\EnglishExamApp.Domain.dll
 C:\temp_build_output.txt\EnglishExamApp.Domain.pdb
+C:\Users\Hande\OneDrive\Documents\DoAnTotNghiep\English4skills\english4u-backend\EnglishExamApp.Domain\bin\Debug\net9.0\EnglishExamApp.Domain.deps.json
+C:\Users\Hande\OneDrive\Documents\DoAnTotNghiep\English4skills\english4u-backend\EnglishExamApp.Domain\bin\Debug\net9.0\EnglishExamApp.Domain.dll
+C:\Users\Hande\OneDrive\Documents\DoAnTotNghiep\English4skills\english4u-backend\EnglishExamApp.Domain\bin\Debug\net9.0\EnglishExamApp.Domain.pdb
+C:\Users\Hande\OneDrive\Documents\DoAnTotNghiep\English4skills\english4u-backend\EnglishExamApp.Domain\obj\Debug\net9.0\EnglishExamApp.Domain.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\Hande\OneDrive\Documents\DoAnTotNghiep\English4skills\english4u-backend\EnglishExamApp.Domain\obj\Debug\net9.0\EnglishExamApp.Domain.AssemblyInfoInputs.cache
+C:\Users\Hande\OneDrive\Documents\DoAnTotNghiep\English4skills\english4u-backend\EnglishExamApp.Domain\obj\Debug\net9.0\EnglishExamApp.Domain.AssemblyInfo.cs
+C:\Users\Hande\OneDrive\Documents\DoAnTotNghiep\English4skills\english4u-backend\EnglishExamApp.Domain\obj\Debug\net9.0\EnglishExamApp.Domain.csproj.CoreCompileInputs.cache
+C:\Users\Hande\OneDrive\Documents\DoAnTotNghiep\English4skills\english4u-backend\EnglishExamApp.Domain\obj\Debug\net9.0\EnglishExamApp.Domain.sourcelink.json
+C:\Users\Hande\OneDrive\Documents\DoAnTotNghiep\English4skills\english4u-backend\EnglishExamApp.Domain\obj\Debug\net9.0\EnglishExamApp.Domain.dll
+C:\Users\Hande\OneDrive\Documents\DoAnTotNghiep\English4skills\english4u-backend\EnglishExamApp.Domain\obj\Debug\net9.0\refint\EnglishExamApp.Domain.dll
+C:\Users\Hande\OneDrive\Documents\DoAnTotNghiep\English4skills\english4u-backend\EnglishExamApp.Domain\obj\Debug\net9.0\EnglishExamApp.Domain.pdb
+C:\Users\Hande\OneDrive\Documents\DoAnTotNghiep\English4skills\english4u-backend\EnglishExamApp.Domain\obj\Debug\net9.0\ref\EnglishExamApp.Domain.dll

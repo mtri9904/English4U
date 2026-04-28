@@ -68,6 +68,30 @@ const getAnalyticsTagColor = (label?: string | null) => {
     }
 };
 
+const formatPercent = (value?: number | null) => (
+    value == null ? '—' : `${Math.round(value * 100)}%`
+);
+
+const getAudioQualityColor = (label?: string | null) => {
+    switch (label) {
+        case 'usable':
+            return 'success';
+        case 'usable_with_warnings':
+            return 'warning';
+        case 'technical_low_confidence':
+        case 'empty':
+            return 'error';
+        default:
+            return 'default';
+    }
+};
+
+const getLowConfidenceWords = (speakingAnalytics?: PracticeSessionSpeakingAnalyticsDto | null) => (
+    (speakingAnalytics?.wordTimestamps ?? [])
+        .filter((word) => word.probability != null && word.probability < 0.65)
+        .slice(0, 8)
+);
+
 const getSpeakingPromptEntries = (session: PracticeSessionDto) => (
     session.exam.sections.flatMap((section) =>
         section.speakingParts.flatMap((part) =>
@@ -95,6 +119,7 @@ export const SpeakingSessionReview: FC<SpeakingSessionReviewProps> = ({
     onBackToLibrary,
 }) => {
     const promptEntries = getSpeakingPromptEntries(session);
+    const isRescoreMode = session.status !== 'InProgress';
     const speakingAnswers = new Map(
         session.answers
             .filter((answer) => !!answer.speakingQuestionId)
@@ -124,12 +149,12 @@ export const SpeakingSessionReview: FC<SpeakingSessionReviewProps> = ({
                             <Button onClick={onBackToLibrary}>Bài thi của tôi</Button>
                             <Button
                                 type="primary"
-                                icon={canSubmitNow && session.status !== 'InProgress' ? <ReloadOutlined /> : <SendOutlined />}
+                                icon={canSubmitNow && isRescoreMode ? <ReloadOutlined /> : <SendOutlined />}
                                 loading={submitLoading}
                                 onClick={onSubmit}
                                 disabled={!canSubmitNow}
                             >
-                                {canSubmitNow ? (session.status !== 'InProgress' ? 'Chấm lại Speaking' : 'Nộp bài Speaking') : 'Đã khóa nộp'}
+                                {canSubmitNow ? (isRescoreMode ? 'Chấm lại Speaking' : 'Nộp bài Speaking') : 'Đã khóa nộp'}
                             </Button>
                         </Space>
                     </Space>
@@ -159,20 +184,20 @@ export const SpeakingSessionReview: FC<SpeakingSessionReviewProps> = ({
                     </Row>
 
                     <Alert
-                        type={canSubmitNow ? 'warning' : result?.speakingScore != null ? 'success' : 'info'}
+                        type={session.status === 'InProgress' ? 'warning' : result?.speakingScore != null ? 'success' : 'info'}
                         showIcon
                         message={
-                            canSubmitNow
+                            session.status === 'InProgress'
                                 ? 'Session speaking chưa khóa'
                                 : result?.speakingScore != null
                                     ? 'Đã có band Speaking'
                                     : 'Speaking đã nộp'
                         }
                         description={
-                            canSubmitNow
+                            session.status === 'InProgress'
                                 ? 'Bạn vẫn có thể quay lại runner để kiểm tra audio, ghi chú hoặc ghi lại prompt trước khi nộp.'
                                 : result?.speakingScore != null
-                                    ? 'Band Speaking và feedback theo tiêu chí đã được trả về từ backend.'
+                                    ? 'Band Speaking và feedback theo tiêu chí đã được trả về từ backend. Bạn có thể bấm chấm lại Speaking để cập nhật scoring theo pipeline mới.'
                                     : 'Bài đã được lưu. Nếu AI chưa trả band, bạn có thể bấm chấm lại Speaking.'
                         }
                     />
@@ -200,6 +225,7 @@ export const SpeakingSessionReview: FC<SpeakingSessionReviewProps> = ({
                 const speakingAnalytics = answer?.speakingAnalytics ?? null;
                 const wordCount = speakingAnalytics?.wordCount ?? countSpokenWords(responseText);
                 const estimatedWpm = speakingAnalytics?.wordsPerMinute ?? estimateWordsPerMinute(responseText, answer?.durationSeconds);
+                const lowConfidenceWords = getLowConfidenceWords(speakingAnalytics);
 
                 return (
                     <Card key={entry.question.id} style={{ borderRadius: 20 }}>
@@ -260,7 +286,7 @@ export const SpeakingSessionReview: FC<SpeakingSessionReviewProps> = ({
                                 <Card size="small" style={{ borderRadius: 16, background: '#fffbeb' }}>
                                     <Space direction="vertical" size={8} style={{ width: '100%' }}>
                                         <Space wrap>
-                                            <Text strong>Fluency analytics</Text>
+                                            <Text strong>Audio evidence</Text>
                                             {speakingAnalytics.estimatedFluencyBand != null ? (
                                                 <Tag color="gold">Fluency ~ {speakingAnalytics.estimatedFluencyBand.toFixed(1)}</Tag>
                                             ) : null}
@@ -270,12 +296,48 @@ export const SpeakingSessionReview: FC<SpeakingSessionReviewProps> = ({
                                             <Tag color={getAnalyticsTagColor(speakingAnalytics.coverageLabel)}>
                                                 {speakingCoverageLabelMap[speakingAnalytics.coverageLabel]}
                                             </Tag>
+                                            {speakingAnalytics.audioQualityLabel ? (
+                                                <Tag color={getAudioQualityColor(speakingAnalytics.audioQualityLabel)}>
+                                                    QA: {speakingAnalytics.audioQualityLabel}
+                                                </Tag>
+                                            ) : null}
+                                            {speakingAnalytics.meanWordConfidence != null ? (
+                                                <Tag>ASR {formatPercent(speakingAnalytics.meanWordConfidence)}</Tag>
+                                            ) : null}
+                                            {speakingAnalytics.speechRatio != null ? (
+                                                <Tag>Speech {formatPercent(speakingAnalytics.speechRatio)}</Tag>
+                                            ) : null}
+                                            {speakingAnalytics.pauseCount != null ? (
+                                                <Tag>Pause {speakingAnalytics.pauseCount}</Tag>
+                                            ) : null}
+                                            {speakingAnalytics.longPauseCount != null ? (
+                                                <Tag>Long pause {speakingAnalytics.longPauseCount}</Tag>
+                                            ) : null}
                                         </Space>
                                         <Paragraph style={{ margin: 0, color: '#475569' }}>
                                             {speakingAnalytics.targetDurationSeconds != null
-                                                ? `Mục tiêu phần này khoảng ${speakingAnalytics.targetDurationSeconds} giây. Coverage hiện tại ${speakingAnalytics.coverageRatio != null ? `${Math.round(speakingAnalytics.coverageRatio * 100)}%` : '—'}.`
+                                                ? `Mục tiêu prompt này khoảng ${speakingAnalytics.targetDurationSeconds} giây. Coverage hiện tại ${speakingAnalytics.coverageRatio != null ? `${Math.round(speakingAnalytics.coverageRatio * 100)}%` : '—'}.`
                                                 : 'Chưa có target duration cho prompt này.'}
+                                            {speakingAnalytics.totalPauseSeconds != null
+                                                ? ` Tổng pause đo được khoảng ${speakingAnalytics.totalPauseSeconds.toFixed(1)} giây.`
+                                                : ''}
                                         </Paragraph>
+                                        {(speakingAnalytics.audioQualityWarnings?.length ?? 0) > 0 ? (
+                                            <Paragraph style={{ margin: 0, color: '#92400e' }}>
+                                                QA warning: {speakingAnalytics.audioQualityWarnings!.join('; ')}
+                                            </Paragraph>
+                                        ) : null}
+                                        {lowConfidenceWords.length > 0 ? (
+                                            <Space wrap size={[4, 4]}>
+                                                <Text type="secondary">Low-confidence words:</Text>
+                                                {lowConfidenceWords.map((word, index) => (
+                                                    <Tag key={`${entry.question.id}-low-${index}`}>
+                                                        {word.word}
+                                                        {word.start != null ? ` @${word.start.toFixed(1)}s` : ''}
+                                                    </Tag>
+                                                ))}
+                                            </Space>
+                                        ) : null}
                                     </Space>
                                 </Card>
                             ) : null}
@@ -307,8 +369,27 @@ export const SpeakingSessionReview: FC<SpeakingSessionReviewProps> = ({
                                                 <Space wrap>
                                                     <Tag color="purple">{feedback.criteria}</Tag>
                                                     <Tag>Band {feedback.bandScore.toFixed(1)}</Tag>
+                                                    {feedback.confidenceScore != null ? (
+                                                        <Tag color={feedback.confidenceScore >= 0.7 ? 'green' : feedback.confidenceScore >= 0.5 ? 'gold' : 'orange'}>
+                                                            Confidence {formatPercent(feedback.confidenceScore)}
+                                                        </Tag>
+                                                    ) : null}
                                                 </Space>
                                                 {feedback.comment ? <Paragraph style={{ margin: 0 }}>{feedback.comment}</Paragraph> : null}
+                                                {(feedback.evidence?.length ?? 0) > 0 ? (
+                                                    <Space wrap size={[4, 4]}>
+                                                        {feedback.evidence!
+                                                            .slice(0, feedback.criteria === 'Grammatical Range and Accuracy' ? 10 : 6)
+                                                            .map((item) => (
+                                                            <Tag
+                                                                key={`${entry.question.id}-${feedback.criteria}-${item}`}
+                                                                style={{ maxWidth: '100%', whiteSpace: 'normal' }}
+                                                            >
+                                                                {item}
+                                                            </Tag>
+                                                            ))}
+                                                    </Space>
+                                                ) : null}
                                                 {feedback.improvements ? (
                                                     <Paragraph style={{ margin: 0, color: '#475569' }}>
                                                         Gợi ý: {feedback.improvements}

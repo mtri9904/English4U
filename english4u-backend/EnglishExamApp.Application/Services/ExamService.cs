@@ -13,10 +13,11 @@ public class ExamService(
     ILogger<ExamService> logger) : IExamService
 {
     private const int MaxReadingPassages = 3;
-    private const int MaxReadingQuestions = 40;
+    private const int RequiredReadingQuestions = 40;
     private const int MaxListeningParts = 4;
-    private const int MaxListeningQuestions = 40;
-    private const int MaxWritingTasks = 2;
+    private const int RequiredListeningQuestions = 40;
+    private const int RequiredWritingTasks = 2;
+    private const int MinSpeakingParts = 2;
     private const int MaxSpeakingParts = 3;
 
     public async Task<List<ExamListItemDto>> GetAllAsync(CancellationToken cancellationToken = default)
@@ -239,6 +240,7 @@ public class ExamService(
     {
         ValidateExamLimits(dto);
         var enrichedSections = await EnrichSectionsAsync(dto.Sections, cancellationToken);
+        var objectiveQuestionCount = CalculateObjectiveQuestionCount(enrichedSections);
 
         await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
 
@@ -250,7 +252,7 @@ public class ExamService(
                 Title = dto.Title,
                 Description = dto.Description,
                 DurationMinutes = dto.DurationMinutes,
-                TotalPoints = dto.TotalPoints,
+                TotalPoints = objectiveQuestionCount,
                 ExamType = dto.ExamType,
                 IsPublished = dto.IsPublished,
                 CreatedBy = createdBy,
@@ -275,6 +277,7 @@ public class ExamService(
     {
         ValidateExamLimits(dto);
         var enrichedSections = await EnrichSectionsAsync(dto.Sections, cancellationToken);
+        var objectiveQuestionCount = CalculateObjectiveQuestionCount(enrichedSections);
 
         await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
 
@@ -309,7 +312,7 @@ public class ExamService(
             exam.Title = dto.Title;
             exam.Description = dto.Description;
             exam.DurationMinutes = dto.DurationMinutes;
-            exam.TotalPoints = dto.TotalPoints;
+            exam.TotalPoints = objectiveQuestionCount;
             exam.ExamType = dto.ExamType;
             exam.IsPublished = dto.IsPublished;
 
@@ -356,9 +359,14 @@ public class ExamService(
                     throw new InvalidOperationException($"Reading chỉ được tối đa {MaxReadingPassages} passages.");
                 }
 
-                if (questionCount > MaxReadingQuestions || maxQuestionNumber > MaxReadingQuestions)
+                if (questionCount != RequiredReadingQuestions)
                 {
-                    throw new InvalidOperationException($"Reading chỉ được tối đa {MaxReadingQuestions} câu.");
+                    throw new InvalidOperationException($"Reading phải có đúng {RequiredReadingQuestions} câu (hiện có {questionCount}).");
+                }
+
+                if (maxQuestionNumber > RequiredReadingQuestions)
+                {
+                    throw new InvalidOperationException($"Reading không được đánh số quá câu {RequiredReadingQuestions}.");
                 }
             }
 
@@ -381,22 +389,57 @@ public class ExamService(
                     throw new InvalidOperationException($"Listening chỉ được tối đa {MaxListeningParts} parts.");
                 }
 
-                if (questionCount > MaxListeningQuestions || maxQuestionNumber > MaxListeningQuestions)
+                if (questionCount != RequiredListeningQuestions)
                 {
-                    throw new InvalidOperationException($"Listening chỉ được tối đa {MaxListeningQuestions} câu.");
+                    throw new InvalidOperationException($"Listening phải có đúng {RequiredListeningQuestions} câu (hiện có {questionCount}).");
+                }
+
+                if (maxQuestionNumber > RequiredListeningQuestions)
+                {
+                    throw new InvalidOperationException($"Listening không được đánh số quá câu {RequiredListeningQuestions}.");
                 }
             }
 
-            if (skillType == "WRITING" && (section.WritingTasks?.Count ?? 0) > MaxWritingTasks)
+            if (skillType == "WRITING" && (section.WritingTasks?.Count ?? 0) != RequiredWritingTasks)
             {
-                throw new InvalidOperationException($"Writing chỉ được tối đa {MaxWritingTasks} tasks.");
+                throw new InvalidOperationException($"Writing phải có đúng {RequiredWritingTasks} parts/tasks.");
             }
 
-            if (skillType == "SPEAKING" && (section.SpeakingParts?.Count ?? 0) > MaxSpeakingParts)
+            if (skillType == "SPEAKING")
             {
-                throw new InvalidOperationException($"Speaking chỉ được tối đa {MaxSpeakingParts} parts.");
+                var partCount = section.SpeakingParts?.Count ?? 0;
+                if (partCount < MinSpeakingParts || partCount > MaxSpeakingParts)
+                {
+                    throw new InvalidOperationException($"Speaking phải có từ {MinSpeakingParts} đến {MaxSpeakingParts} parts.");
+                }
             }
         }
+    }
+
+    private static int CalculateObjectiveQuestionCount(IEnumerable<CreateSectionDto> sections)
+    {
+        return sections.Sum(section =>
+        {
+            var skillType = (section.SkillType ?? string.Empty).Trim().ToUpperInvariant();
+
+            if (skillType == "READING")
+            {
+                return section.ReadingPassages?
+                    .SelectMany(passage => passage.QuestionGroups)
+                    .SelectMany(group => group.Questions)
+                    .Count() ?? 0;
+            }
+
+            if (skillType == "LISTENING")
+            {
+                return section.ListeningParts?
+                    .SelectMany(part => part.QuestionGroups)
+                    .SelectMany(group => group.Questions)
+                    .Count() ?? 0;
+            }
+
+            return 0;
+        });
     }
 
     private async Task<List<CreateSectionDto>> EnrichSectionsAsync(
@@ -697,7 +740,7 @@ public class ExamService(
                     Content = qDto.Content,
                     CorrectAnswer = qDto.CorrectAnswer,
                     Explanation = qDto.Explanation,
-                    Points = qDto.Points
+                    Points = 1
                 };
                 context.Questions.Add(question);
 

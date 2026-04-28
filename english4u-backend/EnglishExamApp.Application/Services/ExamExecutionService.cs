@@ -1,9 +1,12 @@
 using EnglishExamApp.Application.DTOs.ExamExecution;
 using EnglishExamApp.Application.DTOs.Exams;
 using EnglishExamApp.Application.Interfaces;
+using EnglishExamApp.Application.Utilities;
 using EnglishExamApp.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 
 namespace EnglishExamApp.Application.Services;
@@ -15,6 +18,12 @@ public sealed class ExamExecutionService(
     ILogger<ExamExecutionService> logger) : IExamExecutionService
 {
     private const int WritingSubmitMinWords = 10;
+
+    private static readonly JsonSerializerOptions SpeakingEvidenceJsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        PropertyNameCaseInsensitive = true,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
 
     private static readonly string[] RomanOptionLabels =
     [
@@ -49,6 +58,37 @@ public sealed class ExamExecutionService(
         string? GroupType,
         string SkillType);
 
+    private sealed record ExamScoringProfile(
+        string? ExamType,
+        string? Title,
+        string? Description);
+
+    private sealed record StoredSpeakingAudioQuality(
+        [property: JsonPropertyName("is_usable")] bool IsUsable,
+        [property: JsonPropertyName("label")] string? Label,
+        [property: JsonPropertyName("duration_seconds")] double? DurationSeconds,
+        [property: JsonPropertyName("sample_rate_hz")] int? SampleRateHz,
+        [property: JsonPropertyName("channels")] int? Channels,
+        [property: JsonPropertyName("silence_ratio")] double? SilenceRatio,
+        [property: JsonPropertyName("clipping_ratio")] double? ClippingRatio,
+        [property: JsonPropertyName("loudness_dbfs")] double? LoudnessDbfs,
+        [property: JsonPropertyName("snr_db")] double? SnrDb,
+        [property: JsonPropertyName("normalized_audio_format")] string? NormalizedAudioFormat,
+        [property: JsonPropertyName("warnings")] IReadOnlyList<string>? Warnings);
+
+    private sealed record StoredSpeakingPauseStats(
+        [property: JsonPropertyName("pause_count")] int PauseCount,
+        [property: JsonPropertyName("long_pause_count")] int LongPauseCount,
+        [property: JsonPropertyName("total_pause_seconds")] double TotalPauseSeconds,
+        [property: JsonPropertyName("average_pause_seconds")] double? AveragePauseSeconds,
+        [property: JsonPropertyName("longest_pause_seconds")] double? LongestPauseSeconds);
+
+    private sealed record StoredSpeakingWordTimestamp(
+        [property: JsonPropertyName("word")] string Word,
+        [property: JsonPropertyName("start")] double? Start,
+        [property: JsonPropertyName("end")] double? End,
+        [property: JsonPropertyName("probability")] double? Probability);
+
     private static bool IsFlexibleFillBlankGroupType(string? groupType) =>
         groupType is "SENTENCE_COMPLETION" or "SUMMARY_COMPLETION" or "TABLE_COMPLETION" or "FLOWCHART_COMPLETION" or "SHORT_ANSWER" or "SHORT_ANSWER_QUESTIONS";
 
@@ -75,6 +115,35 @@ public sealed class ExamExecutionService(
     private static string NormalizeSkillType(string? skillType) =>
         (skillType ?? string.Empty).Trim().ToUpperInvariant();
 
+    private static bool IsGeneralTrainingReadingExam(string? examType, string? title, string? description)
+    {
+        var descriptor = $"{examType} {title} {description}".ToUpperInvariant();
+        return descriptor.Contains("GENERAL TRAINING", StringComparison.Ordinal)
+            || descriptor.Contains("IELTS GENERAL", StringComparison.Ordinal)
+            || Regex.IsMatch(descriptor, @"\bGT\b");
+    }
+
+    private static bool IsGeneralTrainingReadingExam(ExamScoringProfile? profile) =>
+        profile is not null && IsGeneralTrainingReadingExam(profile.ExamType, profile.Title, profile.Description);
+
+    private static double CalculateRawScore(
+        IEnumerable<PracticeSessionAnswerDto> answers,
+        IEnumerable<ObjectiveQuestionBlueprint> blueprints,
+        string skillType) =>
+        answers
+            .Where(answer => answer.IsCorrect == true)
+            .Join(
+                blueprints.Where(item => item.SkillType == skillType),
+                answer => answer.QuestionId,
+                question => question.QuestionId,
+                (answer, question) => question.Points)
+            .Sum();
+
+    private static double CalculateMaxScore(IEnumerable<ObjectiveQuestionBlueprint> blueprints, string skillType) =>
+        blueprints
+            .Where(item => item.SkillType == skillType)
+            .Sum(item => item.Points);
+
     private static int CountWords(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -85,12 +154,13 @@ public sealed class ExamExecutionService(
         return Regex.Matches(value.Trim(), @"\S+").Count;
     }
 
-    private static int? GetSpeakingTargetDurationSeconds(int? partNumber) =>
+    private static int? GetSpeakingTargetDurationSeconds(int? partNumber, bool hasCueCardPoints = false) =>
         partNumber switch
         {
-            1 => 45,
-            2 => 120,
-            3 => 90,
+            1 => 30,
+            2 when hasCueCardPoints => 120,
+            2 => 35,
+            3 => 60,
             _ => null,
         };
 
@@ -120,6 +190,7 @@ public sealed class ExamExecutionService(
         return coverageRatio.Value switch
         {
             < 0.35 => "too_short",
+            < 0.55 => "too_short",
             <= 1.0 => "on_target",
             _ => "exceeds_target",
         };
@@ -163,11 +234,11 @@ public sealed class ExamExecutionService(
             }
             else if (coverageRatio.Value < 0.55)
             {
-                score -= 0.35;
+                score -= 0.75;
             }
             else if (coverageRatio.Value <= 1.0)
             {
-                score += 0.5;
+                score += 0.25;
             }
             else if (coverageRatio.Value > 1.1)
             {
@@ -187,17 +258,59 @@ public sealed class ExamExecutionService(
         return Math.Round(Math.Clamp(score, 3.0, 8.5), 1);
     }
 
+    private static T? DeserializeSpeakingEvidence<T>(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return default;
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<T>(json, SpeakingEvidenceJsonOptions);
+        }
+        catch
+        {
+            return default;
+        }
+    }
+
+    private static IReadOnlyList<string>? DeserializeFeedbackEvidence(string? json) =>
+        DeserializeSpeakingEvidence<IReadOnlyList<string>>(json);
+
+    private static IReadOnlyList<PracticeSessionSpeakingWordTimestampDto>? BuildWordTimestampDtos(string? json)
+    {
+        var timestamps = DeserializeSpeakingEvidence<IReadOnlyList<StoredSpeakingWordTimestamp>>(json);
+        if (timestamps is null || timestamps.Count == 0)
+        {
+            return null;
+        }
+
+        return timestamps
+            .Where(item => !string.IsNullOrWhiteSpace(item.Word))
+            .Take(80)
+            .Select(item => new PracticeSessionSpeakingWordTimestampDto(
+                item.Word.Trim(),
+                item.Start,
+                item.End,
+                item.Probability))
+            .ToList();
+    }
+
     private static PracticeSessionSpeakingAnalyticsDto? BuildSpeakingAnalytics(
         string? transcriptText,
         string? answerText,
         double? durationSeconds,
-        int? partNumber)
+        int? partNumber,
+        bool hasCueCardPoints = false,
+        SpeechTranscript? transcript = null,
+        UserAudioRecord? audioRecord = null)
     {
         var sourceText = !string.IsNullOrWhiteSpace(transcriptText)
             ? transcriptText
             : answerText;
         var wordCount = CountWords(sourceText);
-        var targetDurationSeconds = GetSpeakingTargetDurationSeconds(partNumber);
+        var targetDurationSeconds = GetSpeakingTargetDurationSeconds(partNumber, hasCueCardPoints);
 
         if (wordCount == 0 && (!durationSeconds.HasValue || durationSeconds.Value <= 0))
         {
@@ -216,6 +329,9 @@ public sealed class ExamExecutionService(
             coverageRatio = Math.Round(durationSeconds.Value / targetDurationSeconds.Value, 2);
         }
 
+        var audioQuality = DeserializeSpeakingEvidence<StoredSpeakingAudioQuality>(audioRecord?.AudioQualityData);
+        var pauseStats = DeserializeSpeakingEvidence<StoredSpeakingPauseStats>(transcript?.PauseStatsData);
+
         return new PracticeSessionSpeakingAnalyticsDto(
             wordCount,
             wordsPerMinute,
@@ -223,7 +339,15 @@ public sealed class ExamExecutionService(
             targetDurationSeconds,
             EstimateFluencyBand(wordCount, wordsPerMinute, coverageRatio),
             GetSpeakingPaceLabel(wordsPerMinute),
-            GetSpeakingCoverageLabel(coverageRatio));
+            GetSpeakingCoverageLabel(coverageRatio),
+            transcript?.ConfidenceScore,
+            audioRecord?.SpeechRatio,
+            pauseStats?.PauseCount,
+            pauseStats?.LongPauseCount,
+            pauseStats?.TotalPauseSeconds,
+            audioQuality?.Label,
+            audioQuality?.Warnings,
+            BuildWordTimestampDtos(transcript?.WordTimestampsData));
     }
 
     private static string NormalizePromptWord(string? value)
@@ -842,7 +966,8 @@ public sealed class ExamExecutionService(
             result.TotalAutoScore,
             false,
             false,
-            result.Status);
+            result.Status,
+            result.TotalBandScore);
     }
 
     public async Task<PracticeSessionStartDto> StartPracticeSessionAsync(
@@ -1042,6 +1167,9 @@ public sealed class ExamExecutionService(
                     .OrderByDescending(result => result.ScoredAt)
                     .Select(result => result.ListeningScore)
                     .FirstOrDefault(),
+                TotalAutoScore = item.UserAnswers
+                    .Where(answer => answer.QuestionId != null)
+                    .Sum(answer => (double?)answer.ScoreEarned) ?? 0,
                 WritingScore = item.ScoringResults
                     .OrderByDescending(result => result.ScoredAt)
                     .Select(result => result.WritingScore)
@@ -1049,6 +1177,10 @@ public sealed class ExamExecutionService(
                 SpeakingScore = item.ScoringResults
                     .OrderByDescending(result => result.ScoredAt)
                     .Select(result => result.SpeakingScore)
+                    .FirstOrDefault(),
+                TotalBandScore = item.ScoringResults
+                    .OrderByDescending(result => result.ScoredAt)
+                    .Select(result => result.TotalBandScore)
                     .FirstOrDefault()
             })
             .ToListAsync(cancellationToken);
@@ -1069,9 +1201,10 @@ public sealed class ExamExecutionService(
                 item.ResumeQuestionNumber,
                 item.ReadingScore,
                 item.ListeningScore,
-                (item.ReadingScore ?? 0) + (item.ListeningScore ?? 0),
+                item.TotalAutoScore,
                 item.WritingScore,
-                item.SpeakingScore))
+                item.SpeakingScore,
+                item.TotalBandScore))
             .ToList();
     }
 
@@ -1390,7 +1523,8 @@ public sealed class ExamExecutionService(
             transcriptText,
             normalizedAnswer,
             dto.DurationSeconds,
-            speakingQuestion.Part.PartNumber);
+            speakingQuestion.Part.PartNumber,
+            !string.IsNullOrWhiteSpace(speakingQuestion.CueCardPoints));
 
         await context.SaveChangesAsync(cancellationToken);
 
@@ -1489,7 +1623,8 @@ public sealed class ExamExecutionService(
             throw new InvalidOperationException($"Bài Writing đã được lưu nhưng chấm AI thất bại: {ex.Message}");
         }
 
-        return await BuildWritingSessionResultAsync(sessionId, session.ExamId, session.Status, writingTasks.Count, cancellationToken);
+        var result = await BuildWritingSessionResultAsync(sessionId, session.ExamId, session.Status, writingTasks.Count, cancellationToken);
+        return await AttachRewardIfCompletedAsync(session, result, cancellationToken);
     }
 
     public async Task<PracticeSessionResultDto> SubmitSpeakingAsync(Guid userId, Guid sessionId, CancellationToken cancellationToken = default)
@@ -1531,6 +1666,47 @@ public sealed class ExamExecutionService(
         {
             logger.LogError(ex, "Speaking AI scoring failed for session {SessionId}. Submission was saved.", sessionId);
             throw new InvalidOperationException($"Bài Speaking đã được lưu nhưng chấm AI thất bại: {ex.Message}");
+        }
+
+        if (NormalizeSessionStatus(session.Status) == "Submitted")
+        {
+            session.Status = "Completed";
+            await context.SaveChangesAsync(cancellationToken);
+        }
+
+        var result = await BuildSpeakingSessionResultAsync(sessionId, session.ExamId, session.Status, speakingQuestionCount, cancellationToken);
+        return await AttachRewardIfCompletedAsync(session, result, cancellationToken);
+    }
+
+    public async Task<PracticeSessionResultDto> RescoreSpeakingAsync(Guid userId, Guid sessionId, CancellationToken cancellationToken = default)
+    {
+        var session = await context.ExamSessions
+            .FirstOrDefaultAsync(item => item.Id == sessionId && item.UserId == userId, cancellationToken)
+            ?? throw new InvalidOperationException("Session not found.");
+
+        var speakingQuestionCount = await context.SpeakingQuestions
+            .AsNoTracking()
+            .Where(question => question.Part.Section.ExamId == session.ExamId)
+            .CountAsync(cancellationToken);
+
+        if (speakingQuestionCount == 0)
+        {
+            throw new InvalidOperationException("Session này không có Speaking prompt.");
+        }
+
+        if (NormalizeSessionStatus(session.Status) == "InProgress")
+        {
+            throw new InvalidOperationException("Cần nộp Speaking trước khi chấm lại.");
+        }
+
+        try
+        {
+            await aiIntegrationService.ScoreSpeakingAsync(sessionId, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Speaking AI rescoring failed for session {SessionId}.", sessionId);
+            throw new InvalidOperationException($"Chấm lại Speaking thất bại: {ex.Message}");
         }
 
         if (NormalizeSessionStatus(session.Status) == "Submitted")
@@ -1581,7 +1757,8 @@ public sealed class ExamExecutionService(
             0,
             NormalizeSessionStatus(sessionStatus ?? status),
             WritingScore: scoringResult?.WritingScore,
-            OverallFeedback: scoringResult?.OverallFeedback);
+            OverallFeedback: scoringResult?.OverallFeedback,
+            TotalBandScore: scoringResult?.TotalBandScore);
     }
 
     private async Task<PracticeSessionResultDto> BuildSpeakingSessionResultAsync(
@@ -1620,7 +1797,8 @@ public sealed class ExamExecutionService(
             0,
             NormalizeSessionStatus(sessionStatus ?? status),
             OverallFeedback: scoringResult?.OverallFeedback,
-            SpeakingScore: scoringResult?.SpeakingScore);
+            SpeakingScore: scoringResult?.SpeakingScore,
+            TotalBandScore: scoringResult?.TotalBandScore);
     }
 
     public async Task<IReadOnlyList<AdminAttemptListItemDto>> GetAdminAttemptsAsync(
@@ -1674,6 +1852,13 @@ public sealed class ExamExecutionService(
                 ListeningScore = item.ScoringResults
                     .OrderByDescending(result => result.ScoredAt)
                     .Select(result => result.ListeningScore)
+                    .FirstOrDefault(),
+                TotalAutoScore = item.UserAnswers
+                    .Where(answer => answer.QuestionId != null)
+                    .Sum(answer => (double?)answer.ScoreEarned) ?? 0,
+                TotalBandScore = item.ScoringResults
+                    .OrderByDescending(result => result.ScoredAt)
+                    .Select(result => result.TotalBandScore)
                     .FirstOrDefault()
             })
             .AsQueryable();
@@ -1721,7 +1906,8 @@ public sealed class ExamExecutionService(
                 item.ResumeQuestionNumber,
                 item.ReadingScore,
                 item.ListeningScore,
-                (item.ReadingScore ?? 0) + (item.ListeningScore ?? 0)))
+                item.TotalAutoScore,
+                item.TotalBandScore))
             .ToList();
     }
 
@@ -1830,8 +2016,8 @@ public sealed class ExamExecutionService(
             .Where(answer => answer.QuestionId != null && answer.Question is not null)
             .ToDictionary(answer => answer.QuestionId!.Value);
 
-        double readingScore = 0;
-        double listeningScore = 0;
+        double readingRawScore = 0;
+        double listeningRawScore = 0;
         var correctQuestions = 0;
 
         foreach (var answer in answersByQuestionId.Values)
@@ -1851,11 +2037,11 @@ public sealed class ExamExecutionService(
 
             if (answer.Question.Group?.PassageId != null)
             {
-                readingScore += answer.ScoreEarned;
+                readingRawScore += answer.ScoreEarned;
             }
             else if (answer.Question.Group?.ListeningPartId != null)
             {
-                listeningScore += answer.ScoreEarned;
+                listeningRawScore += answer.ScoreEarned;
             }
         }
 
@@ -1873,8 +2059,25 @@ public sealed class ExamExecutionService(
             context.ScoringResults.Add(scoringResult);
         }
 
-        scoringResult.ReadingScore = readingScore;
-        scoringResult.ListeningScore = listeningScore;
+        var readingMaxScore = CalculateMaxScore(objectiveQuestions, "READING");
+        var listeningMaxScore = CalculateMaxScore(objectiveQuestions, "LISTENING");
+        var isGeneralTrainingReading = IsGeneralTrainingReadingExam(
+            session.Exam.ExamType,
+            session.Exam.Title,
+            session.Exam.Description);
+
+        scoringResult.ReadingScore = IeltsScoringCalculator.CalculateReadingBand(
+            readingRawScore,
+            readingMaxScore,
+            isGeneralTrainingReading);
+        scoringResult.ListeningScore = IeltsScoringCalculator.CalculateListeningBand(
+            listeningRawScore,
+            listeningMaxScore);
+        scoringResult.TotalBandScore = IeltsScoringCalculator.CalculateOverallBand(
+            scoringResult.ReadingScore,
+            scoringResult.ListeningScore,
+            scoringResult.WritingScore,
+            scoringResult.SpeakingScore);
         scoringResult.ScoredAt = DateTime.UtcNow;
 
         session.Status = "Completed";
@@ -1905,20 +2108,21 @@ public sealed class ExamExecutionService(
 
         if (result is null)
         {
-            return new PracticeSessionResultDto(
+            result = new PracticeSessionResultDto(
                 session.Id,
-                readingScore,
-                listeningScore,
-                readingScore + listeningScore,
+                scoringResult.ReadingScore,
+                scoringResult.ListeningScore,
+                readingRawScore + listeningRawScore,
                 objectiveQuestions.Sum(item => item.Points),
                 objectiveQuestions.Count,
                 CountAnsweredQuestions(answerDtos),
                 correctQuestions,
                 objectiveQuestions.Count == 0 ? 0 : Math.Round(correctQuestions * 100d / objectiveQuestions.Count, 1),
-                NormalizeSessionStatus(session.Status));
+                NormalizeSessionStatus(session.Status),
+                TotalBandScore: scoringResult.TotalBandScore);
         }
 
-        return result;
+        return await AttachRewardIfCompletedAsync(session, result, cancellationToken);
     }
 
     private async Task<SessionHeader?> GetSessionHeaderAsync(Guid sessionId, CancellationToken cancellationToken)
@@ -2204,7 +2408,9 @@ public sealed class ExamExecutionService(
                         feedback.Rubric.CriteriaName ?? string.Empty,
                         feedback.BandScore,
                         feedback.AiComment,
-                        feedback.Improvements))
+                        feedback.Improvements,
+                        feedback.ConfidenceScore,
+                        DeserializeFeedbackEvidence(feedback.EvidenceData)))
                     .ToList()))
             .ToList();
 
@@ -2228,15 +2434,21 @@ public sealed class ExamExecutionService(
                     .OrderByDescending(record => record.DurationSeconds ?? 0)
                     .ThenByDescending(record => record.Id)
                     .FirstOrDefault();
-                var transcriptText = audioRecord?.SpeechTranscripts
+                var speechTranscript = audioRecord?.SpeechTranscripts
                     .OrderByDescending(transcript => transcript.Id)
-                    .Select(transcript => transcript.TranscriptText)
-                    .FirstOrDefault(text => !string.IsNullOrWhiteSpace(text));
+                    .FirstOrDefault(transcript => !string.IsNullOrWhiteSpace(transcript.TranscriptText))
+                    ?? audioRecord?.SpeechTranscripts
+                        .OrderByDescending(transcript => transcript.Id)
+                        .FirstOrDefault();
+                var transcriptText = speechTranscript?.TranscriptText;
                 var speakingAnalytics = BuildSpeakingAnalytics(
                     transcriptText,
                     item.AnswerText,
                     audioRecord?.DurationSeconds,
-                    item.SpeakingQuestion?.Part.PartNumber);
+                    item.SpeakingQuestion?.Part.PartNumber,
+                    !string.IsNullOrWhiteSpace(item.SpeakingQuestion?.CueCardPoints),
+                    speechTranscript,
+                    audioRecord);
 
                 return new PracticeSessionAnswerDto(
                     Guid.Empty,
@@ -2254,7 +2466,9 @@ public sealed class ExamExecutionService(
                             feedback.Rubric.CriteriaName ?? string.Empty,
                             feedback.BandScore,
                             feedback.AiComment,
-                            feedback.Improvements))
+                            feedback.Improvements,
+                            feedback.ConfidenceScore,
+                            DeserializeFeedbackEvidence(feedback.EvidenceData)))
                         .ToList(),
                     item.SpeakingQuestionId,
                     item.SpeakingQuestion?.OrderIndex,
@@ -2314,6 +2528,13 @@ public sealed class ExamExecutionService(
             .ToList();
     }
 
+    private async Task<ExamScoringProfile?> GetExamScoringProfileAsync(Guid examId, CancellationToken cancellationToken) =>
+        await context.Exams
+            .AsNoTracking()
+            .Where(exam => exam.Id == examId)
+            .Select(exam => new ExamScoringProfile(exam.ExamType, exam.Title, exam.Description))
+            .FirstOrDefaultAsync(cancellationToken);
+
     private async Task<PracticeSessionResultDto?> BuildPracticeSessionResultAsync(
         Guid sessionId,
         Guid examId,
@@ -2337,28 +2558,39 @@ public sealed class ExamExecutionService(
         var correctQuestions = answers.Count(answer => answer.IsCorrect == true);
         var totalQuestions = blueprints.Count;
         var maxAutoScore = blueprints.Sum(item => item.Points);
-        var readingScore = scoringResult?.ReadingScore ?? answers
-            .Where(answer => answer.IsCorrect == true)
-            .Join(
-                blueprints.Where(item => item.SkillType == "READING"),
-                answer => answer.QuestionId,
-                question => question.QuestionId,
-                (answer, question) => question.Points)
-            .Sum();
-        var listeningScore = scoringResult?.ListeningScore ?? answers
-            .Where(answer => answer.IsCorrect == true)
-            .Join(
-                blueprints.Where(item => item.SkillType == "LISTENING"),
-                answer => answer.QuestionId,
-                question => question.QuestionId,
-                (answer, question) => question.Points)
-            .Sum();
-        var totalAutoScore = readingScore + listeningScore;
+        var readingRawScore = CalculateRawScore(answers, blueprints, "READING");
+        var listeningRawScore = CalculateRawScore(answers, blueprints, "LISTENING");
+        var totalAutoScore = readingRawScore + listeningRawScore;
+        var readingMaxScore = CalculateMaxScore(blueprints, "READING");
+        var listeningMaxScore = CalculateMaxScore(blueprints, "LISTENING");
+        var shouldCalculateBands = scoringResult is not null || NormalizeSessionStatus(status) == "Completed";
+        var profile = shouldCalculateBands
+            ? await GetExamScoringProfileAsync(examId, cancellationToken)
+            : null;
+        var readingBandScore = scoringResult?.ReadingScore
+            ?? (shouldCalculateBands
+                ? IeltsScoringCalculator.CalculateReadingBand(
+                    readingRawScore,
+                    readingMaxScore,
+                    IsGeneralTrainingReadingExam(profile))
+                : null);
+        var listeningBandScore = scoringResult?.ListeningScore
+            ?? (shouldCalculateBands
+                ? IeltsScoringCalculator.CalculateListeningBand(listeningRawScore, listeningMaxScore)
+                : null);
+        var totalBandScore = scoringResult?.TotalBandScore
+            ?? (shouldCalculateBands
+                ? IeltsScoringCalculator.CalculateOverallBand(
+                    readingBandScore,
+                    listeningBandScore,
+                    scoringResult?.WritingScore,
+                    scoringResult?.SpeakingScore)
+                : null);
 
         return new PracticeSessionResultDto(
             sessionId,
-            readingScore,
-            listeningScore,
+            readingBandScore,
+            listeningBandScore,
             totalAutoScore,
             maxAutoScore,
             totalQuestions,
@@ -2368,11 +2600,97 @@ public sealed class ExamExecutionService(
             NormalizeSessionStatus(status),
             scoringResult?.WritingScore,
             scoringResult?.OverallFeedback,
-            scoringResult?.SpeakingScore);
+            scoringResult?.SpeakingScore,
+            totalBandScore);
     }
 
     private static int CountAnsweredQuestions(IReadOnlyList<PracticeSessionAnswerDto> answers) =>
         answers.Count(HasAnswerContent);
+
+    private async Task<PracticeSessionResultDto> AttachRewardIfCompletedAsync(
+        ExamSession session,
+        PracticeSessionResultDto result,
+        CancellationToken cancellationToken)
+    {
+        if (NormalizeSessionStatus(result.Status) != "Completed")
+        {
+            return result;
+        }
+
+        var reward = await ApplyRewardAsync(session, result, cancellationToken);
+        return result with { Reward = reward };
+    }
+
+    private async Task<PracticeSessionRewardDto> ApplyRewardAsync(
+        ExamSession session,
+        PracticeSessionResultDto result,
+        CancellationToken cancellationToken)
+    {
+        var user = await context.Users
+            .FirstOrDefaultAsync(item => item.Id == session.UserId, cancellationToken)
+            ?? throw new InvalidOperationException("User not found.");
+
+        var previousProgress = UserGamificationCalculator.BuildProgress(user.ExperiencePoints);
+        var hasPriorCompletedAttempt = await context.ExamSessions
+            .AsNoTracking()
+            .AnyAsync(
+                item =>
+                    item.Id != session.Id
+                    && item.UserId == session.UserId
+                    && item.ExamId == session.ExamId
+                    && (item.Status == "Completed" || item.Status == "Scored"),
+                cancellationToken);
+
+        var experienceAwarded = hasPriorCompletedAttempt
+            ? 0
+            : UserGamificationCalculator.CalculateExperienceReward(result.TotalBandScore, result.AccuracyPercent);
+
+        if (experienceAwarded > 0)
+        {
+            user.ExperiencePoints += experienceAwarded;
+        }
+
+        UpdateDailyStreak(user, DateTime.UtcNow);
+        user.UpdatedAt = DateTime.UtcNow;
+
+        await context.SaveChangesAsync(cancellationToken);
+
+        var currentProgress = UserGamificationCalculator.BuildProgress(user.ExperiencePoints);
+        return new PracticeSessionRewardDto(
+            experienceAwarded,
+            !hasPriorCompletedAttempt,
+            currentProgress.CurrentLevel > previousProgress.CurrentLevel,
+            currentProgress.ExperiencePoints,
+            currentProgress.CurrentLevel,
+            currentProgress.CurrentLevelStartExperience,
+            currentProgress.NextLevelExperience,
+            currentProgress.ExperienceToNextLevel,
+            currentProgress.LevelProgressPercent,
+            user.DailyStreakCount,
+            user.LongestStreakCount);
+    }
+
+    private static void UpdateDailyStreak(User user, DateTime activityAtUtc)
+    {
+        var activityDate = VietnamDateTimeFormatter.ToVietnamDate(activityAtUtc);
+        var lastActivityDate = VietnamDateTimeFormatter.ToVietnamDate(user.LastActivityAt);
+
+        if (lastActivityDate == activityDate)
+        {
+            user.DailyStreakCount = Math.Max(1, user.DailyStreakCount);
+        }
+        else if (lastActivityDate.HasValue && lastActivityDate.Value.AddDays(1) == activityDate)
+        {
+            user.DailyStreakCount = Math.Max(1, user.DailyStreakCount) + 1;
+        }
+        else
+        {
+            user.DailyStreakCount = 1;
+        }
+
+        user.LongestStreakCount = Math.Max(user.LongestStreakCount, user.DailyStreakCount);
+        user.LastActivityAt = activityAtUtc;
+    }
 
     private static int? ComputeResumeQuestionNumber(
         IReadOnlyList<ObjectiveQuestionBlueprint> blueprints,

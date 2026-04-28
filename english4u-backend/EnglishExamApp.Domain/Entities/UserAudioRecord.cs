@@ -7,6 +7,8 @@ public class UserAudioRecord
     public string AudioUrl { get; set; } = string.Empty;
     public double? DurationSeconds { get; set; }
     public int? FileSizeKB { get; set; }
+    public string? AudioQualityData { get; set; }
+    public double? SpeechRatio { get; set; }
 
     public UserAnswer Answer { get; set; } = null!;
     public ICollection<SpeechTranscript> SpeechTranscripts { get; set; } = [];

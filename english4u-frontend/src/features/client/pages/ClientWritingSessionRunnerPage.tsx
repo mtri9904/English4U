@@ -433,7 +433,7 @@ export const ClientWritingSessionPage: FC = () => {
                         type="success"
                         showIcon
                         message="Session này đã được nộp."
-                        description="Writing hiện chỉ lưu bài nộp, chưa chấm điểm tự động."
+                        description="Bạn có thể mở trang kết quả để xem band Writing và feedback AI."
                     />
                     <Button type="primary" onClick={() => navigate(`/app/sessions/${sessionId}/submit`)}>
                         Xem trang nộp bài

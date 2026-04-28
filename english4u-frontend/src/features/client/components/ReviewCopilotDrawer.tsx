@@ -220,6 +220,19 @@ const cleanCopilotDisplayText = (value?: string | null) => {
         (value ?? '')
             .replace(/\r\n/g, '\n')
             .replace(/\r/g, '\n')
+            .replace(/\$\\rightarrow\$/g, '->')
+            .replace(/\$\\Rightarrow\$/g, '=>')
+            .replace(/\$\\leftarrow\$/g, '<-')
+            .replace(/\$\\Leftarrow\$/g, '<=')
+            .replace(/\$\\leftrightarrow\$/g, '<->')
+            .replace(/\$\\Leftrightarrow\$/g, '<=>')
+            .replace(/\\rightarrow/g, '->')
+            .replace(/\\Rightarrow/g, '=>')
+            .replace(/\\leftarrow/g, '<-')
+            .replace(/\\Leftarrow/g, '<=')
+            .replace(/\\leftrightarrow/g, '<->')
+            .replace(/\\Leftrightarrow/g, '<=>')
+            .replace(/\$([^$\n]{1,80})\$/g, '$1')
             .trim(),
         ),
     );

@@ -1,3 +1,32 @@
+export interface UserGamificationDto {
+    experiencePoints: number;
+    currentLevel: number;
+    currentLevelStartExperience: number;
+    nextLevelExperience: number;
+    experienceToNextLevel: number;
+    levelProgressPercent: number;
+    dailyStreakCount: number;
+    longestStreakCount: number;
+    lastActivityAt: string | null;
+}
+
+export interface UserLearningSnapshotDto {
+    completedSessionCount: number;
+    uniqueExamCompletedCount: number;
+    averageBandScore: number | null;
+    bestBandScore: number | null;
+    totalPracticeMinutes: number;
+}
+
+export interface UserProfileRecentExamDto {
+    sessionId: string;
+    examId: string;
+    examTitle: string;
+    skillType: string;
+    completedAt: string;
+    bandScore: number | null;
+}
+
 export interface UserProfileDto {
     id: string;
     email: string;
@@ -13,6 +42,9 @@ export interface UserProfileDto {
     isOnline?: boolean;
     role: string | null;
     createdAt: string;
+    gamification: UserGamificationDto;
+    learning: UserLearningSnapshotDto;
+    recentExamActivities: UserProfileRecentExamDto[];
 }
 
 export interface UpdateProfileRequest {

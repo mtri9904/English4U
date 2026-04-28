@@ -77,14 +77,14 @@ const getPrimarySectionStats = (section?: PracticeExamSectionSummaryDto | null) 
         case 'WRITING':
             return [
                 { label: 'Task', value: section.writingTaskCount },
-                { label: 'Điểm', value: 'Tự luận' },
+                { label: 'Band', value: '0-9' },
                 { label: 'Kỹ năng', value: 'Viết học thuật' },
             ];
         case 'SPEAKING':
             return [
                 { label: 'Part', value: section.speakingPartCount },
                 { label: 'Prompt', value: section.speakingQuestionCount },
-                { label: 'Kỹ năng', value: 'Nói học thuật' },
+                { label: 'Band', value: '0-9' },
             ];
         default:
             return [
@@ -119,6 +119,9 @@ export const ClientPracticeExamPage: FC = () => {
     };
     const sectionStats = getPrimarySectionStats(primarySection);
     const isListeningExam = primarySkill === 'LISTENING';
+    const isObjectiveExam = primarySkill === 'READING' || primarySkill === 'LISTENING';
+    const scoreSummaryTitle = isObjectiveExam ? 'Raw score tối đa' : 'Band khi nộp';
+    const scoreSummaryValue = isObjectiveExam ? (exam?.totalPoints ?? 0) : '0-9';
 
     const launchSession = (attemptMode?: ListeningAttemptMode) => {
         if (!supportsPracticeRunner || !exam) {
@@ -199,7 +202,7 @@ export const ClientPracticeExamPage: FC = () => {
                             <Statistic title="Kỹ năng" value={primarySkillDisplay} />
                         </Col>
                         <Col xs={12} md={6}>
-                            <Statistic title="Điểm" value={exam.totalPoints ?? 0} />
+                            <Statistic title={scoreSummaryTitle} value={scoreSummaryValue} />
                         </Col>
                         <Col xs={12} md={6}>
                             <Statistic title={sectionStats[0]?.label || 'Nội dung'} value={sectionStats[0]?.value ?? '—'} />

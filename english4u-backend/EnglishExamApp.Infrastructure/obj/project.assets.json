@@ -5091,11 +5091,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\users\\hande\\onedrive\\documents\\english4skills\\english4u-backend\\EnglishExamApp.Infrastructure\\EnglishExamApp.Infrastructure.csproj",
+      "projectUniqueName": "C:\\Users\\Hande\\OneDrive\\Documents\\DoAnTotNghiep\\English4skills\\english4u-backend\\EnglishExamApp.Infrastructure\\EnglishExamApp.Infrastructure.csproj",
       "projectName": "EnglishExamApp.Infrastructure",
-      "projectPath": "C:\\users\\hande\\onedrive\\documents\\english4skills\\english4u-backend\\EnglishExamApp.Infrastructure\\EnglishExamApp.Infrastructure.csproj",
+      "projectPath": "C:\\Users\\Hande\\OneDrive\\Documents\\DoAnTotNghiep\\English4skills\\english4u-backend\\EnglishExamApp.Infrastructure\\EnglishExamApp.Infrastructure.csproj",
       "packagesPath": "C:\\Users\\Hande\\.nuget\\packages\\",
-      "outputPath": "C:\\users\\hande\\onedrive\\documents\\english4skills\\english4u-backend\\EnglishExamApp.Infrastructure\\obj\\",
+      "outputPath": "C:\\Users\\Hande\\OneDrive\\Documents\\DoAnTotNghiep\\English4skills\\english4u-backend\\EnglishExamApp.Infrastructure\\obj\\",
       "projectStyle": "PackageReference",
       "configFilePaths": [
         "C:\\Users\\Hande\\AppData\\Roaming\\NuGet\\NuGet.Config",
@@ -5112,8 +5112,8 @@
         "net9.0": {
           "targetAlias": "net9.0",
           "projectReferences": {
-            "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\english4u-backend\\EnglishExamApp.Application\\EnglishExamApp.Application.csproj": {
-              "projectPath": "C:\\Users\\Hande\\OneDrive\\Documents\\English4skills\\english4u-backend\\EnglishExamApp.Application\\EnglishExamApp.Application.csproj"
+            "C:\\Users\\Hande\\OneDrive\\Documents\\DoAnTotNghiep\\English4skills\\english4u-backend\\EnglishExamApp.Application\\EnglishExamApp.Application.csproj": {
+              "projectPath": "C:\\Users\\Hande\\OneDrive\\Documents\\DoAnTotNghiep\\English4skills\\english4u-backend\\EnglishExamApp.Application\\EnglishExamApp.Application.csproj"
             }
           }
         }

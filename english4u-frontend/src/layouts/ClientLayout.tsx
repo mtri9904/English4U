@@ -11,9 +11,7 @@ import {
     SettingOutlined,
     MenuFoldOutlined,
     MenuUnfoldOutlined,
-    BarChartOutlined,
     CheckCircleOutlined,
-    FireOutlined,
     ReloadOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
@@ -25,6 +23,7 @@ import {
     useMarkAllClientNotificationsReadMutation,
     useUpdateClientNotificationReadMutation,
 } from '@/features/client/api/notification.api';
+import { getStreakDisplayMeta } from '@/features/client/lib/streakDisplay';
 import { useRealtimeSync } from '@/features/realtime/hooks/useRealtimeSync';
 import { formatDateTimeToMinute } from '@/shared/lib/dateTime';
 
@@ -63,6 +62,8 @@ export const ClientLayout: React.FC = () => {
     const updateNotificationReadMutation = useUpdateClientNotificationReadMutation();
     const markAllNotificationsReadMutation = useMarkAllClientNotificationsReadMutation();
     const notificationItems = clientNotificationsPaged?.items ?? [];
+    const streakCount = profile?.gamification.dailyStreakCount ?? 0;
+    const streakMeta = getStreakDisplayMeta(streakCount);
 
     useEffect(() => {
         const checkMobile = () => setIsMobile(window.innerWidth < 768);
@@ -210,11 +211,6 @@ export const ClientLayout: React.FC = () => {
             icon: <BookOutlined />,
             label: 'Bài thi của tôi',
         },
-        {
-            key: '/app/progress',
-            icon: <BarChartOutlined />,
-            label: 'Tiến trình thi',
-        },
     ];
 
     const sidebarToggleButton = (
@@ -293,26 +289,33 @@ export const ClientLayout: React.FC = () => {
                         <div style={{
                             margin: '16px 16px 8px',
                             padding: '14px 16px',
-                            background: 'linear-gradient(135deg, #e0f2fe, #ede9fe)',
+                            background: streakMeta.background,
+                            border: `1px solid ${streakMeta.borderColor}`,
                             borderRadius: 14,
                             display: 'flex',
                             alignItems: 'center',
                             gap: 12,
+                            boxShadow: streakMeta.shadow,
                         }}>
                             <div style={{
                                 width: 36,
                                 height: 36,
                                 borderRadius: 10,
-                                background: 'linear-gradient(135deg, #137dc5, #7c3aed)',
+                                background: streakMeta.iconBackground,
+                                color: streakMeta.iconColor,
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
+                                fontSize: streakCount >= 14 ? 19 : 16,
+                                boxShadow: streakCount > 0 ? `0 10px 18px ${streakMeta.accent}33` : undefined,
                             }}>
-                                <FireOutlined style={{ color: '#fff', fontSize: 16 }} />
+                                {streakMeta.icon}
                             </div>
                             <div>
-                                <Text strong style={{ fontSize: 13, display: 'block', lineHeight: 1.3 }}>Streak: 0 ngày</Text>
-                                <Text type="secondary" style={{ fontSize: 11 }}>Hãy bắt đầu luyện tập!</Text>
+                                <Text strong style={{ fontSize: 13, display: 'block', lineHeight: 1.3, color: '#0f172a' }}>
+                                    {streakMeta.title}
+                                </Text>
+                                <Text style={{ fontSize: 11, color: '#64748b' }}>{streakMeta.description}</Text>
                             </div>
                         </div>
                     )}

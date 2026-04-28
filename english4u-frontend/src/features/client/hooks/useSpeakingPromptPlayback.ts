@@ -2,8 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
     buildApproximateVisemeTimeline,
     buildSyntheticLevel,
+    buildWordMarkers,
+    buildWordVisemeTimeline,
     estimateSpeechDurationMs,
+    estimateWordDurationMs,
     resolveVisemeAtTime,
+    resolveWordMarkerAtCharIndex,
     scaleVisemeTimeline,
     type SpeakingVisemeCode,
     type SpeakingVisemeCue,
@@ -115,6 +119,7 @@ export const useSpeakingPromptPlayback = () => {
         const baseTimeline = visemeTimeline && visemeTimeline.length > 0
             ? visemeTimeline
             : buildApproximateVisemeTimeline(normalizedText, fallbackDurationMs);
+        const wordMarkers = buildWordMarkers(normalizedText);
 
         const utterance = new SpeechSynthesisUtterance(normalizedText);
         utterance.lang = 'en-US';
@@ -127,6 +132,26 @@ export const useSpeakingPromptPlayback = () => {
 
         const speechDurationMs = estimatedDurationMs ?? estimateSpeechDurationMs(normalizedText, utterance.rate);
         visemeTimelineRef.current = scaleVisemeTimeline(baseTimeline, speechDurationMs);
+
+        let lastBoundaryWordStartIndex = -1;
+        utterance.onboundary = (event) => {
+            if (speechStartedAtRef.current == null || typeof event.charIndex !== 'number') {
+                return;
+            }
+
+            const marker = resolveWordMarkerAtCharIndex(wordMarkers, event.charIndex);
+            if (!marker || marker.startIndex === lastBoundaryWordStartIndex) {
+                return;
+            }
+
+            lastBoundaryWordStartIndex = marker.startIndex;
+            const elapsedMs = Math.max(0, performance.now() - speechStartedAtRef.current);
+            visemeTimelineRef.current = buildWordVisemeTimeline(
+                marker.word,
+                elapsedMs,
+                estimateWordDurationMs(marker.word, utterance.rate),
+            );
+        };
 
         utterance.onend = () => {
             stopPlayback();

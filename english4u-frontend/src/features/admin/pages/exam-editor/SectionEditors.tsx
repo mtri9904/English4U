@@ -1,5 +1,5 @@
 import { useRef, useState, type ClipboardEvent, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
-import { Button, Input, InputNumber, Upload, Tag, message } from 'antd';
+import { Button, Input, InputNumber, Upload, message } from 'antd';
 import { CloseOutlined, MinusCircleOutlined, PictureOutlined, PlusOutlined, SoundOutlined, BoldOutlined } from '@ant-design/icons';
 import type {
     CreateSectionDto,
@@ -84,11 +84,6 @@ export const ReadingSectionEditor = ({
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                <Tag color={questionCount > EXAM_LIMITS.Reading.questions ? 'red' : 'green'}>
-                    Reading {questionCount}/{EXAM_LIMITS.Reading.questions} câu
-                </Tag>
-            </div>
             {passages.map((passage, pIdx) => (
                 <div key={pIdx} style={{ background: '#fff', borderRadius: '12px', padding: '16px', border: '1px solid #e2e8f0' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
@@ -228,11 +223,6 @@ export const ListeningSectionEditor = ({
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                <Tag color={questionCount > EXAM_LIMITS.Listening.questions ? 'red' : 'green'}>
-                    Listening {questionCount}/{EXAM_LIMITS.Listening.questions} câu
-                </Tag>
-            </div>
             <div style={{ padding: '14px', background: '#eef2ff', borderRadius: '12px', border: '1px dashed #6366f1' }}>
                 <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#3730a3', marginBottom: '8px' }}>
                     <SoundOutlined /> Audio chung cho toàn bài Listening
@@ -277,9 +267,6 @@ export const ListeningSectionEditor = ({
                             />
                         ) : null}
                     />
-                </div>
-                <div style={{ marginTop: '8px', fontSize: '0.75rem', color: '#4338ca', lineHeight: 1.6 }}>
-                    Listening giờ chỉ dùng một file audio cho toàn bộ bài. Các Part bên dưới chỉ còn để chia nhóm câu hỏi và nội dung hiển thị.
                 </div>
             </div>
             {parts.map((part, pIdx) => (
@@ -555,9 +542,6 @@ export const WritingSectionEditor = ({
                                         />
                                     ) : null}
                                 />
-                            </div>
-                            <div style={{ marginTop: '10px', fontSize: '0.75rem', color: '#a16207', lineHeight: 1.6 }}>
-                                Khi lưu đề, hệ thống sẽ tự đọc ảnh biểu đồ ở nền để chuẩn bị dữ liệu cho AI chấm và AI gia sư.
                             </div>
                         </div>
                     )}

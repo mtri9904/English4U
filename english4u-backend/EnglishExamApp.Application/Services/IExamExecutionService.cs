@@ -15,6 +15,7 @@ public interface IExamExecutionService
     Task<PracticeSessionResultDto> SubmitReadingListeningAsync(Guid userId, Guid sessionId, CancellationToken cancellationToken = default);
     Task<PracticeSessionResultDto> SubmitWritingAsync(Guid userId, Guid sessionId, CancellationToken cancellationToken = default);
     Task<PracticeSessionResultDto> SubmitSpeakingAsync(Guid userId, Guid sessionId, CancellationToken cancellationToken = default);
+    Task<PracticeSessionResultDto> RescoreSpeakingAsync(Guid userId, Guid sessionId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<AdminAttemptListItemDto>> GetAdminAttemptsAsync(AdminAttemptQueryDto query, CancellationToken cancellationToken = default);
     Task<AdminAttemptDetailDto?> GetAdminAttemptDetailAsync(Guid sessionId, CancellationToken cancellationToken = default);
 }

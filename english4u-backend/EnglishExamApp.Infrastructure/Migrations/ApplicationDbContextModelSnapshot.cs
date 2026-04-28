@@ -43,6 +43,14 @@ namespace EnglishExamApp.Infrastructure.Migrations
                         .HasColumnType("float")
                         .HasColumnName("bandScore");
 
+                    b.Property<double?>("ConfidenceScore")
+                        .HasColumnType("float")
+                        .HasColumnName("confidenceScore");
+
+                    b.Property<string>("EvidenceData")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("evidenceData");
+
                     b.Property<string>("Improvements")
                         .HasColumnType("nvarchar(max)")
                         .HasColumnName("improvements");
@@ -849,6 +857,10 @@ namespace EnglishExamApp.Infrastructure.Migrations
                         .HasColumnType("float")
                         .HasColumnName("confidenceScore");
 
+                    b.Property<string>("PauseStatsData")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("pauseStatsData");
+
                     b.Property<string>("TranscriptText")
                         .HasColumnType("nvarchar(max)")
                         .HasColumnName("transcriptText");
@@ -856,6 +868,10 @@ namespace EnglishExamApp.Infrastructure.Migrations
                     b.Property<double?>("WordErrorRate")
                         .HasColumnType("float")
                         .HasColumnName("wordErrorRate");
+
+                    b.Property<string>("WordTimestampsData")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("wordTimestampsData");
 
                     b.HasKey("Id");
 
@@ -965,6 +981,18 @@ namespace EnglishExamApp.Infrastructure.Migrations
                         .HasColumnType("nvarchar(255)")
                         .HasColumnName("email");
 
+                    b.Property<int>("ExperiencePoints")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0)
+                        .HasColumnName("experiencePoints");
+
+                    b.Property<int>("DailyStreakCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0)
+                        .HasColumnName("dailyStreakCount");
+
                     b.Property<bool>("IsActive")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bit")
@@ -987,9 +1015,19 @@ namespace EnglishExamApp.Infrastructure.Migrations
                         .HasColumnType("datetime2")
                         .HasColumnName("LastLoginAt");
 
+                    b.Property<DateTime?>("LastActivityAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("lastActivityAt");
+
                     b.Property<DateTime?>("LastSeenAt")
                         .HasColumnType("datetime2")
                         .HasColumnName("LastSeenAt");
+
+                    b.Property<int>("LongestStreakCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0)
+                        .HasColumnName("longestStreakCount");
 
                     b.Property<string>("Notes")
                         .HasColumnType("nvarchar(max)")
@@ -1058,6 +1096,11 @@ namespace EnglishExamApp.Infrastructure.Migrations
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("questionId");
 
+                    b.Property<Guid?>("SpeakingQuestionId")
+                        .HasMaxLength(36)
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("speakingQuestionId");
+
                     b.Property<double>("ScoreEarned")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("float")
@@ -1083,6 +1126,8 @@ namespace EnglishExamApp.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("QuestionId");
+
+                    b.HasIndex("SpeakingQuestionId");
 
                     b.HasIndex("SessionId");
 
@@ -1110,6 +1155,10 @@ namespace EnglishExamApp.Infrastructure.Migrations
                         .HasColumnType("nvarchar(500)")
                         .HasColumnName("audioUrl");
 
+                    b.Property<string>("AudioQualityData")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("audioQualityData");
+
                     b.Property<double?>("DurationSeconds")
                         .HasColumnType("float")
                         .HasColumnName("durationSeconds");
@@ -1117,6 +1166,10 @@ namespace EnglishExamApp.Infrastructure.Migrations
                     b.Property<int?>("FileSizeKB")
                         .HasColumnType("int")
                         .HasColumnName("fileSizeKB");
+
+                    b.Property<double?>("SpeechRatio")
+                        .HasColumnType("float")
+                        .HasColumnName("speechRatio");
 
                     b.HasKey("Id");
 
@@ -1483,6 +1536,11 @@ namespace EnglishExamApp.Infrastructure.Migrations
                         .HasForeignKey("QuestionId")
                         .OnDelete(DeleteBehavior.NoAction);
 
+                    b.HasOne("EnglishExamApp.Domain.Entities.SpeakingQuestion", "SpeakingQuestion")
+                        .WithMany("UserAnswers")
+                        .HasForeignKey("SpeakingQuestionId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
                     b.HasOne("EnglishExamApp.Domain.Entities.ExamSession", "Session")
                         .WithMany("UserAnswers")
                         .HasForeignKey("SessionId")
@@ -1495,6 +1553,8 @@ namespace EnglishExamApp.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.NoAction);
 
                     b.Navigation("Question");
+
+                    b.Navigation("SpeakingQuestion");
 
                     b.Navigation("Session");
 
@@ -1627,6 +1687,11 @@ namespace EnglishExamApp.Infrastructure.Migrations
             modelBuilder.Entity("EnglishExamApp.Domain.Entities.SpeakingPart", b =>
                 {
                     b.Navigation("SpeakingQuestions");
+                });
+
+            modelBuilder.Entity("EnglishExamApp.Domain.Entities.SpeakingQuestion", b =>
+                {
+                    b.Navigation("UserAnswers");
                 });
 
             modelBuilder.Entity("EnglishExamApp.Domain.Entities.SpeechTranscript", b =>

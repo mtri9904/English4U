@@ -1,21 +1,27 @@
 import asyncio
 import base64
+import importlib.util
 import io
 import json
 import logging
 import math
 import os
 import re
+import shutil
+import subprocess
+import sys
 import tempfile
 import time
 import unicodedata
 import wave
+from array import array
 from collections import Counter
 from contextlib import asynccontextmanager
 from functools import lru_cache
 from typing import Literal, TypeVar
-from urllib.parse import urlparse
-from urllib.request import urlopen
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode, urlparse
+from urllib.request import Request, urlopen
 
 from docling.document_converter import DocumentConverter
 from dotenv import load_dotenv
@@ -32,6 +38,27 @@ from pydantic import BaseModel, Field
 logger = logging.getLogger(__name__)
 
 load_dotenv()
+
+
+def parse_env_bool(name: str, default: bool) -> bool:
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return default
+    return raw_value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def parse_env_float(name: str, default: float, *, minimum: float | None = None) -> float:
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return default
+    try:
+        value = float(raw_value)
+    except ValueError:
+        return default
+    if minimum is not None:
+        value = max(minimum, value)
+    return value
+
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 GEMINI_SCORING_MODEL = os.getenv("GEMINI_SCORING_MODEL", "gemini-2.5-flash-lite").strip()
@@ -61,10 +88,10 @@ GEMINI_SPEAKING_TTS_MODEL_CANDIDATES = list(
     ])
 )
 GEMINI_SPEAKING_TTS_VOICE = os.getenv("GEMINI_SPEAKING_TTS_VOICE", "Iapetus").strip() or "Iapetus"
-GEMINI_SPEAKING_SCORING_MODEL = os.getenv("GEMINI_SPEAKING_SCORING_MODEL", "gemini-3-flash-preview").strip()
+GEMINI_SPEAKING_SCORING_MODEL = os.getenv("GEMINI_SPEAKING_SCORING_MODEL", "gemma-3-27b-it").strip()
 GEMINI_SPEAKING_SCORING_FALLBACK_MODELS = [
     model.strip()
-    for model in os.getenv("GEMINI_SPEAKING_SCORING_FALLBACK_MODELS", "gemini-3-pro-preview").split(",")
+    for model in os.getenv("GEMINI_SPEAKING_SCORING_FALLBACK_MODELS", "gemma-3-12b-it,gemma-3-4b-it,gemma-3-1b-it").split(",")
     if model.strip()
 ]
 GEMINI_SPEAKING_SCORING_MODEL_CANDIDATES = list(
@@ -88,10 +115,37 @@ GEMINI_ALIGNMENT_MODEL_CANDIDATES = list(
         if model
     ])
 )
+LANGUAGETOOL_ENABLED = os.getenv("LANGUAGETOOL_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
+LANGUAGETOOL_URL = os.getenv("LANGUAGETOOL_URL", "http://localhost:8081/v2/check").strip()
+LANGUAGETOOL_LANGUAGE = os.getenv("LANGUAGETOOL_LANGUAGE", "en-US").strip() or "en-US"
+try:
+    LANGUAGETOOL_TIMEOUT_SECONDS = max(0.2, float(os.getenv("LANGUAGETOOL_TIMEOUT_SECONDS", "2.0")))
+except ValueError:
+    LANGUAGETOOL_TIMEOUT_SECONDS = 2.0
+LANGUAGETOOL_UNAVAILABLE_COOLDOWN_SECONDS = 60.0
+
+SPEAKING_PRONUNCIATION_ENGINE = os.getenv("SPEAKING_PRONUNCIATION_ENGINE", "mfa_praat_allosaurus").strip().lower() or "mfa_praat_allosaurus"
+SPEAKING_PRONUNCIATION_STRICT = parse_env_bool("SPEAKING_PRONUNCIATION_STRICT", True)
+SPEAKING_ENABLE_PRAAT = parse_env_bool("SPEAKING_ENABLE_PRAAT", True)
+SPEAKING_ENABLE_MFA = parse_env_bool("SPEAKING_ENABLE_MFA", True)
+SPEAKING_MFA_BINARY = os.getenv("SPEAKING_MFA_BINARY", "mfa").strip() or "mfa"
+SPEAKING_MFA_DICTIONARY_PATH = os.getenv("SPEAKING_MFA_DICTIONARY_PATH", "english_mfa").strip()
+SPEAKING_MFA_ACOUSTIC_MODEL_PATH = os.getenv("SPEAKING_MFA_ACOUSTIC_MODEL_PATH", "english_mfa").strip()
+SPEAKING_ENABLE_ALLOSAURUS = parse_env_bool("SPEAKING_ENABLE_ALLOSAURUS", True)
+SPEAKING_ALLOSAURUS_MODEL = os.getenv("SPEAKING_ALLOSAURUS_MODEL", "eng2102").strip() or "eng2102"
+SPEAKING_ALLOSAURUS_LANG = os.getenv("SPEAKING_ALLOSAURUS_LANG", "eng").strip() or "eng"
+SPEAKING_PRONUNCIATION_TOOL_TIMEOUT_SECONDS = parse_env_float(
+    "SPEAKING_PRONUNCIATION_TOOL_TIMEOUT_SECONDS", 90.0, minimum=5.0
+)
+SPEAKING_PITCH_FLOOR_HZ = parse_env_float("SPEAKING_PITCH_FLOOR_HZ", 75.0, minimum=20.0)
+SPEAKING_PITCH_CEILING_HZ = parse_env_float("SPEAKING_PITCH_CEILING_HZ", 500.0, minimum=80.0)
+SPEAKING_PHONE_MATCH_THRESHOLD = parse_env_float("SPEAKING_PHONE_MATCH_THRESHOLD", 0.45, minimum=0.0)
 
 whisper_model: WhisperModel | None = None
 gemini_client: google_genai.Client | None = None
 gemini_alignment_quota_cooldown_until = 0.0
+languagetool_unavailable_until = 0.0
+allosaurus_recognizer_cache: dict[str, object] = {}
 
 StructuredModelT = TypeVar("StructuredModelT", bound=BaseModel)
 
@@ -346,6 +400,113 @@ class RubricScore(BaseModel):
     band: float
     comment: str
     improvements: str
+    confidence: float | None = None
+    evidence: list[str] = Field(default_factory=list)
+
+
+class SpeakingWordTimestamp(BaseModel):
+    word: str
+    start: float | None = None
+    end: float | None = None
+    probability: float | None = None
+
+
+class SpeakingPauseStats(BaseModel):
+    pause_count: int = 0
+    long_pause_count: int = 0
+    total_pause_seconds: float = 0.0
+    average_pause_seconds: float | None = None
+    longest_pause_seconds: float | None = None
+
+
+class SpeakingAudioQuality(BaseModel):
+    is_usable: bool = True
+    label: str = "unknown"
+    duration_seconds: float | None = None
+    sample_rate_hz: int | None = None
+    channels: int | None = None
+    silence_ratio: float | None = None
+    clipping_ratio: float | None = None
+    loudness_dbfs: float | None = None
+    snr_db: float | None = None
+    normalized_audio_format: str | None = None
+    warnings: list[str] = Field(default_factory=list)
+
+
+class SpeakingGrammarIssue(BaseModel):
+    rule_id: str | None = None
+    category: str | None = None
+    issue_type: str | None = None
+    message: str
+    matched_text: str | None = None
+    offset: int | None = None
+    length: int | None = None
+    replacements: list[str] = Field(default_factory=list)
+    weight: float = 1.0
+
+
+class SpeakingGrammarAnalysis(BaseModel):
+    engine: str = "languagetool_http"
+    language: str = "en-US"
+    is_available: bool = False
+    error_count: int = 0
+    weighted_error_count: float = 0.0
+    error_density_per_100_words: float = 0.0
+    category_counts: dict[str, int] = Field(default_factory=dict)
+    issues: list[SpeakingGrammarIssue] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class SpeakingPronunciationIssue(BaseModel):
+    word: str
+    expected_phoneme: str | None = None
+    actual_phoneme: str | None = None
+    is_correct: bool | None = None
+    confidence: float | None = None
+    start: float | None = None
+    end: float | None = None
+    issue_type: str | None = None
+
+
+class SpeakingPronunciationAnalysis(BaseModel):
+    engine: str = "asr_word_timing_phoneme_proxy_v2"
+    has_word_timing: bool = False
+    has_phoneme_alignment: bool = False
+    has_pitch_analysis: bool = False
+    has_actual_phone_recognition: bool = False
+    actual_phone_source: str | None = None
+    alignment_source: str | None = None
+    acoustic_source: str | None = None
+    issue_count: int = 0
+    pronunciation_risk_ratio: float = 0.0
+    rhythm_score: float | None = None
+    stress_score: float | None = None
+    intonation_score: float | None = None
+    chunking_score: float | None = None
+    pitch_mean_hz: float | None = None
+    pitch_range_hz: float | None = None
+    pitch_variation_score: float | None = None
+    phone_match_score: float | None = None
+    issues: list[SpeakingPronunciationIssue] = Field(default_factory=list)
+    engine_warnings: list[str] = Field(default_factory=list)
+
+
+class SpeakingEvidence(BaseModel):
+    evidence_version: str = "speaking-evidence-v2"
+    prompt_type: str | None = None
+    target_duration_seconds: float | None = None
+    pronunciation_engine: str = "asr_word_timing_phoneme_proxy_v2"
+    has_word_timing: bool = False
+    has_phoneme_alignment: bool = False
+    grammar_analysis: SpeakingGrammarAnalysis | None = None
+    pronunciation_analysis: SpeakingPronunciationAnalysis | None = None
+    audio_quality: SpeakingAudioQuality | None = None
+    asr_confidence: float | None = None
+    speech_ratio: float | None = None
+    pause_stats: SpeakingPauseStats | None = None
+    word_timestamps: list[SpeakingWordTimestamp] = Field(default_factory=list)
+    low_confidence_words: list[SpeakingWordTimestamp] = Field(default_factory=list)
+    scoring_notes: list[str] = Field(default_factory=list)
 
 
 class ScoreResponse(BaseModel):
@@ -355,6 +516,7 @@ class ScoreResponse(BaseModel):
     rubrics: list[RubricScore]
     overall_feedback: str | None = None
     transcript_text: str | None = None
+    speaking_evidence: SpeakingEvidence | None = None
 
 
 class StructuredScoreResult(BaseModel):
@@ -365,6 +527,38 @@ class StructuredScoreResult(BaseModel):
 
 class StructuredSpeakingGeminiResult(BaseModel):
     rubrics: list[RubricScore]
+
+
+class SpeakingSessionRubricInput(BaseModel):
+    criteria: str
+    band: float
+    comment: str | None = None
+    improvements: str | None = None
+    confidence: float | None = None
+    evidence: list[str] = Field(default_factory=list)
+
+
+class SpeakingSessionAnswerInput(BaseModel):
+    answer_id: str
+    question_prompt: str | None = None
+    transcript_text: str | None = None
+    part_number: int | None = None
+    prompt_type: str | None = None
+    duration_seconds: float | None = None
+    target_duration_seconds: float | None = None
+    rubrics: list[SpeakingSessionRubricInput] = Field(default_factory=list)
+    no_response: bool = False
+
+
+class ScoreSpeakingSessionRequest(BaseModel):
+    session_id: str
+    answers: list[SpeakingSessionAnswerInput] = Field(default_factory=list)
+
+
+class StructuredSpeakingSessionResult(BaseModel):
+    overall_band: float
+    rubrics: list[RubricScore]
+    overall_feedback: str | None = None
 
 
 class GenerateSpeakingPromptAudioRequest(BaseModel):
@@ -1982,26 +2176,51 @@ def generate_structured_content_with_gemini(
     if gemini_client is None:
         raise HTTPException(status_code=503, detail="Gemini client is not configured.")
 
+    def parse_structured_text_payload(raw_text: str) -> StructuredModelT:
+        text = raw_text.strip()
+        if text.startswith("```"):
+            text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
+            text = re.sub(r"\s*```$", "", text).strip()
+        try:
+            return response_schema.model_validate_json(text)
+        except Exception:
+            start_index = text.find("{")
+            end_index = text.rfind("}")
+            if start_index >= 0 and end_index > start_index:
+                return response_schema.model_validate_json(text[start_index:end_index + 1])
+            raise
+
     last_error: Exception | None = None
     for model_name in model_candidates:
         try:
+            is_gemma_model = model_name.lower().startswith("gemma-")
+            config_kwargs = {
+                "temperature": temperature,
+                "candidate_count": 1,
+                "max_output_tokens": max_output_tokens,
+            }
+            request_contents = prompt
+            if is_gemma_model:
+                request_contents = (
+                    f"{system_instruction.strip()}\n\n"
+                    "Return only valid JSON. Do not include markdown fences or explanatory text.\n\n"
+                    f"{prompt}"
+                )
+            else:
+                config_kwargs["system_instruction"] = system_instruction
+                config_kwargs["response_mime_type"] = "application/json"
+                config_kwargs["response_schema"] = response_schema
+
             response = gemini_client.models.generate_content(
                 model=model_name,
-                contents=prompt,
-                config=google_genai_types.GenerateContentConfig(
-                    system_instruction=system_instruction,
-                    response_mime_type="application/json",
-                    response_schema=response_schema,
-                    temperature=temperature,
-                    candidate_count=1,
-                    max_output_tokens=max_output_tokens,
-                ),
+                contents=request_contents,
+                config=google_genai_types.GenerateContentConfig(**config_kwargs),
             )
             if isinstance(response.parsed, response_schema):
                 return response.parsed
 
             if isinstance(response.text, str) and response.text.strip():
-                return response_schema.model_validate_json(response.text)
+                return parse_structured_text_payload(response.text)
 
             raise RuntimeError(f"Gemini model {model_name} returned no structured payload.")
         except HTTPException:
@@ -2205,13 +2424,38 @@ def clamp_speaking_band_to_rule_window(
     return round_band_half(min(upper_bound, max(lower_bound, gemini_band)))
 
 
-def get_speaking_target_duration_seconds(part_number: int | None) -> float | None:
+def normalize_speaking_prompt_type(part_number: int | None, prompt_type: str | None = None) -> str:
+    normalized = (prompt_type or "").strip().lower().replace("-", "_")
+    if normalized in {"part2_long_turn", "cue_card", "long_turn"}:
+        return "part2_long_turn"
+    if normalized in {"part2_follow_up", "follow_up", "short_response"}:
+        return "part2_follow_up" if part_number == 2 else "short_response"
     if part_number == 1:
-        return 45.0
+        return "part1_short_answer"
     if part_number == 2:
-        return 120.0
+        return "part2_follow_up"
     if part_number == 3:
-        return 90.0
+        return "part3_discussion"
+    return "unknown"
+
+
+def get_speaking_target_duration_seconds(
+    part_number: int | None,
+    prompt_type: str | None = None,
+    target_duration_seconds: float | None = None,
+) -> float | None:
+    if target_duration_seconds is not None and target_duration_seconds > 0:
+        return target_duration_seconds
+
+    normalized_prompt_type = normalize_speaking_prompt_type(part_number, prompt_type)
+    if part_number == 1:
+        return 30.0
+    if normalized_prompt_type == "part2_long_turn":
+        return 120.0
+    if normalized_prompt_type == "part2_follow_up":
+        return 35.0
+    if part_number == 3:
+        return 60.0
     return None
 
 
@@ -2222,6 +2466,206 @@ def extract_speaking_tokens(text: str) -> list[str]:
 def count_phrase_occurrences(text: str, phrases: tuple[str, ...]) -> int:
     normalized = f" {re.sub(r'\\s+', ' ', text.lower()).strip()} "
     return sum(normalized.count(f" {phrase} ") for phrase in phrases)
+
+
+def normalize_audio_to_16khz_mono_wav(file_path: str) -> tuple[str, str | None, str | None]:
+    ffmpeg_path = shutil.which("ffmpeg")
+    if not ffmpeg_path:
+        return file_path, None, None
+
+    output_file = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
+    output_path = output_file.name
+    output_file.close()
+
+    command = [
+        ffmpeg_path,
+        "-y",
+        "-i",
+        file_path,
+        "-ac",
+        "1",
+        "-ar",
+        "16000",
+        "-vn",
+        output_path,
+    ]
+    try:
+        subprocess.run(command, check=True, capture_output=True, text=True, timeout=60)
+        return output_path, output_path, None
+    except Exception as ex:
+        try:
+            os.unlink(output_path)
+        except OSError:
+            pass
+        return file_path, None, f"Could not normalize audio to 16kHz mono WAV: {ex}"
+
+
+def decode_audio_samples_with_pyav(file_path: str) -> tuple[list[float], int, int, float, str]:
+    try:
+        import av  # type: ignore
+    except Exception as ex:
+        raise RuntimeError(f"PyAV is not available: {ex}") from ex
+
+    samples: list[float] = []
+    source_channels = 1
+    with av.open(file_path) as container:
+        audio_streams = [stream for stream in container.streams if stream.type == "audio"]
+        if not audio_streams:
+            raise RuntimeError("No audio stream found.")
+
+        stream = audio_streams[0]
+        source_channels = int(getattr(stream.codec_context, "channels", None) or 1)
+        resampler = av.audio.resampler.AudioResampler(format="s16", layout="mono", rate=16000)
+        for frame in container.decode(stream):
+            resampled_frames = resampler.resample(frame)
+            if resampled_frames is None:
+                continue
+            if not isinstance(resampled_frames, list):
+                resampled_frames = [resampled_frames]
+
+            for resampled_frame in resampled_frames:
+                ndarray = resampled_frame.to_ndarray()
+                values = ndarray.reshape(-1).tolist()
+                samples.extend(max(-1.0, min(1.0, float(value) / 32768.0)) for value in values)
+
+    duration_seconds = len(samples) / 16000 if samples else 0.0
+    return samples, 16000, source_channels, duration_seconds, "pyav/pcm/16kHz/mono"
+
+
+def read_wav_pcm_samples(file_path: str) -> tuple[list[float], int, int, float]:
+    with wave.open(file_path, "rb") as wav_file:
+        channels = wav_file.getnchannels()
+        sample_rate = wav_file.getframerate()
+        sample_width = wav_file.getsampwidth()
+        frame_count = wav_file.getnframes()
+        raw_frames = wav_file.readframes(frame_count)
+
+    duration_seconds = frame_count / sample_rate if sample_rate > 0 else 0.0
+    if not raw_frames or sample_rate <= 0:
+        return [], sample_rate, channels, duration_seconds
+
+    if sample_width == 2:
+        values = array("h")
+        values.frombytes(raw_frames)
+        if sys.byteorder == "big":
+            values.byteswap()
+        samples = [max(-1.0, min(1.0, value / 32768.0)) for value in values]
+    elif sample_width == 1:
+        values = array("B")
+        values.frombytes(raw_frames)
+        samples = [((value - 128) / 128.0) for value in values]
+    elif sample_width == 4:
+        values = array("i")
+        values.frombytes(raw_frames)
+        if sys.byteorder == "big":
+            values.byteswap()
+        samples = [max(-1.0, min(1.0, value / 2147483648.0)) for value in values]
+    else:
+        raise ValueError(f"Unsupported WAV sample width: {sample_width} bytes")
+
+    if channels > 1:
+        mono_samples = []
+        for index in range(0, len(samples), channels):
+            frame = samples[index:index + channels]
+            if frame:
+                mono_samples.append(sum(frame) / len(frame))
+        samples = mono_samples
+
+    return samples, sample_rate, channels, duration_seconds
+
+
+def analyze_wav_audio_quality(file_path: str, *, normalization_warning: str | None = None) -> SpeakingAudioQuality:
+    warnings: list[str] = []
+    if normalization_warning:
+        warnings.append(normalization_warning)
+
+    try:
+        samples, sample_rate, channels, duration_seconds, decoded_format = decode_audio_samples_with_pyav(file_path)
+    except Exception as ex:
+        pyav_error = ex
+        try:
+            samples, sample_rate, channels, duration_seconds = read_wav_pcm_samples(file_path)
+            decoded_format = "wav/pcm/16kHz/mono" if sample_rate == 16000 and channels == 1 else "wav/pcm"
+        except Exception as wav_ex:
+            warnings.append(f"Audio QA could not decode the audio payload with PyAV ({pyav_error}) or WAV reader ({wav_ex}).")
+            return SpeakingAudioQuality(
+                is_usable=True,
+                label="unknown",
+                normalized_audio_format=None,
+                warnings=warnings,
+            )
+
+    if not samples:
+        warnings.append("Audio payload has no readable PCM samples.")
+        return SpeakingAudioQuality(
+            is_usable=False,
+            label="empty",
+            duration_seconds=round(duration_seconds, 2),
+            sample_rate_hz=sample_rate,
+            channels=channels,
+            normalized_audio_format="wav/pcm/16kHz/mono" if sample_rate == 16000 and channels == 1 else "wav/pcm",
+            warnings=warnings,
+        )
+
+    rms = math.sqrt(sum(sample * sample for sample in samples) / len(samples))
+    loudness_dbfs = 20 * math.log10(max(rms, 1e-9))
+    clipping_ratio = sum(1 for sample in samples if abs(sample) >= 0.98) / len(samples)
+
+    window_size = max(1, int(sample_rate * 0.02))
+    window_dbfs_values: list[float] = []
+    for index in range(0, len(samples), window_size):
+        window = samples[index:index + window_size]
+        if not window:
+            continue
+        window_rms = math.sqrt(sum(sample * sample for sample in window) / len(window))
+        window_dbfs_values.append(20 * math.log10(max(window_rms, 1e-9)))
+
+    silence_ratio = (
+        sum(1 for dbfs in window_dbfs_values if dbfs < -45.0) / len(window_dbfs_values)
+        if window_dbfs_values
+        else None
+    )
+    snr_db: float | None = None
+    if len(window_dbfs_values) >= 5:
+        sorted_windows = sorted(window_dbfs_values)
+        noise_floor = sorted_windows[max(0, int(len(sorted_windows) * 0.1) - 1)]
+        snr_db = max(0.0, loudness_dbfs - noise_floor)
+
+    if duration_seconds < 0.8:
+        warnings.append("Audio is shorter than 0.8 seconds.")
+    if silence_ratio is not None and silence_ratio > 0.9:
+        warnings.append("Audio is mostly silence.")
+    if loudness_dbfs < -48.0:
+        warnings.append("Audio is very quiet.")
+    if clipping_ratio > 0.02:
+        warnings.append("Audio has clipping above 2%.")
+    if snr_db is not None and snr_db < 8.0:
+        warnings.append("Estimated SNR is low.")
+
+    is_usable = not (
+        duration_seconds < 0.5
+        or (silence_ratio is not None and silence_ratio > 0.96)
+        or loudness_dbfs < -55.0
+    )
+    label = "usable"
+    if not is_usable:
+        label = "technical_low_confidence"
+    elif warnings:
+        label = "usable_with_warnings"
+
+    return SpeakingAudioQuality(
+        is_usable=is_usable,
+        label=label,
+        duration_seconds=round(duration_seconds, 2),
+        sample_rate_hz=sample_rate,
+        channels=channels,
+        silence_ratio=round(silence_ratio, 3) if silence_ratio is not None else None,
+        clipping_ratio=round(clipping_ratio, 4),
+        loudness_dbfs=round(loudness_dbfs, 1),
+        snr_db=round(snr_db, 1) if snr_db is not None else None,
+        normalized_audio_format=decoded_format,
+        warnings=warnings,
+    )
 
 
 def transcribe_audio_file(
@@ -2269,11 +2713,107 @@ def infer_duration_seconds(segments: list[Segment], fallback_duration_seconds: f
     return None
 
 
+def flatten_speaking_words(segments: list[Segment]) -> list[Word]:
+    return [
+        word
+        for segment in segments
+        for word in (segment.words or [])
+        if word.word and word.word.strip()
+    ]
+
+
+def get_speaking_pauses(segments: list[Segment], flat_words: list[Word] | None = None) -> list[float]:
+    words = flat_words if flat_words is not None else flatten_speaking_words(segments)
+    if words:
+        return [
+            max(0.0, current.start - previous.end)
+            for previous, current in zip(words, words[1:])
+            if current.start is not None and previous.end is not None
+        ]
+
+    return [
+        max(0.0, current.start - previous.end)
+        for previous, current in zip(segments, segments[1:])
+        if current.start is not None and previous.end is not None
+    ]
+
+
+def build_speaking_pause_stats(pauses: list[float]) -> SpeakingPauseStats:
+    counted_pauses = [pause for pause in pauses if pause >= 0.25]
+    long_pauses = [pause for pause in pauses if pause >= 1.2]
+    total_pause_seconds = sum(counted_pauses)
+    return SpeakingPauseStats(
+        pause_count=len(counted_pauses),
+        long_pause_count=len(long_pauses),
+        total_pause_seconds=round(total_pause_seconds, 2),
+        average_pause_seconds=round(total_pause_seconds / len(counted_pauses), 2) if counted_pauses else None,
+        longest_pause_seconds=round(max(counted_pauses), 2) if counted_pauses else None,
+    )
+
+
+def calculate_speech_ratio(
+    segments: list[Segment],
+    *,
+    duration_seconds: float | None,
+    flat_words: list[Word] | None = None,
+) -> float | None:
+    if not duration_seconds or duration_seconds <= 0:
+        return None
+
+    words = flat_words if flat_words is not None else flatten_speaking_words(segments)
+    if words:
+        speech_seconds = sum(
+            max(0.0, word.end - word.start)
+            for word in words
+            if word.start is not None and word.end is not None
+        )
+    else:
+        speech_seconds = sum(
+            max(0.0, segment.end - segment.start)
+            for segment in segments
+            if segment.start is not None and segment.end is not None
+        )
+
+    return round(min(1.0, max(0.0, speech_seconds / duration_seconds)), 3)
+
+
+def build_word_timestamp_evidence(segments: list[Segment], *, limit: int = 500) -> list[SpeakingWordTimestamp]:
+    words = flatten_speaking_words(segments)
+    return [
+        SpeakingWordTimestamp(
+            word=word.word.strip(),
+            start=round(word.start, 2) if word.start is not None else None,
+            end=round(word.end, 2) if word.end is not None else None,
+            probability=round(float(word.probability), 3) if word.probability is not None else None,
+        )
+        for word in words[:limit]
+    ]
+
+
+def build_low_confidence_word_evidence(
+    word_timestamps: list[SpeakingWordTimestamp],
+    *,
+    threshold: float = 0.65,
+    limit: int = 12,
+) -> list[SpeakingWordTimestamp]:
+    low_confidence_words = [
+        item
+        for item in word_timestamps
+        if item.probability is not None and item.probability < threshold
+    ]
+    return sorted(
+        low_confidence_words,
+        key=lambda item: (item.probability if item.probability is not None else 1.0, item.start or 0.0),
+    )[:limit]
+
+
 def build_speaking_feature_map(
     transcript: str,
     segments: list[Segment],
     *,
     part_number: int | None,
+    prompt_type: str | None,
+    target_duration_seconds: float | None,
     duration_seconds: float | None,
 ) -> dict[str, float | int | None]:
     tokens = extract_speaking_tokens(transcript)
@@ -2312,22 +2852,24 @@ def build_speaking_feature_map(
         else None
     )
 
-    flat_words: list[Word] = [
-        word
-        for segment in segments
-        for word in (segment.words or [])
-        if word.word and word.word.strip()
-    ]
+    flat_words = flatten_speaking_words(segments)
 
     if flat_words:
-        mean_word_probability = sum(word.probability for word in flat_words) / len(flat_words)
-        low_confidence_ratio = (
-            sum(1 for word in flat_words if word.probability < 0.55) / len(flat_words)
-        )
-        pauses = [
-            max(0.0, current.start - previous.end)
-            for previous, current in zip(flat_words, flat_words[1:])
+        word_probabilities = [
+            float(word.probability)
+            for word in flat_words
+            if word.probability is not None
         ]
+        mean_word_probability = (
+            sum(word_probabilities) / len(word_probabilities)
+            if word_probabilities
+            else 0.0
+        )
+        low_confidence_ratio = (
+            sum(1 for probability in word_probabilities if probability < 0.55) / len(word_probabilities)
+            if word_probabilities
+            else 0.0
+        )
     else:
         derived_probabilities = [
             max(0.05, min(0.99, math.exp(segment.avg_logprob)))
@@ -2343,14 +2885,10 @@ def build_speaking_feature_map(
             if derived_probabilities
             else 0.0
         )
-        pauses = [
-            max(0.0, current.start - previous.end)
-            for previous, current in zip(segments, segments[1:])
-            if current.start is not None and previous.end is not None
-        ]
 
-    total_pause_seconds = sum(pauses)
-    long_pause_count = sum(1 for pause in pauses if pause >= 1.2)
+    pauses = get_speaking_pauses(segments, flat_words)
+    pause_stats = build_speaking_pause_stats(pauses)
+    total_pause_seconds = pause_stats.total_pause_seconds
     pause_ratio = (
         total_pause_seconds / effective_duration_seconds
         if effective_duration_seconds and effective_duration_seconds > 0
@@ -2361,10 +2899,14 @@ def build_speaking_feature_map(
         if segments
         else None
     )
-    target_duration_seconds = get_speaking_target_duration_seconds(part_number)
+    effective_target_duration_seconds = get_speaking_target_duration_seconds(
+        part_number,
+        prompt_type,
+        target_duration_seconds,
+    )
     coverage_ratio = (
-        effective_duration_seconds / target_duration_seconds
-        if effective_duration_seconds and target_duration_seconds and target_duration_seconds > 0
+        effective_duration_seconds / effective_target_duration_seconds
+        if effective_duration_seconds and effective_target_duration_seconds and effective_target_duration_seconds > 0
         else None
     )
 
@@ -2383,9 +2925,20 @@ def build_speaking_feature_map(
         "words_per_minute": words_per_minute,
         "mean_word_probability": mean_word_probability,
         "low_confidence_ratio": low_confidence_ratio,
+        "asr_confidence": mean_word_probability if segments else None,
         "pause_ratio": pause_ratio,
-        "long_pause_count": long_pause_count,
+        "pause_count": pause_stats.pause_count,
+        "long_pause_count": pause_stats.long_pause_count,
+        "total_pause_seconds": pause_stats.total_pause_seconds,
+        "average_pause_seconds": pause_stats.average_pause_seconds,
+        "longest_pause_seconds": pause_stats.longest_pause_seconds,
+        "speech_ratio": calculate_speech_ratio(
+            segments,
+            duration_seconds=effective_duration_seconds,
+            flat_words=flat_words,
+        ),
         "avg_no_speech_prob": avg_no_speech_prob,
+        "target_duration_seconds": effective_target_duration_seconds,
         "coverage_ratio": coverage_ratio,
     }
 
@@ -2431,6 +2984,32 @@ def build_speaking_comment(
         return comment, improvements
 
     if criteria == "Grammatical Range and Accuracy":
+        grammar_available = int(features.get("grammar_engine_available") or 0) == 1
+        grammar_error_count = int(features.get("grammar_error_count") or 0)
+        grammar_density = float(features.get("grammar_error_density_per_100_words") or 0.0)
+        if grammar_available:
+            if grammar_error_count:
+                comment = (
+                    f"LanguageTool phát hiện khoảng {grammar_error_count} lỗi/điểm cần kiểm tra, "
+                    f"mật độ lỗi có trọng số khoảng {grammar_density:.1f}/100 từ. "
+                    f"Câu trả lời có khoảng {int(features['sentence_units'] or 1)} đơn vị ý."
+                )
+                improvements = (
+                    "Ưu tiên sửa các lỗi grammar được liệt kê trong evidence, rồi luyện mở rộng câu bằng "
+                    "mệnh đề because/although/when mà vẫn giữ chủ ngữ-động từ rõ ràng."
+                )
+                return comment, improvements
+            comment = (
+                "LanguageTool không phát hiện lỗi ngữ pháp rõ ràng trong transcript; "
+                f"câu trả lời có khoảng {int(features['sentence_units'] or 1)} đơn vị ý, "
+                f"độ dài trung bình khoảng {round(float(features['avg_words_per_sentence'] or 0.0), 1)} từ/ý."
+            )
+            improvements = (
+                "Tiếp theo nên tăng range bằng câu phụ thuộc, mệnh đề quan hệ hoặc điều kiện tự nhiên, "
+                "thay vì chỉ dùng các câu đơn an toàn."
+            )
+            return comment, improvements
+
         comment = (
             f"Câu trả lời được chia thành khoảng {int(features['sentence_units'] or 1)} đơn vị ý, "
             f"độ dài trung bình khoảng {round(float(features['avg_words_per_sentence'] or 0.0), 1)} từ/ý."
@@ -2457,6 +3036,1287 @@ def build_speaking_comment(
     return comment, improvements
 
 
+def format_percent(value: float | int | None) -> str:
+    if value is None:
+        return "n/a"
+    return f"{round(float(value) * 100)}%"
+
+
+def shorten_evidence_text(value: str | None, *, max_length: int = 90) -> str:
+    cleaned = re.sub(r"\s+", " ", (value or "").strip())
+    if len(cleaned) <= max_length:
+        return cleaned
+    return f"{cleaned[:max_length - 1].rstrip()}..."
+
+
+def get_languagetool_issue_weight(category: str | None, issue_type: str | None) -> float:
+    category_id = (category or "").upper()
+    issue = (issue_type or "").lower()
+
+    if category_id == "GRAMMAR" or issue == "grammar":
+        return 1.0
+    if category_id in {"CONFUSED_WORDS", "COLLOCATIONS"}:
+        return 0.85
+    if category_id in {"TYPOS", "MISSPELLING"} or issue == "misspelling":
+        # ASR may spell proper nouns incorrectly, so spelling has weaker grammar weight.
+        return 0.4
+    if category_id in {"PUNCTUATION", "CASING", "TYPOGRAPHY"}:
+        # Speaking transcripts are ASR-generated, so punctuation/casing is weak evidence.
+        return 0.1
+    if category_id in {"STYLE", "REDUNDANCY"}:
+        return 0.25
+    return 0.5
+
+
+def build_languagetool_issue(match: dict) -> SpeakingGrammarIssue | None:
+    rule = match.get("rule") if isinstance(match.get("rule"), dict) else {}
+    category = rule.get("category") if isinstance(rule.get("category"), dict) else {}
+    context = match.get("context") if isinstance(match.get("context"), dict) else {}
+    replacements_raw = match.get("replacements") if isinstance(match.get("replacements"), list) else []
+    replacements = [
+        shorten_evidence_text(item.get("value"), max_length=40)
+        for item in replacements_raw
+        if isinstance(item, dict) and item.get("value")
+    ][:3]
+
+    message = shorten_evidence_text(match.get("message"), max_length=120)
+    if not message:
+        return None
+
+    matched_text = None
+    context_text = context.get("text") if isinstance(context.get("text"), str) else None
+    context_offset = context.get("offset")
+    context_length = context.get("length")
+    if context_text and isinstance(context_offset, int) and isinstance(context_length, int) and context_length > 0:
+        matched_text = context_text[context_offset:context_offset + context_length]
+    if not matched_text:
+        offset = match.get("offset")
+        length = match.get("length")
+        if isinstance(offset, int) and isinstance(length, int) and length > 0:
+            matched_text = context_text[offset:offset + length] if context_text else None
+
+    category_id = category.get("id") if isinstance(category.get("id"), str) else None
+    issue_type = rule.get("issueType") if isinstance(rule.get("issueType"), str) else None
+    return SpeakingGrammarIssue(
+        rule_id=rule.get("id") if isinstance(rule.get("id"), str) else None,
+        category=category_id,
+        issue_type=issue_type,
+        message=message,
+        matched_text=shorten_evidence_text(matched_text, max_length=45) if matched_text else None,
+        offset=match.get("offset") if isinstance(match.get("offset"), int) else None,
+        length=match.get("length") if isinstance(match.get("length"), int) else None,
+        replacements=replacements,
+        weight=get_languagetool_issue_weight(category_id, issue_type),
+    )
+
+
+def analyze_speaking_grammar_with_languagetool(
+    transcript: str,
+    *,
+    word_count: int,
+) -> SpeakingGrammarAnalysis:
+    global languagetool_unavailable_until
+
+    analysis = SpeakingGrammarAnalysis(
+        language=LANGUAGETOOL_LANGUAGE,
+        is_available=False,
+    )
+    if not LANGUAGETOOL_ENABLED:
+        analysis.engine = "disabled"
+        analysis.warnings.append("LanguageTool is disabled; grammar scoring used heuristic features only.")
+        return analysis
+    if not LANGUAGETOOL_URL:
+        analysis.engine = "not_configured"
+        analysis.warnings.append("LanguageTool URL is not configured; grammar scoring used heuristic features only.")
+        return analysis
+    if word_count < 5:
+        analysis.engine = "skipped_short_answer"
+        analysis.warnings.append("Answer is too short for reliable LanguageTool grammar analysis.")
+        return analysis
+
+    now = time.time()
+    if now < languagetool_unavailable_until:
+        analysis.engine = "temporarily_unavailable"
+        analysis.warnings.append("LanguageTool was recently unavailable; grammar scoring used heuristic features only.")
+        return analysis
+
+    payload = urlencode({
+        "text": transcript[:10000],
+        "language": LANGUAGETOOL_LANGUAGE,
+        "enabledOnly": "false",
+    }).encode("utf-8")
+    request = Request(
+        LANGUAGETOOL_URL,
+        data=payload,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        method="POST",
+    )
+
+    try:
+        with urlopen(request, timeout=LANGUAGETOOL_TIMEOUT_SECONDS) as response:
+            raw = response.read()
+        data = json.loads(raw.decode("utf-8"))
+    except (HTTPError, URLError, TimeoutError, json.JSONDecodeError, OSError) as ex:
+        languagetool_unavailable_until = time.time() + LANGUAGETOOL_UNAVAILABLE_COOLDOWN_SECONDS
+        analysis.engine = "unavailable"
+        analysis.warnings.append(f"LanguageTool unavailable: {shorten_evidence_text(str(ex), max_length=120)}")
+        return analysis
+
+    matches = data.get("matches") if isinstance(data, dict) else None
+    if not isinstance(matches, list):
+        analysis.engine = "invalid_response"
+        analysis.warnings.append("LanguageTool returned an invalid response; grammar scoring used heuristic features only.")
+        return analysis
+
+    issues = [
+        issue
+        for issue in (build_languagetool_issue(match) for match in matches if isinstance(match, dict))
+        if issue is not None
+    ]
+    category_counts = Counter(issue.category or "UNKNOWN" for issue in issues)
+    weighted_error_count = sum(issue.weight for issue in issues)
+    return SpeakingGrammarAnalysis(
+        engine="languagetool_http",
+        language=LANGUAGETOOL_LANGUAGE,
+        is_available=True,
+        error_count=len(issues),
+        weighted_error_count=round(weighted_error_count, 2),
+        error_density_per_100_words=round((weighted_error_count / max(word_count, 1)) * 100, 2),
+        category_counts=dict(category_counts),
+        issues=issues[:12],
+    )
+
+
+def build_grammar_feature_map(
+    analysis: SpeakingGrammarAnalysis,
+) -> dict[str, float | int | None]:
+    return {
+        "grammar_engine_available": 1 if analysis.is_available else 0,
+        "grammar_error_count": analysis.error_count,
+        "grammar_weighted_error_count": analysis.weighted_error_count,
+        "grammar_error_density_per_100_words": analysis.error_density_per_100_words,
+        "grammar_warning_count": len(analysis.warnings),
+    }
+
+
+def build_grammar_category_summary(analysis: SpeakingGrammarAnalysis) -> str | None:
+    if not analysis.category_counts:
+        return None
+    ordered = sorted(analysis.category_counts.items(), key=lambda item: item[1], reverse=True)
+    return ",".join(f"{category}:{count}" for category, count in ordered[:4])
+
+
+def build_grammar_issue_evidence(analysis: SpeakingGrammarAnalysis, *, limit: int = 3) -> list[str]:
+    evidence: list[str] = []
+    for index, issue in enumerate(analysis.issues[:limit], start=1):
+        replacement = f" -> {issue.replacements[0]}" if issue.replacements else ""
+        matched_text = f"'{issue.matched_text}'" if issue.matched_text else issue.rule_id or "issue"
+        category = issue.category or issue.issue_type or "grammar"
+        evidence.append(
+            f"issue{index}={category}:{matched_text}{replacement} ({issue.message})"
+        )
+    return evidence
+
+
+def estimate_syllable_count(word: str) -> int:
+    cleaned = re.sub(r"[^a-z]", "", word.lower())
+    if not cleaned:
+        return 1
+    groups = re.findall(r"[aeiouy]+", cleaned)
+    count = len(groups)
+    if cleaned.endswith("e") and not cleaned.endswith(("le", "ye")) and count > 1:
+        count -= 1
+    return max(1, count)
+
+
+def has_consonant_cluster(word: str) -> bool:
+    cleaned = re.sub(r"[^a-z]", "", word.lower())
+    return bool(re.search(r"[bcdfghjklmnpqrstvwxyz]{3,}", cleaned))
+
+
+def build_expected_phoneme_profile(word: str) -> str:
+    cleaned = re.sub(r"[^a-z]", "", word.lower())
+    if not cleaned:
+        return "unknown"
+
+    parts = [f"syll={estimate_syllable_count(cleaned)}"]
+    if has_consonant_cluster(cleaned):
+        parts.append("cluster=yes")
+    if cleaned.endswith(("p", "t", "k", "b", "d", "g")):
+        parts.append("final=stop")
+    elif cleaned.endswith(("s", "z", "sh", "ch", "x")):
+        parts.append("final=sibilant")
+    elif cleaned.endswith(("f", "v", "th")):
+        parts.append("final=fricative")
+    elif cleaned.endswith(("m", "n", "ng")):
+        parts.append("final=nasal")
+    return ";".join(parts)[:100]
+
+
+def build_actual_phoneme_proxy(
+    *,
+    probability: float | None,
+    duration_seconds: float | None,
+    issue_type: str | None,
+) -> str:
+    probability_text = f"asr={probability:.2f}" if probability is not None else "asr=n/a"
+    duration_text = f"dur={duration_seconds:.2f}s" if duration_seconds is not None else "dur=n/a"
+    issue_text = f"risk={issue_type}" if issue_type else "risk=none"
+    return f"{probability_text};{duration_text};{issue_text}"[:100]
+
+
+def score_prosody_value(value: float, *, ideal: float, tolerance: float) -> float:
+    if tolerance <= 0:
+        return 0.0
+    return round(max(0.0, min(1.0, 1.0 - abs(value - ideal) / tolerance)), 3)
+
+
+def is_python_module_available(module_name: str) -> bool:
+    try:
+        return importlib.util.find_spec(module_name) is not None
+    except Exception:
+        return False
+
+
+def configured_tool_reference(value: str) -> bool:
+    if not value:
+        return False
+    if os.path.exists(value):
+        return True
+    return not any(separator in value for separator in ("/", "\\"))
+
+
+def resolve_mfa_binary_path() -> str | None:
+    configured = SPEAKING_MFA_BINARY
+    resolved = shutil.which(configured)
+    if resolved:
+        return resolved
+    if configured and os.path.exists(configured):
+        return configured
+
+    candidates = [
+        os.path.join(os.path.dirname(sys.executable), "mfa.exe"),
+        os.path.join(os.path.dirname(__file__), "venv", "Scripts", "mfa.exe"),
+    ]
+    for candidate in candidates:
+        if os.path.exists(candidate):
+            return candidate
+    return None
+
+
+def is_mfa_binary_usable(mfa_binary_path: str | None) -> bool:
+    if not mfa_binary_path:
+        return False
+    try:
+        completed = subprocess.run(
+            [mfa_binary_path, "version"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=8,
+        )
+    except Exception:
+        return False
+    return completed.returncode == 0
+
+
+def pronunciation_engine_matches(*engine_names: str) -> bool:
+    configured = SPEAKING_PRONUNCIATION_ENGINE
+    configured_tokens = {
+        token for token in re.split(r"[^a-z0-9]+", configured.lower()) if token
+    }
+    normalized_names = {name.lower() for name in engine_names}
+    return configured in {"auto", "all"} or any(name in configured or name in configured_tokens for name in normalized_names)
+
+
+def pronunciation_requires_praat() -> bool:
+    return pronunciation_engine_matches("praat", "parselmouth")
+
+
+def pronunciation_requires_mfa() -> bool:
+    return pronunciation_engine_matches("mfa", "montreal_forced_aligner")
+
+
+def pronunciation_requires_allosaurus() -> bool:
+    return pronunciation_engine_matches("allosaurus", "actual_phone", "phone_recognizer")
+
+
+def get_speaking_pronunciation_tool_status() -> dict[str, object]:
+    mfa_binary_path = resolve_mfa_binary_path()
+    mfa_binary_usable = is_mfa_binary_usable(mfa_binary_path)
+    mfa_dictionary_configured = configured_tool_reference(SPEAKING_MFA_DICTIONARY_PATH)
+    mfa_acoustic_model_configured = configured_tool_reference(SPEAKING_MFA_ACOUSTIC_MODEL_PATH)
+    parselmouth_available = is_python_module_available("parselmouth")
+    allosaurus_available = is_python_module_available("allosaurus")
+    requires_praat = pronunciation_requires_praat()
+    requires_mfa = pronunciation_requires_mfa()
+    requires_allosaurus = pronunciation_requires_allosaurus()
+    return {
+        "engine_mode": SPEAKING_PRONUNCIATION_ENGINE,
+        "strict": SPEAKING_PRONUNCIATION_STRICT,
+        "praat_enabled": SPEAKING_ENABLE_PRAAT,
+        "parselmouth_available": parselmouth_available,
+        "mfa_enabled": SPEAKING_ENABLE_MFA,
+        "mfa_binary_found": mfa_binary_path is not None,
+        "mfa_binary_path": mfa_binary_path,
+        "mfa_binary_usable": mfa_binary_usable,
+        "mfa_dictionary_configured": mfa_dictionary_configured,
+        "mfa_acoustic_model_configured": mfa_acoustic_model_configured,
+        "allosaurus_enabled": SPEAKING_ENABLE_ALLOSAURUS,
+        "allosaurus_available": allosaurus_available,
+        "allosaurus_model": SPEAKING_ALLOSAURUS_MODEL,
+        "allosaurus_language": SPEAKING_ALLOSAURUS_LANG,
+        "required_engines": {
+            "praat": requires_praat,
+            "mfa": requires_mfa,
+            "allosaurus": requires_allosaurus,
+        },
+        "mfa_ready": bool(
+            SPEAKING_ENABLE_MFA
+            and mfa_binary_path
+            and mfa_binary_usable
+            and mfa_dictionary_configured
+            and mfa_acoustic_model_configured
+        ),
+        "required_ready": bool(
+            (not requires_praat or (SPEAKING_ENABLE_PRAAT and parselmouth_available))
+            and (not requires_mfa or (SPEAKING_ENABLE_MFA and mfa_binary_path and mfa_binary_usable and mfa_dictionary_configured and mfa_acoustic_model_configured))
+            and (not requires_allosaurus or (SPEAKING_ENABLE_ALLOSAURUS and allosaurus_available))
+        ),
+    }
+
+
+def should_attempt_praat_pitch(audio_path: str | None) -> bool:
+    return bool(
+        audio_path
+        and SPEAKING_ENABLE_PRAAT
+        and pronunciation_engine_matches("praat", "parselmouth", "mfa", "mfa_praat")
+    )
+
+
+def should_attempt_mfa_alignment(audio_path: str | None, transcript: str | None) -> bool:
+    if not audio_path or not transcript or not transcript.strip():
+        return False
+    requested_mfa = pronunciation_engine_matches("mfa", "montreal_forced_aligner", "mfa_praat")
+    return bool(requested_mfa and SPEAKING_ENABLE_MFA)
+
+
+def should_attempt_allosaurus_phone_recognition(audio_path: str | None) -> bool:
+    return bool(
+        audio_path
+        and SPEAKING_ENABLE_ALLOSAURUS
+        and pronunciation_engine_matches("allosaurus", "actual_phone", "phone_recognizer")
+    )
+
+
+def raise_strict_pronunciation_error(errors: list[str]) -> None:
+    if not errors:
+        return
+    raise HTTPException(
+        status_code=503,
+        detail={
+            "message": "Speaking pronunciation scoring is strict and required pronunciation engines are not ready.",
+            "errors": errors,
+            "status": get_speaking_pronunciation_tool_status(),
+        },
+    )
+
+
+def analyze_pitch_with_parselmouth(audio_path: str) -> tuple[dict[str, float | str], str | None]:
+    try:
+        import parselmouth  # type: ignore
+    except Exception as ex:
+        return {}, f"Praat/Parselmouth pitch analysis is unavailable: {shorten_evidence_text(str(ex), max_length=120)}"
+
+    try:
+        sound = parselmouth.Sound(audio_path)
+        pitch = sound.to_pitch(
+            time_step=0.01,
+            pitch_floor=SPEAKING_PITCH_FLOOR_HZ,
+            pitch_ceiling=SPEAKING_PITCH_CEILING_HZ,
+        )
+        raw_values = pitch.selected_array["frequency"]
+        pitch_values = [float(value) for value in raw_values if float(value) > 0]
+    except Exception as ex:
+        return {}, f"Praat/Parselmouth pitch analysis failed: {shorten_evidence_text(str(ex), max_length=120)}"
+
+    if len(pitch_values) < 3:
+        return {}, "Praat/Parselmouth found too few voiced frames for reliable pitch evidence."
+
+    pitch_mean = sum(pitch_values) / len(pitch_values)
+    pitch_min = min(pitch_values)
+    pitch_max = max(pitch_values)
+    pitch_variance = sum((value - pitch_mean) ** 2 for value in pitch_values) / len(pitch_values)
+    pitch_cv = math.sqrt(pitch_variance) / pitch_mean if pitch_mean > 0 else 0.0
+    return {
+        "source": "praat_parselmouth",
+        "pitch_mean_hz": round(pitch_mean, 1),
+        "pitch_range_hz": round(pitch_max - pitch_min, 1),
+        "pitch_variation_score": score_prosody_value(pitch_cv, ideal=0.22, tolerance=0.22),
+    }, None
+
+
+def parse_textgrid_quoted_value(line: str) -> str:
+    value = line.split("=", 1)[1].strip() if "=" in line else ""
+    if len(value) >= 2 and value[0] == '"' and value[-1] == '"':
+        return value[1:-1].replace('""', '"')
+    return value
+
+
+def parse_textgrid_intervals(textgrid_path: str, tier_names: set[str]) -> list[dict[str, float | str]]:
+    intervals: list[dict[str, float | str]] = []
+    tier_is_target = False
+    current_interval: dict[str, float | str] | None = None
+    normalized_tier_names = {name.lower() for name in tier_names}
+
+    with open(textgrid_path, "r", encoding="utf-8", errors="replace") as handle:
+        for raw_line in handle:
+            line = raw_line.strip()
+            if line.startswith("item ["):
+                tier_is_target = False
+                current_interval = None
+                continue
+            if line.startswith("name ="):
+                tier_name = parse_textgrid_quoted_value(line).strip().lower()
+                tier_is_target = tier_name in normalized_tier_names
+                current_interval = None
+                continue
+            if not tier_is_target:
+                continue
+            if line.startswith("intervals ["):
+                current_interval = {}
+                continue
+            if current_interval is None:
+                continue
+            if line.startswith("xmin ="):
+                try:
+                    current_interval["start"] = float(line.split("=", 1)[1].strip())
+                except ValueError:
+                    current_interval["start"] = 0.0
+                continue
+            if line.startswith("xmax ="):
+                try:
+                    current_interval["end"] = float(line.split("=", 1)[1].strip())
+                except ValueError:
+                    current_interval["end"] = 0.0
+                continue
+            if line.startswith("text ="):
+                current_interval["text"] = parse_textgrid_quoted_value(line)
+                if "start" in current_interval and "end" in current_interval:
+                    intervals.append(current_interval)
+                current_interval = None
+
+    return intervals
+
+
+def interval_text(interval: dict[str, float | str]) -> str:
+    return str(interval.get("text") or "").strip()
+
+
+def is_alignment_silence_label(value: str) -> bool:
+    return value.strip().lower() in {"", "sp", "sil", "silence", "<eps>", "<sil>"}
+
+
+def find_textgrid_file(output_dir: str) -> str | None:
+    for root, _, files in os.walk(output_dir):
+        for filename in files:
+            if filename.lower().endswith(".textgrid"):
+                return os.path.join(root, filename)
+    return None
+
+
+def build_mfa_analysis_from_textgrid(textgrid_path: str, transcript: str) -> tuple[SpeakingPronunciationAnalysis | None, list[str]]:
+    warnings = [
+        "MFA forced alignment uses dictionary phones and timing; it is not independent phone recognition."
+    ]
+    word_intervals = parse_textgrid_intervals(textgrid_path, {"words", "word"})
+    phone_intervals = parse_textgrid_intervals(textgrid_path, {"phones", "phone"})
+    if not word_intervals or not phone_intervals:
+        return None, ["MFA TextGrid did not contain usable word and phone tiers."]
+
+    usable_words = [
+        interval
+        for interval in word_intervals
+        if not is_alignment_silence_label(interval_text(interval))
+    ]
+    if not usable_words:
+        return None, ["MFA TextGrid did not contain aligned spoken words."]
+
+    issues: list[SpeakingPronunciationIssue] = []
+    issue_count = 0
+    for word_interval in usable_words:
+        word_text = interval_text(word_interval)
+        word_start = float(word_interval.get("start") or 0.0)
+        word_end = float(word_interval.get("end") or 0.0)
+        if word_end <= word_start:
+            continue
+
+        word_phone_intervals = [
+            phone
+            for phone in phone_intervals
+            if not is_alignment_silence_label(interval_text(phone))
+            and word_start <= ((float(phone.get("start") or 0.0) + float(phone.get("end") or 0.0)) / 2) <= word_end
+        ]
+        phone_labels = [interval_text(phone) for phone in word_phone_intervals]
+        phone_sequence = " ".join(phone_labels)
+        word_duration = word_end - word_start
+        issue_type: str | None = None
+
+        if not phone_labels:
+            issue_type = "missing_phone_alignment"
+        else:
+            phone_durations = [
+                max(0.0, float(phone.get("end") or 0.0) - float(phone.get("start") or 0.0))
+                for phone in word_phone_intervals
+            ]
+            average_phone_duration = sum(phone_durations) / len(phone_durations) if phone_durations else 0.0
+            syllable_count = estimate_syllable_count(word_text)
+            if any(duration < 0.025 for duration in phone_durations) or word_duration < max(0.10, 0.07 * syllable_count):
+                issue_type = "compressed_phone_timing"
+            elif average_phone_duration > 0.22 or any(duration > 0.42 for duration in phone_durations):
+                issue_type = "stretched_phone_timing"
+
+        if issue_type is not None:
+            issue_count += 1
+
+        issues.append(SpeakingPronunciationIssue(
+            word=word_text[:80],
+            expected_phoneme=phone_sequence[:100] if phone_sequence else build_expected_phoneme_profile(word_text),
+            actual_phoneme=(
+                f"mfa_timing={phone_sequence};dur={word_duration:.2f}s" if phone_sequence else "mfa_timing=missing"
+            )[:100],
+            is_correct=issue_type is None,
+            confidence=0.82,
+            start=round(word_start, 2),
+            end=round(word_end, 2),
+            issue_type=issue_type or "aligned_phone_timing",
+        ))
+
+    issues = sorted(issues, key=lambda issue: (issue.is_correct is not False, issue.start or 0.0, issue.word))[:24]
+    reference_word_count = max(len(extract_speaking_tokens(transcript)), len(usable_words), 1)
+    risk_ratio = issue_count / reference_word_count
+    return SpeakingPronunciationAnalysis(
+        engine="mfa_forced_alignment_v1",
+        has_word_timing=True,
+        has_phoneme_alignment=True,
+        alignment_source="montreal_forced_aligner",
+        acoustic_source="mfa_acoustic_model",
+        issue_count=issue_count,
+        pronunciation_risk_ratio=round(risk_ratio, 3),
+        issues=issues,
+        engine_warnings=warnings,
+    ), []
+
+
+def run_mfa_forced_alignment(audio_path: str, transcript: str) -> tuple[SpeakingPronunciationAnalysis | None, list[str]]:
+    warnings: list[str] = []
+    if not SPEAKING_MFA_DICTIONARY_PATH or not SPEAKING_MFA_ACOUSTIC_MODEL_PATH:
+        return None, ["MFA is enabled/requested but dictionary or acoustic model is not configured."]
+
+    mfa_binary = resolve_mfa_binary_path()
+    if not mfa_binary:
+        return None, [f"MFA binary was not found: {SPEAKING_MFA_BINARY}."]
+    if not is_mfa_binary_usable(mfa_binary):
+        return None, [f"MFA binary is present but not usable: {mfa_binary}."]
+
+    with tempfile.TemporaryDirectory(prefix="speaking_mfa_") as work_dir:
+        corpus_dir = os.path.join(work_dir, "corpus")
+        output_dir = os.path.join(work_dir, "aligned")
+        os.makedirs(corpus_dir, exist_ok=True)
+        os.makedirs(output_dir, exist_ok=True)
+        utterance_audio_path = os.path.join(corpus_dir, "answer.wav")
+        utterance_lab_path = os.path.join(corpus_dir, "answer.lab")
+        shutil.copyfile(audio_path, utterance_audio_path)
+        with open(utterance_lab_path, "w", encoding="utf-8") as handle:
+            handle.write(re.sub(r"\s+", " ", transcript.strip()))
+
+        command = [
+            mfa_binary,
+            "align",
+            corpus_dir,
+            SPEAKING_MFA_DICTIONARY_PATH,
+            SPEAKING_MFA_ACOUSTIC_MODEL_PATH,
+            output_dir,
+        ]
+        try:
+            completed = subprocess.run(
+                command,
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=SPEAKING_PRONUNCIATION_TOOL_TIMEOUT_SECONDS,
+            )
+        except Exception as ex:
+            return None, [f"MFA forced alignment failed to run: {shorten_evidence_text(str(ex), max_length=140)}"]
+
+        if completed.returncode != 0:
+            detail = shorten_evidence_text((completed.stderr or completed.stdout or "unknown error").strip(), max_length=180)
+            return None, [f"MFA forced alignment exited with code {completed.returncode}: {detail}"]
+
+        textgrid_path = find_textgrid_file(output_dir)
+        if textgrid_path is None:
+            return None, ["MFA forced alignment completed but no TextGrid output was found."]
+
+        analysis, parse_warnings = build_mfa_analysis_from_textgrid(textgrid_path, transcript)
+        warnings.extend(parse_warnings)
+        return analysis, warnings
+
+
+def apply_pitch_metrics_to_pronunciation_analysis(
+    analysis: SpeakingPronunciationAnalysis,
+    pitch_metrics: dict[str, float | str],
+) -> None:
+    analysis.has_pitch_analysis = True
+    analysis.acoustic_source = str(pitch_metrics.get("source") or analysis.acoustic_source or "praat_parselmouth")
+    analysis.pitch_mean_hz = float(pitch_metrics["pitch_mean_hz"]) if "pitch_mean_hz" in pitch_metrics else None
+    analysis.pitch_range_hz = float(pitch_metrics["pitch_range_hz"]) if "pitch_range_hz" in pitch_metrics else None
+    analysis.pitch_variation_score = (
+        float(pitch_metrics["pitch_variation_score"]) if "pitch_variation_score" in pitch_metrics else None
+    )
+    if analysis.pitch_variation_score is not None:
+        analysis.intonation_score = analysis.pitch_variation_score
+
+
+def get_allosaurus_recognizer() -> object:
+    cache_key = SPEAKING_ALLOSAURUS_MODEL
+    if cache_key not in allosaurus_recognizer_cache:
+        from allosaurus.app import read_recognizer  # type: ignore
+
+        allosaurus_recognizer_cache[cache_key] = read_recognizer(cache_key)
+    return allosaurus_recognizer_cache[cache_key]
+
+
+def parse_allosaurus_phone_output(raw_output: str) -> list[dict[str, float | str]]:
+    phones: list[dict[str, float | str]] = []
+    for line in raw_output.splitlines():
+        parts = line.strip().split()
+        if not parts:
+            continue
+        if len(parts) >= 3:
+            try:
+                phones.append({
+                    "start": float(parts[0]),
+                    "end": float(parts[0]) + float(parts[1]),
+                    "phone": parts[2],
+                })
+                continue
+            except ValueError:
+                pass
+        for phone in parts:
+            phones.append({"phone": phone})
+    return phones
+
+
+def run_allosaurus_phone_recognition(audio_path: str) -> tuple[list[dict[str, float | str]], str | None]:
+    try:
+        recognizer = get_allosaurus_recognizer()
+        raw_output = recognizer.recognize(
+            audio_path,
+            SPEAKING_ALLOSAURUS_LANG,
+            timestamp=True,
+        )
+    except Exception as ex:
+        return [], f"Allosaurus actual phone recognition failed: {shorten_evidence_text(str(ex), max_length=160)}"
+
+    phones = parse_allosaurus_phone_output(str(raw_output or ""))
+    if not phones:
+        return [], "Allosaurus actual phone recognition returned no phones."
+    return phones, None
+
+
+def phone_label_to_broad_class(label: str) -> str:
+    normalized = re.sub(r"[0-9????\.\-_=;:,]+", "", label.lower()).strip()
+    if not normalized:
+        return "?"
+    if normalized in {"sp", "sil", "silence", "<eps>", "<sil>"}:
+        return "S"
+    if re.search(r"[aeiou?????????????????]", normalized):
+        return "V"
+    if any(marker in normalized for marker in ("ch", "jh", "d?", "t?", "ts", "dz")):
+        return "A"
+    if any(marker in normalized for marker in ("s", "z", "?", "?", "?", "?", "f", "v", "h")):
+        return "F"
+    if any(marker in normalized for marker in ("p", "b", "t", "d", "k", "g", "?", "?")):
+        return "P"
+    if any(marker in normalized for marker in ("m", "n", "?")):
+        return "N"
+    if any(marker in normalized for marker in ("l", "r", "?", "?", "w", "j", "y")):
+        return "L"
+    return "C"
+
+
+def phone_sequence_similarity(expected_phones: list[str], actual_phones: list[str]) -> float:
+    if not expected_phones or not actual_phones:
+        return 0.0
+    expected_classes = [phone_label_to_broad_class(phone) for phone in expected_phones]
+    actual_classes = [phone_label_to_broad_class(phone) for phone in actual_phones]
+    rows = len(expected_classes) + 1
+    cols = len(actual_classes) + 1
+    distances = [[0 for _ in range(cols)] for _ in range(rows)]
+    for row in range(rows):
+        distances[row][0] = row
+    for col in range(cols):
+        distances[0][col] = col
+    for row in range(1, rows):
+        for col in range(1, cols):
+            substitution_cost = 0 if expected_classes[row - 1] == actual_classes[col - 1] else 1
+            distances[row][col] = min(
+                distances[row - 1][col] + 1,
+                distances[row][col - 1] + 1,
+                distances[row - 1][col - 1] + substitution_cost,
+            )
+    edit_distance = distances[-1][-1]
+    return round(max(0.0, 1.0 - edit_distance / max(len(expected_classes), len(actual_classes), 1)), 3)
+
+
+def phones_for_time_window(
+    phones: list[dict[str, float | str]],
+    start: float | None,
+    end: float | None,
+) -> list[str]:
+    if start is None or end is None or end <= start:
+        return []
+    return [
+        str(phone["phone"])
+        for phone in phones
+        if "start" in phone
+        and "end" in phone
+        and start <= ((float(phone["start"]) + float(phone["end"])) / 2) <= end
+    ]
+
+
+def apply_actual_phone_recognition_to_analysis(
+    analysis: SpeakingPronunciationAnalysis,
+    actual_phones: list[dict[str, float | str]],
+) -> None:
+    all_phone_labels = [str(phone.get("phone") or "") for phone in actual_phones if phone.get("phone")]
+    analysis.has_actual_phone_recognition = True
+    analysis.actual_phone_source = f"allosaurus:{SPEAKING_ALLOSAURUS_MODEL}:{SPEAKING_ALLOSAURUS_LANG}"
+    if not all_phone_labels:
+        analysis.phone_match_score = 0.0
+        return
+
+    row_scores: list[float] = []
+    mismatch_count = 0
+    for issue in analysis.issues:
+        if issue.start is None or issue.end is None:
+            continue
+        expected_phones = (issue.expected_phoneme or "").split()
+        if not expected_phones:
+            continue
+        actual_window_phones = phones_for_time_window(actual_phones, issue.start, issue.end)
+        if not actual_window_phones:
+            continue
+        similarity = phone_sequence_similarity(expected_phones, actual_window_phones)
+        row_scores.append(similarity)
+        issue.actual_phoneme = (
+            f"allosaurus={' '.join(actual_window_phones)};mfa={issue.expected_phoneme};match={similarity:.2f}"
+        )[:100]
+        issue.confidence = round(max(issue.confidence or 0.0, 0.78), 3)
+        if similarity < SPEAKING_PHONE_MATCH_THRESHOLD:
+            if issue.is_correct is not False:
+                mismatch_count += 1
+            issue.is_correct = False
+            issue.issue_type = "actual_phone_mismatch"
+
+    analysis.phone_match_score = round(sum(row_scores) / len(row_scores), 3) if row_scores else None
+    if mismatch_count:
+        analysis.issue_count += mismatch_count
+        reference_count = max(len(analysis.issues), 1)
+        analysis.pronunciation_risk_ratio = round(min(1.0, analysis.issue_count / reference_count), 3)
+
+
+def enhance_speaking_pronunciation_analysis(
+    analysis: SpeakingPronunciationAnalysis,
+    *,
+    audio_path: str | None,
+    transcript: str | None,
+) -> SpeakingPronunciationAnalysis:
+    warnings: list[str] = []
+    strict_errors: list[str] = []
+    pitch_metrics: dict[str, float | str] = {}
+    has_ratable_transcript = bool(transcript and len(extract_speaking_tokens(transcript)) >= 3)
+    base_rhythm_score = analysis.rhythm_score
+    base_stress_score = analysis.stress_score
+    base_chunking_score = analysis.chunking_score
+
+    if has_ratable_transcript and SPEAKING_PRONUNCIATION_STRICT and not audio_path:
+        strict_errors.append("Strict pronunciation scoring requires candidate audio; transcript-only scoring is not allowed.")
+
+    if should_attempt_praat_pitch(audio_path):
+        pitch_metrics, pitch_warning = analyze_pitch_with_parselmouth(audio_path or "")
+        if pitch_warning:
+            warnings.append(pitch_warning)
+            if has_ratable_transcript and SPEAKING_PRONUNCIATION_STRICT and pronunciation_requires_praat():
+                strict_errors.append(pitch_warning)
+        if pitch_metrics:
+            apply_pitch_metrics_to_pronunciation_analysis(analysis, pitch_metrics)
+    elif has_ratable_transcript and SPEAKING_PRONUNCIATION_STRICT and pronunciation_requires_praat():
+        strict_errors.append("Praat/Parselmouth pitch analysis is required but is disabled, unavailable, or missing audio.")
+
+    if should_attempt_mfa_alignment(audio_path, transcript):
+        mfa_analysis, mfa_warnings = run_mfa_forced_alignment(audio_path or "", transcript or "")
+        warnings.extend(mfa_warnings)
+        if mfa_analysis is not None:
+            analysis = mfa_analysis
+            analysis.rhythm_score = base_rhythm_score
+            analysis.stress_score = base_stress_score
+            analysis.chunking_score = base_chunking_score
+            if pitch_metrics:
+                apply_pitch_metrics_to_pronunciation_analysis(analysis, pitch_metrics)
+        elif has_ratable_transcript and SPEAKING_PRONUNCIATION_STRICT and pronunciation_requires_mfa():
+            strict_errors.extend(mfa_warnings or ["MFA forced phoneme alignment is required but did not produce alignment."])
+    elif has_ratable_transcript and SPEAKING_PRONUNCIATION_STRICT and pronunciation_requires_mfa():
+        strict_errors.append("MFA forced phoneme alignment is required but is disabled, unavailable, or missing audio/transcript.")
+
+    if should_attempt_allosaurus_phone_recognition(audio_path):
+        actual_phones, allosaurus_warning = run_allosaurus_phone_recognition(audio_path or "")
+        if allosaurus_warning:
+            warnings.append(allosaurus_warning)
+            if has_ratable_transcript and SPEAKING_PRONUNCIATION_STRICT and pronunciation_requires_allosaurus():
+                strict_errors.append(allosaurus_warning)
+        elif actual_phones:
+            apply_actual_phone_recognition_to_analysis(analysis, actual_phones)
+    elif has_ratable_transcript and SPEAKING_PRONUNCIATION_STRICT and pronunciation_requires_allosaurus():
+        strict_errors.append("Allosaurus actual phone recognition is required but is disabled, unavailable, or missing audio.")
+
+    if has_ratable_transcript and SPEAKING_PRONUNCIATION_STRICT:
+        if pronunciation_requires_praat() and not analysis.has_pitch_analysis:
+            strict_errors.append("Required Praat pitch/intonation evidence is missing.")
+        if pronunciation_requires_mfa() and not analysis.has_phoneme_alignment:
+            strict_errors.append("Required MFA forced phoneme alignment evidence is missing.")
+        if pronunciation_requires_allosaurus() and not analysis.has_actual_phone_recognition:
+            strict_errors.append("Required Allosaurus actual phone recognition evidence is missing.")
+        raise_strict_pronunciation_error(list(dict.fromkeys(strict_errors)))
+
+    analysis.engine_warnings.extend(warnings)
+    return analysis
+
+
+def build_speaking_pronunciation_analysis(
+    *,
+    word_timestamps: list[SpeakingWordTimestamp],
+    pause_stats: SpeakingPauseStats,
+    features: dict[str, float | int | None],
+    audio_path: str | None = None,
+    transcript: str | None = None,
+) -> SpeakingPronunciationAnalysis:
+    timed_words = [
+        word
+        for word in word_timestamps
+        if word.word and word.start is not None and word.end is not None and word.end > word.start
+    ]
+    if not timed_words:
+        analysis = SpeakingPronunciationAnalysis(
+            engine="asr_word_timing_phoneme_proxy_v2",
+            has_word_timing=False,
+            has_phoneme_alignment=False,
+            alignment_source="none",
+        )
+        return enhance_speaking_pronunciation_analysis(
+            analysis,
+            audio_path=audio_path,
+            transcript=transcript,
+        )
+
+    durations = [float(word.end - word.start) for word in timed_words]
+    mean_duration = sum(durations) / len(durations)
+    duration_variance = sum((duration - mean_duration) ** 2 for duration in durations) / len(durations)
+    duration_cv = math.sqrt(duration_variance) / mean_duration if mean_duration > 0 else 0.0
+    rhythm_score = score_prosody_value(duration_cv, ideal=0.55, tolerance=0.75)
+
+    content_durations = []
+    function_durations = []
+    for word, duration in zip(timed_words, durations):
+        cleaned = re.sub(r"[^a-z']", "", word.word.lower())
+        if not cleaned:
+            continue
+        if cleaned in SPEAKING_STOPWORDS:
+            function_durations.append(duration)
+        else:
+            content_durations.append(duration)
+
+    stress_score: float | None = None
+    if content_durations and function_durations:
+        content_average = sum(content_durations) / len(content_durations)
+        function_average = sum(function_durations) / len(function_durations)
+        if function_average > 0:
+            stress_ratio = content_average / function_average
+            stress_score = score_prosody_value(stress_ratio, ideal=1.35, tolerance=0.9)
+
+    duration_seconds = features.get("duration_seconds")
+    pause_ratio = float(features.get("pause_ratio") or 0.0)
+    long_pause_penalty = min(0.45, pause_stats.long_pause_count * 0.08)
+    pause_ratio_penalty = min(0.45, max(0.0, pause_ratio - 0.12) * 1.4)
+    chunking_score = round(max(0.0, min(1.0, 1.0 - long_pause_penalty - pause_ratio_penalty)), 3)
+
+    issues: list[SpeakingPronunciationIssue] = []
+    for word in timed_words:
+        cleaned = re.sub(r"[^a-z']", "", word.word.lower()).strip("'")
+        if not cleaned:
+            continue
+
+        probability = word.probability
+        duration = float(word.end - word.start) if word.start is not None and word.end is not None else None
+        syllable_count = estimate_syllable_count(cleaned)
+        issue_type: str | None = None
+
+        if probability is not None and probability < 0.5:
+            issue_type = "low_asr_confidence"
+        elif duration is not None and duration < max(0.07, 0.075 * syllable_count):
+            issue_type = "compressed_word_timing"
+        elif has_consonant_cluster(cleaned) and probability is not None and probability < 0.72:
+            issue_type = "consonant_cluster_risk"
+        elif cleaned.endswith(("p", "t", "k", "b", "d", "g", "s", "z", "sh", "ch", "x", "f", "v", "th")) and probability is not None and probability < 0.72:
+            issue_type = "final_consonant_risk"
+        elif len(cleaned) >= 8 and duration is not None and duration / syllable_count < 0.11:
+            issue_type = "reduced_multisyllable_risk"
+
+        if issue_type is None:
+            continue
+
+        issues.append(SpeakingPronunciationIssue(
+            word=word.word.strip()[:80],
+            expected_phoneme=build_expected_phoneme_profile(cleaned),
+            actual_phoneme=build_actual_phoneme_proxy(
+                probability=probability,
+                duration_seconds=duration,
+                issue_type=issue_type,
+            ),
+            is_correct=False,
+            confidence=round(float(probability), 3) if probability is not None else None,
+            start=word.start,
+            end=word.end,
+            issue_type=issue_type,
+        ))
+
+    issues = sorted(
+        issues,
+        key=lambda issue: (issue.confidence if issue.confidence is not None else 1.0, issue.start or 0.0),
+    )[:24]
+    risk_ratio = len(issues) / max(len(timed_words), 1)
+
+    analysis = SpeakingPronunciationAnalysis(
+        engine="asr_word_timing_phoneme_proxy_v2",
+        has_word_timing=True,
+        has_phoneme_alignment=False,
+        alignment_source="faster_whisper_word_timing",
+        acoustic_source="faster_whisper",
+        issue_count=len(issues),
+        pronunciation_risk_ratio=round(risk_ratio, 3),
+        rhythm_score=rhythm_score,
+        stress_score=stress_score,
+        intonation_score=None,
+        chunking_score=chunking_score,
+        issues=issues,
+    )
+    return enhance_speaking_pronunciation_analysis(
+        analysis,
+        audio_path=audio_path,
+        transcript=transcript,
+    )
+
+
+def build_speaking_evidence_payload(
+    *,
+    features: dict[str, float | int | None],
+    segments: list[Segment],
+    audio_quality: SpeakingAudioQuality | None,
+    audio_path: str | None,
+    prompt_type: str,
+    transcript: str | None,
+    grammar_analysis: SpeakingGrammarAnalysis | None = None,
+) -> SpeakingEvidence:
+    word_timestamps = build_word_timestamp_evidence(segments)
+    low_confidence_words = build_low_confidence_word_evidence(word_timestamps)
+    pause_stats = SpeakingPauseStats(
+        pause_count=int(features["pause_count"] or 0),
+        long_pause_count=int(features["long_pause_count"] or 0),
+        total_pause_seconds=round(float(features["total_pause_seconds"] or 0.0), 2),
+        average_pause_seconds=(
+            round(float(features["average_pause_seconds"]), 2)
+            if features["average_pause_seconds"] is not None
+            else None
+        ),
+        longest_pause_seconds=(
+            round(float(features["longest_pause_seconds"]), 2)
+            if features["longest_pause_seconds"] is not None
+            else None
+        ),
+    )
+    pronunciation_analysis = build_speaking_pronunciation_analysis(
+        word_timestamps=word_timestamps,
+        pause_stats=pause_stats,
+        features=features,
+        audio_path=audio_path,
+        transcript=transcript,
+    )
+
+    scoring_notes = [
+        "Transcript is generated by ASR from the candidate audio and is treated as evidence, not ground truth.",
+    ]
+    if audio_quality is not None and audio_quality.warnings:
+        scoring_notes.extend(audio_quality.warnings)
+    if low_confidence_words:
+        scoring_notes.append("Some words have low ASR confidence; lexical/grammar conclusions should be read with lower confidence.")
+    if not segments:
+        scoring_notes.append("No word-level audio timestamps were available; audio-backed evidence is limited.")
+    if pronunciation_analysis.engine_warnings:
+        scoring_notes.extend(pronunciation_analysis.engine_warnings)
+    if grammar_analysis is not None and grammar_analysis.warnings:
+        scoring_notes.extend(grammar_analysis.warnings)
+    if segments and not pronunciation_analysis.has_phoneme_alignment:
+        scoring_notes.append("No forced phoneme alignment engine was available; pronunciation uses ASR word timing and confidence proxies.")
+    if segments and not pronunciation_analysis.has_pitch_analysis:
+        scoring_notes.append("Pitch-based intonation is not measured; install/enable Praat Parselmouth to use pitch evidence.")
+    if segments and not pronunciation_analysis.has_actual_phone_recognition:
+        scoring_notes.append("Actual phone recognition is not measured; install/enable Allosaurus to compare recognized phones with expected phones.")
+
+    return SpeakingEvidence(
+        prompt_type=prompt_type,
+        target_duration_seconds=(
+            round(float(features["target_duration_seconds"]), 1)
+            if features["target_duration_seconds"] is not None
+            else None
+        ),
+        pronunciation_engine=pronunciation_analysis.engine,
+        has_word_timing=pronunciation_analysis.has_word_timing,
+        has_phoneme_alignment=pronunciation_analysis.has_phoneme_alignment,
+        grammar_analysis=grammar_analysis,
+        pronunciation_analysis=pronunciation_analysis,
+        audio_quality=audio_quality,
+        asr_confidence=(
+            round(float(features["asr_confidence"]), 3)
+            if features["asr_confidence"] is not None
+            else None
+        ),
+        speech_ratio=(
+            round(float(features["speech_ratio"]), 3)
+            if features["speech_ratio"] is not None
+            else None
+        ),
+        pause_stats=pause_stats,
+        word_timestamps=word_timestamps,
+        low_confidence_words=low_confidence_words,
+        scoring_notes=scoring_notes,
+    )
+
+
+def build_rubric_evidence(
+    *,
+    criteria: str,
+    features: dict[str, float | int | None],
+    evidence: SpeakingEvidence,
+) -> list[str]:
+    word_count = int(features["word_count"] or 0)
+    words_per_minute = features["words_per_minute"]
+    asr_confidence = evidence.asr_confidence
+    speech_ratio = evidence.speech_ratio
+    pause_stats = evidence.pause_stats or SpeakingPauseStats()
+    low_confidence_words = ", ".join(
+        word.word
+        for word in evidence.low_confidence_words[:5]
+        if word.word
+    )
+
+    if criteria == "Fluency and Coherence":
+        return [
+            f"word_count={word_count}",
+            f"wpm={words_per_minute if words_per_minute is not None else 'n/a'}",
+            f"speech_ratio={format_percent(speech_ratio)}",
+            f"pauses={pause_stats.pause_count}, long_pauses={pause_stats.long_pause_count}, total_pause={pause_stats.total_pause_seconds}s",
+            f"target_duration={evidence.target_duration_seconds if evidence.target_duration_seconds is not None else 'n/a'}s",
+            f"coverage={format_percent(features['coverage_ratio'])}",
+        ]
+
+    if criteria == "Lexical Resource":
+        return [
+            f"word_count={word_count}",
+            f"unique_word_ratio={format_percent(features['unique_ratio'])}",
+            f"content_word_ratio={format_percent(features['content_ratio'])}",
+            f"repetition_ratio={format_percent(features['repetition_ratio'])}",
+            f"asr_confidence={format_percent(asr_confidence)}",
+        ]
+
+    if criteria == "Grammatical Range and Accuracy":
+        grammar_analysis = evidence.grammar_analysis
+        grammar_evidence = [
+            f"sentence_units={int(features['sentence_units'] or 1)}",
+            f"avg_words_per_unit={round(float(features['avg_words_per_sentence'] or 0.0), 1)}",
+            f"connector_count={int(features['connector_count'] or 0)}",
+            f"filler_ratio={format_percent(features['filler_ratio'])}",
+            f"asr_confidence={format_percent(asr_confidence)}",
+        ]
+        if grammar_analysis is not None:
+            grammar_evidence.extend([
+                f"grammar_engine={grammar_analysis.engine}",
+                f"grammar_available={'yes' if grammar_analysis.is_available else 'no'}",
+                f"grammar_errors={grammar_analysis.error_count}",
+                f"weighted_error_density={grammar_analysis.error_density_per_100_words}/100w",
+            ])
+            category_summary = build_grammar_category_summary(grammar_analysis)
+            if category_summary:
+                grammar_evidence.append(f"grammar_categories={category_summary}")
+            grammar_evidence.extend(build_grammar_issue_evidence(grammar_analysis))
+            if grammar_analysis.warnings:
+                grammar_evidence.append(f"grammar_warning={shorten_evidence_text(grammar_analysis.warnings[0], max_length=110)}")
+        return grammar_evidence
+
+    pronunciation_analysis = evidence.pronunciation_analysis
+    if evidence.has_phoneme_alignment:
+        alignment_label = "forced_phoneme_alignment"
+    elif pronunciation_analysis is not None and pronunciation_analysis.has_word_timing:
+        alignment_label = "word_timing_proxy"
+    else:
+        alignment_label = "no"
+    pronunciation_evidence = [
+        f"engine={evidence.pronunciation_engine}",
+        f"phoneme_alignment={alignment_label}",
+        f"asr_confidence={format_percent(asr_confidence)}",
+        f"low_confidence_word_ratio={format_percent(features['low_confidence_ratio'])}",
+        f"speech_ratio={format_percent(speech_ratio)}",
+        f"audio_quality={evidence.audio_quality.label if evidence.audio_quality is not None else 'transcript_only'}",
+    ]
+    if pronunciation_analysis is not None:
+        pronunciation_evidence.extend([
+            f"alignment_source={pronunciation_analysis.alignment_source or 'n/a'}",
+            f"acoustic_source={pronunciation_analysis.acoustic_source or 'n/a'}",
+            f"actual_phone_source={pronunciation_analysis.actual_phone_source or 'n/a'}",
+            f"phone_match_score={pronunciation_analysis.phone_match_score if pronunciation_analysis.phone_match_score is not None else 'n/a'}",
+            f"pronunciation_issue_count={pronunciation_analysis.issue_count}",
+            f"pronunciation_risk_ratio={format_percent(pronunciation_analysis.pronunciation_risk_ratio)}",
+            f"rhythm_score={pronunciation_analysis.rhythm_score if pronunciation_analysis.rhythm_score is not None else 'n/a'}",
+            f"stress_score={pronunciation_analysis.stress_score if pronunciation_analysis.stress_score is not None else 'n/a'}",
+            f"intonation_score={pronunciation_analysis.intonation_score if pronunciation_analysis.intonation_score is not None else 'pitch_not_measured'}",
+            f"chunking_score={pronunciation_analysis.chunking_score if pronunciation_analysis.chunking_score is not None else 'n/a'}",
+        ])
+        if pronunciation_analysis.has_pitch_analysis:
+            pronunciation_evidence.extend([
+                f"pitch_mean_hz={pronunciation_analysis.pitch_mean_hz if pronunciation_analysis.pitch_mean_hz is not None else 'n/a'}",
+                f"pitch_range_hz={pronunciation_analysis.pitch_range_hz if pronunciation_analysis.pitch_range_hz is not None else 'n/a'}",
+                f"pitch_variation_score={pronunciation_analysis.pitch_variation_score if pronunciation_analysis.pitch_variation_score is not None else 'n/a'}",
+            ])
+        if pronunciation_analysis.engine_warnings:
+            pronunciation_evidence.append(f"pronunciation_warning={shorten_evidence_text(pronunciation_analysis.engine_warnings[0], max_length=110)}")
+        for index, issue in enumerate(pronunciation_analysis.issues[:4], start=1):
+            pronunciation_evidence.append(
+                f"pron_issue{index}={issue.word}:{issue.issue_type or 'risk'}:{issue.actual_phoneme or 'n/a'}"
+            )
+    if low_confidence_words:
+        pronunciation_evidence.append(f"low_confidence_words={low_confidence_words}")
+    return pronunciation_evidence
+
+
+def build_rubric_confidence(
+    *,
+    criteria: str,
+    features: dict[str, float | int | None],
+    evidence: SpeakingEvidence,
+    audio_backed: bool,
+) -> float:
+    word_count = int(features["word_count"] or 0)
+    asr_confidence = evidence.asr_confidence
+    confidence = 0.78 if audio_backed else 0.45
+
+    if criteria == "Pronunciation":
+        pronunciation_analysis = evidence.pronunciation_analysis
+        if evidence.has_phoneme_alignment:
+            confidence = 0.9 if pronunciation_analysis is not None and pronunciation_analysis.has_pitch_analysis and pronunciation_analysis.has_actual_phone_recognition else 0.82
+        elif audio_backed and evidence.word_timestamps:
+            confidence = 0.62 if pronunciation_analysis is not None and pronunciation_analysis.has_pitch_analysis else 0.55
+        else:
+            confidence = 0.28
+    elif criteria == "Grammatical Range and Accuracy":
+        grammar_available = int(features.get("grammar_engine_available") or 0) == 1
+        if grammar_available:
+            confidence = 0.82 if word_count >= 20 else 0.62
+        else:
+            confidence = 0.62 if word_count >= 20 else 0.5
+    elif criteria == "Lexical Resource":
+        confidence = 0.72 if word_count >= 20 else 0.55
+
+    if asr_confidence is not None:
+        if asr_confidence < 0.55:
+            confidence -= 0.22
+        elif asr_confidence < 0.7:
+            confidence -= 0.1
+        elif asr_confidence > 0.88 and audio_backed and criteria != "Pronunciation":
+            confidence += 0.08
+
+    if evidence.audio_quality is not None:
+        if not evidence.audio_quality.is_usable:
+            confidence -= 0.25
+        elif evidence.audio_quality.label == "unknown":
+            confidence -= 0.12
+        elif evidence.audio_quality.warnings:
+            confidence -= 0.08
+
+    if word_count < 8:
+        confidence -= 0.18
+
+    return round(min(0.95, max(0.1, confidence)), 2)
+
+
+def build_no_response_speaking_result(
+    duration_seconds: float | None,
+    evidence: SpeakingEvidence | None = None,
+) -> tuple[list[RubricScore], str]:
+    duration_text = (
+        f" Bản ghi dài khoảng {duration_seconds:.1f} giây nhưng không có lời nói đủ rõ để nhận diện."
+        if duration_seconds is not None and duration_seconds > 0
+        else " Không có lời nói đủ rõ để nhận diện trong câu trả lời này."
+    )
+    evidence_lines = [
+        "no_response=true",
+        f"duration_seconds={round(duration_seconds, 1) if duration_seconds is not None else 'n/a'}",
+    ]
+    if evidence is not None and evidence.audio_quality is not None:
+        evidence_lines.append(f"audio_quality={evidence.audio_quality.label}")
+        evidence_lines.append(f"silence_ratio={format_percent(evidence.audio_quality.silence_ratio)}")
+    if evidence is not None and evidence.asr_confidence is not None:
+        evidence_lines.append(f"asr_confidence={format_percent(evidence.asr_confidence)}")
+    confidence = 0.82 if evidence is not None and evidence.audio_quality is not None and not evidence.audio_quality.is_usable else 0.65
+    rubrics = [
+        RubricScore(
+            criteria="Fluency and Coherence",
+            band=1.0,
+            comment=f"Không có câu trả lời nói có thể đánh giá về độ trôi chảy hoặc mạch lạc.{duration_text}",
+            improvements="Khi bí ý, hãy nói tối thiểu 1-2 câu trực tiếp về việc bạn chưa chắc, rồi đưa một ví dụ hoặc lý do đơn giản.",
+            confidence=confidence,
+            evidence=evidence_lines,
+        ),
+        RubricScore(
+            criteria="Lexical Resource",
+            band=1.0,
+            comment="Không có đủ từ vựng được nói ra để thể hiện khả năng diễn đạt.",
+            improvements="Chuẩn bị một vài cụm mở đầu an toàn như I am not very familiar with this topic, but I think... để vẫn tạo được câu trả lời.",
+            confidence=confidence,
+            evidence=evidence_lines,
+        ),
+        RubricScore(
+            criteria="Grammatical Range and Accuracy",
+            band=1.0,
+            comment="Không có ngôn ngữ đủ dài để đánh giá cấu trúc câu hoặc độ chính xác ngữ pháp.",
+            improvements="Ưu tiên tạo câu đơn hoàn chỉnh với chủ ngữ và động từ trước, sau đó thêm because hoặc for example để mở rộng.",
+            confidence=confidence,
+            evidence=evidence_lines,
+        ),
+        RubricScore(
+            criteria="Pronunciation",
+            band=1.0,
+            comment="Không có lời nói đủ rõ để đánh giá phát âm ở mức câu trả lời.",
+            improvements="Nói rõ từng từ khóa và giữ âm lượng ổn định; nếu chưa nghĩ ra ý, vẫn nên nói một câu ngắn thay vì im lặng.",
+            confidence=confidence,
+            evidence=evidence_lines,
+        ),
+    ]
+    overall_feedback = (
+        "Câu trả lời được chấm như no response vì audio không tạo ra transcript có thể đánh giá. "
+        "Trong Speaking thực tế, việc không trả lời làm giảm điểm vì examiner không có bằng chứng ngôn ngữ để chấm các tiêu chí."
+    )
+    return rubrics, overall_feedback
+
+
 def build_speaking_gemini_prompt(
     transcript: str,
     *,
@@ -2479,6 +4339,9 @@ def build_speaking_gemini_prompt(
         f"- Connector count: {int(features['connector_count'] or 0)}",
         f"- Unique word ratio: {round(float(features['unique_ratio'] or 0.0) * 100, 1)}%",
         f"- Average words per sentence unit: {round(float(features['avg_words_per_sentence'] or 0.0), 1)}",
+        f"- LanguageTool grammar available: {'yes' if int(features.get('grammar_engine_available') or 0) == 1 else 'no'}",
+        f"- LanguageTool grammar errors: {int(features.get('grammar_error_count') or 0)}",
+        f"- LanguageTool weighted error density: {float(features.get('grammar_error_density_per_100_words') or 0.0):.2f}/100 words",
     ]
     rubric_anchor_lines = "\n".join(
         f"- {criteria}: {band:.1f}"
@@ -2612,16 +4475,50 @@ async def score_speaking_rubrics(
     answer_id: str,
     question_prompt: str | None,
     part_number: int | None,
+    prompt_type: str | None,
+    target_duration_seconds: float | None,
     duration_seconds: float | None,
     segments: list[Segment],
-) -> tuple[list[RubricScore], str]:
+    audio_quality: SpeakingAudioQuality | None,
+    audio_path: str | None = None,
+) -> tuple[list[RubricScore], str, SpeakingEvidence]:
+    normalized_prompt_type = normalize_speaking_prompt_type(part_number, prompt_type)
     features = build_speaking_feature_map(
         transcript,
         segments,
         part_number=part_number,
+        prompt_type=normalized_prompt_type,
+        target_duration_seconds=target_duration_seconds,
         duration_seconds=duration_seconds,
     )
+    grammar_analysis = await asyncio.to_thread(
+        analyze_speaking_grammar_with_languagetool,
+        transcript,
+        word_count=int(features["word_count"] or 0),
+    )
+    features.update(build_grammar_feature_map(grammar_analysis))
+    evidence_payload = build_speaking_evidence_payload(
+        features=features,
+        segments=segments,
+        audio_quality=audio_quality,
+        audio_path=audio_path,
+        prompt_type=normalized_prompt_type,
+        transcript=transcript,
+        grammar_analysis=grammar_analysis,
+    )
     word_count = int(features["word_count"] or 0)
+    technical_low_confidence = (
+        audio_quality is not None
+        and not audio_quality.is_usable
+        and word_count < 8
+    )
+    if not extract_speaking_tokens(transcript) or technical_low_confidence:
+        rubrics, overall_feedback = build_no_response_speaking_result(
+            duration_seconds,
+            evidence_payload,
+        )
+        return rubrics, overall_feedback, evidence_payload
+
     words_per_minute = features["words_per_minute"]
     pause_ratio = float(features["pause_ratio"] or 0.0)
     filler_ratio = float(features["filler_ratio"] or 0.0)
@@ -2634,7 +4531,11 @@ async def score_speaking_rubrics(
     low_confidence_ratio = float(features["low_confidence_ratio"] or 0.0)
     mean_word_probability = float(features["mean_word_probability"] or 0.0)
     avg_no_speech_prob = float(features["avg_no_speech_prob"] or 0.0)
+    grammar_available = int(features.get("grammar_engine_available") or 0) == 1
+    grammar_error_density = float(features.get("grammar_error_density_per_100_words") or 0.0)
+    grammar_error_count = int(features.get("grammar_error_count") or 0)
     audio_backed = bool(segments)
+    pronunciation_analysis = evidence_payload.pronunciation_analysis
 
     fluency_score = 6.0
     if word_count < 12:
@@ -2653,9 +4554,11 @@ async def score_speaking_rubrics(
             fluency_score -= 0.5
 
     if coverage_ratio is not None:
-        if coverage_ratio < 0.45:
+        if normalized_prompt_type == "part2_long_turn" and coverage_ratio < 0.6:
+            fluency_score -= 1.25
+        elif coverage_ratio < 0.35:
             fluency_score -= 1.0
-        elif coverage_ratio < 0.7:
+        elif coverage_ratio < 0.55:
             fluency_score -= 0.5
         elif 0.85 <= coverage_ratio <= 1.2:
             fluency_score += 0.25
@@ -2701,6 +4604,10 @@ async def score_speaking_rubrics(
         lexical_score -= 0.5
     if filler_ratio > 0.08:
         lexical_score -= 0.25
+    if word_count < 35:
+        lexical_score = min(lexical_score, 6.0)
+    elif part_number in {2, 3} and word_count < 55:
+        lexical_score = min(lexical_score, 6.5)
 
     grammar_score = 5.5
     if word_count < 12:
@@ -2723,6 +4630,24 @@ async def score_speaking_rubrics(
         grammar_score -= 0.25
     if low_confidence_ratio > 0.35:
         grammar_score -= 0.5
+    if grammar_available:
+        if grammar_error_density >= 10.0:
+            grammar_score -= 1.5
+        elif grammar_error_density >= 6.0:
+            grammar_score -= 1.0
+        elif grammar_error_density >= 3.0:
+            grammar_score -= 0.5
+        elif (
+            grammar_error_count == 0
+            and word_count >= 50
+            and avg_words_per_sentence >= 14
+            and connector_count >= 2
+        ):
+            grammar_score += 0.25
+    if word_count < 35:
+        grammar_score = min(grammar_score, 6.0)
+    elif part_number in {2, 3} and word_count < 55:
+        grammar_score = min(grammar_score, 6.5)
 
     pronunciation_score = 6.0
     if word_count < 10:
@@ -2742,12 +4667,53 @@ async def score_speaking_rubrics(
     elif low_confidence_ratio > 0.22:
         pronunciation_score -= 0.5
 
+    if pronunciation_analysis is not None and pronunciation_analysis.has_word_timing:
+        risk_ratio = pronunciation_analysis.pronunciation_risk_ratio
+        if risk_ratio >= 0.28:
+            pronunciation_score -= 1.0
+        elif risk_ratio >= 0.18:
+            pronunciation_score -= 0.5
+        elif risk_ratio >= 0.09:
+            pronunciation_score -= 0.25
+
+        if pronunciation_analysis.rhythm_score is not None and pronunciation_analysis.rhythm_score < 0.45:
+            pronunciation_score -= 0.5
+        elif pronunciation_analysis.rhythm_score is not None and pronunciation_analysis.rhythm_score < 0.6:
+            pronunciation_score -= 0.25
+
+        if pronunciation_analysis.stress_score is not None and pronunciation_analysis.stress_score < 0.45:
+            pronunciation_score -= 0.25
+        if pronunciation_analysis.chunking_score is not None and pronunciation_analysis.chunking_score < 0.45:
+            pronunciation_score -= 0.25
+        if pronunciation_analysis.issue_count == 0 and word_count >= 40 and mean_word_probability > 0.85:
+            pronunciation_score += 0.25
+        if pronunciation_analysis.has_phoneme_alignment and pronunciation_analysis.pronunciation_risk_ratio <= 0.04 and word_count >= 40:
+            pronunciation_score += 0.25
+        if pronunciation_analysis.has_pitch_analysis and pronunciation_analysis.intonation_score is not None:
+            if pronunciation_analysis.intonation_score < 0.35:
+                pronunciation_score -= 0.5
+            elif pronunciation_analysis.intonation_score < 0.55:
+                pronunciation_score -= 0.25
+            elif pronunciation_analysis.intonation_score >= 0.75 and word_count >= 30:
+                pronunciation_score += 0.25
+        if pronunciation_analysis.has_actual_phone_recognition and pronunciation_analysis.phone_match_score is not None:
+            if pronunciation_analysis.phone_match_score < 0.45:
+                pronunciation_score -= 0.75
+            elif pronunciation_analysis.phone_match_score < 0.6:
+                pronunciation_score -= 0.35
+            elif pronunciation_analysis.phone_match_score >= 0.82 and word_count >= 30:
+                pronunciation_score += 0.25
+
     if pause_ratio > 0.28:
         pronunciation_score -= 0.5
     if avg_no_speech_prob > 0.55:
         pronunciation_score -= 0.25
     if words_per_minute is not None and (words_per_minute < 75 or words_per_minute > 190):
         pronunciation_score -= 0.25
+    if not evidence_payload.has_phoneme_alignment:
+        pronunciation_score = min(pronunciation_score, 6.5)
+    if audio_quality is None or audio_quality.label == "unknown":
+        pronunciation_score = min(pronunciation_score, 6.0)
 
     rule_rubric_bands = {
         "Fluency and Coherence": round_band_half(fluency_score),
@@ -2786,6 +4752,17 @@ async def score_speaking_rubrics(
             band=final_band,
             comment=gemini_rubric.comment if gemini_rubric is not None else rule_comment,
             improvements=gemini_rubric.improvements if gemini_rubric is not None else rule_improvements,
+            confidence=build_rubric_confidence(
+                criteria=criteria,
+                features=features,
+                evidence=evidence_payload,
+                audio_backed=audio_backed,
+            ),
+            evidence=build_rubric_evidence(
+                criteria=criteria,
+                features=features,
+                evidence=evidence_payload,
+            ),
         ))
         final_rubric_bands[criteria] = final_band
 
@@ -2797,7 +4774,332 @@ async def score_speaking_rubrics(
         f"Điểm mạnh tương đối nằm ở {', '.join(criteria for criteria, _ in strongest)}. "
         f"Hai ưu tiên nên luyện tiếp là {', '.join(criteria for criteria, _ in weakest)}."
     )
-    return rubrics, overall_feedback
+    return rubrics, overall_feedback, evidence_payload
+
+
+def is_no_response_session_answer(answer: SpeakingSessionAnswerInput) -> bool:
+    if answer.no_response:
+        return True
+    if not extract_speaking_tokens(answer.transcript_text or ""):
+        return True
+    rubric_bands = [
+        round_band_half(rubric.band)
+        for rubric in answer.rubrics
+        if rubric.criteria and rubric.criteria.strip()
+    ]
+    return bool(rubric_bands) and max(rubric_bands) <= 1.0
+
+
+def get_session_answer_rubric(
+    answer: SpeakingSessionAnswerInput,
+    criteria: str,
+) -> SpeakingSessionRubricInput | None:
+    return next(
+        (
+            rubric
+            for rubric in answer.rubrics
+            if rubric.criteria.strip().lower() == criteria.lower()
+        ),
+        None,
+    )
+
+
+def average_optional(values: list[float]) -> float | None:
+    if not values:
+        return None
+    return sum(values) / len(values)
+
+
+def build_session_rubric_evidence(
+    *,
+    criteria: str,
+    metrics: dict[str, float | int | str],
+    base_band: float,
+) -> list[str]:
+    return [
+        "aggregation=session_level_weighted_by_part",
+        f"criterion_base_band={base_band:.1f}",
+        f"total_prompts={int(metrics['total_answers'])}",
+        f"ratable_prompts={int(metrics['ratable_answers'])}",
+        f"no_response_prompts={int(metrics['no_response_answers'])}",
+        f"ratable_parts={metrics['ratable_parts']}",
+        f"session_word_count={int(metrics['total_word_count'])}",
+    ]
+
+
+def build_speaking_session_deterministic_result(
+    request: ScoreSpeakingSessionRequest,
+) -> tuple[list[RubricScore], str, dict[str, float | int | str]]:
+    answers = request.answers
+    total_answers = len(answers)
+    no_response_answers = [answer for answer in answers if is_no_response_session_answer(answer)]
+    ratable_answers = [answer for answer in answers if not is_no_response_session_answer(answer)]
+    total_word_count = sum(len(extract_speaking_tokens(answer.transcript_text or "")) for answer in answers)
+
+    part_numbers = sorted({answer.part_number or 0 for answer in answers}) or [0]
+    ratable_part_numbers = sorted({answer.part_number or 0 for answer in ratable_answers})
+    part_weights = {1: 1.0, 2: 1.2, 3: 1.2, 0: 1.0}
+    no_response_ratio = len(no_response_answers) / total_answers if total_answers else 1.0
+
+    metrics: dict[str, float | int | str] = {
+        "total_answers": total_answers,
+        "ratable_answers": len(ratable_answers),
+        "no_response_answers": len(no_response_answers),
+        "total_word_count": total_word_count,
+        "no_response_ratio": no_response_ratio,
+        "ratable_parts": ",".join(str(part) for part in ratable_part_numbers) if ratable_part_numbers else "none",
+        "configured_parts": ",".join(str(part) for part in part_numbers),
+    }
+
+    rubrics: list[RubricScore] = []
+    for criteria in SPEAKING_RUBRICS:
+        weighted_total = 0.0
+        weight_total = 0.0
+        confidence_values: list[float] = []
+
+        for part_number in part_numbers:
+            part_answers = [answer for answer in answers if (answer.part_number or 0) == part_number]
+            part_bands: list[float] = []
+
+            for answer in part_answers:
+                rubric = get_session_answer_rubric(answer, criteria)
+                if rubric is None:
+                    continue
+                part_bands.append(round_band_half(rubric.band))
+                if rubric.confidence is not None:
+                    confidence_values.append(max(0.0, min(1.0, float(rubric.confidence))))
+
+            if not part_bands:
+                continue
+
+            part_average = sum(part_bands) / len(part_bands)
+            part_weight = part_weights.get(part_number, 1.0)
+            weighted_total += part_average * part_weight
+            weight_total += part_weight
+
+        base_band = weighted_total / weight_total if weight_total else 0.0
+        final_band = base_band
+
+        if not ratable_answers:
+            final_band = 1.0
+        else:
+            if total_word_count < 12:
+                final_band = min(final_band, 4.0)
+            elif total_word_count < 25:
+                final_band = min(final_band, 5.0)
+            elif total_word_count < 60 and len(part_numbers) >= 2:
+                final_band = min(final_band, 6.0)
+
+            if len(ratable_part_numbers) <= 1 and len(part_numbers) >= 3:
+                final_band = min(final_band, 5.5)
+            elif len(ratable_part_numbers) < min(2, len(part_numbers)):
+                final_band = min(final_band, 6.0)
+
+            if no_response_ratio >= 0.5:
+                final_band = min(final_band, 5.0)
+            elif no_response_ratio >= 0.25:
+                final_band = min(final_band, 6.0)
+
+        confidence = average_optional(confidence_values)
+        if confidence is None:
+            confidence = 0.72 if ratable_answers else 0.88
+        if no_response_ratio >= 0.25:
+            confidence -= 0.08
+        if total_word_count < 25:
+            confidence -= 0.1
+
+        rounded_base_band = round_band_half(base_band)
+        rounded_final_band = round_band_half(final_band)
+        rubrics.append(RubricScore(
+            criteria=criteria,
+            band=rounded_final_band,
+            comment=(
+                "Điểm tiêu chí này được tổng hợp ở cấp toàn session, cân bằng theo từng Part và có cap khi thiếu dữ liệu trả lời. "
+                f"Band nền từ các prompt là khoảng {rounded_base_band:.1f}; band sau kiểm tra coverage là {rounded_final_band:.1f}."
+            ),
+            improvements=(
+                "Ưu tiên luyện đủ cả 3 Part và giữ mỗi câu trả lời có bằng chứng ngôn ngữ rõ ràng; "
+                "band cuối sẽ ổn định hơn khi hệ thống có đủ long turn, discussion và audio rõ."
+            ),
+            confidence=round(min(0.95, max(0.1, confidence)), 2),
+            evidence=build_session_rubric_evidence(
+                criteria=criteria,
+                metrics=metrics,
+                base_band=rounded_base_band,
+            ),
+        ))
+
+    overall_band = round_band_half(sum(rubric.band for rubric in rubrics) / len(rubrics)) if rubrics else 0.0
+    strongest = sorted(rubrics, key=lambda rubric: rubric.band, reverse=True)[:2]
+    weakest = sorted(rubrics, key=lambda rubric: rubric.band)[:2]
+    overall_feedback = (
+        f"Band Speaking tổng quan theo session khoảng {overall_band:.1f}. "
+        "Điểm này dùng toàn bộ câu trả lời trong session thay vì chỉ lấy trung bình từng prompt rời rạc. "
+        f"Hệ thống nhận {len(ratable_answers)}/{total_answers} prompt có đủ transcript/audio để đánh giá, "
+        f"tổng khoảng {total_word_count} từ, các Part có dữ liệu chấm được: {metrics['ratable_parts']}. "
+        f"Điểm mạnh tương đối: {', '.join(rubric.criteria for rubric in strongest)}. "
+        f"Ưu tiên cải thiện: {', '.join(rubric.criteria for rubric in weakest)}."
+    )
+    return rubrics, overall_feedback, metrics
+
+
+def build_speaking_session_gemini_prompt(
+    request: ScoreSpeakingSessionRequest,
+    *,
+    deterministic_rubrics: list[RubricScore],
+    metrics: dict[str, float | int | str],
+) -> str:
+    anchor_lines = "\n".join(
+        f"- {rubric.criteria}: {rubric.band:.1f}"
+        for rubric in deterministic_rubrics
+    )
+    answer_blocks: list[str] = []
+    for index, answer in enumerate(request.answers, start=1):
+        rubric_line = ", ".join(
+            f"{rubric.criteria}={round_band_half(rubric.band):.1f}"
+            for rubric in answer.rubrics
+            if rubric.criteria
+        ) or "no rubric"
+        transcript = shorten_evidence_text(answer.transcript_text, max_length=700) or "No transcript."
+        answer_blocks.append(
+            f"Prompt {index} | part={answer.part_number or 'unknown'} | type={answer.prompt_type or 'unknown'} | "
+            f"duration={answer.duration_seconds if answer.duration_seconds is not None else 'n/a'}s | "
+            f"no_response={is_no_response_session_answer(answer)}\n"
+            f"Question: {shorten_evidence_text(answer.question_prompt, max_length=220) or 'n/a'}\n"
+            f"Prompt bands: {rubric_line}\n"
+            f"Transcript: {transcript}"
+        )
+
+    return f"""You are an IELTS Speaking examiner assistant producing a final session-level judgement.
+Use the official IELTS Speaking criteria in paraphrased form: Fluency and Coherence, Lexical Resource, Grammatical Range and Accuracy, and Pronunciation.
+
+Important rules:
+- Score the candidate's average performance across the whole speaking session, not each prompt in isolation.
+- Use the deterministic anchor bands as guardrails. Adjust by at most 0.5 band unless the session transcript clearly justifies it.
+- Penalize missing/no-response prompts and insufficient language evidence.
+- Keep comments and improvements concise, concrete, and in Vietnamese.
+
+Session metrics:
+- Total prompts: {metrics['total_answers']}
+- Ratable prompts: {metrics['ratable_answers']}
+- No-response prompts: {metrics['no_response_answers']}
+- Total transcript word count: {metrics['total_word_count']}
+- Configured parts: {metrics['configured_parts']}
+- Ratable parts: {metrics['ratable_parts']}
+
+Deterministic session anchor bands:
+{anchor_lines}
+
+Prompt evidence:
+{chr(10).join(answer_blocks)}
+
+Return ONLY valid JSON in this exact format:
+{{
+  "overall_band": 6.0,
+  "overall_feedback": "Nhận xét tổng quan ngắn bằng tiếng Việt.",
+  "rubrics": [
+    {{"criteria":"Fluency and Coherence","band":6.0,"comment":"Nhận xét ngắn bằng tiếng Việt.","improvements":"Gợi ý cải thiện ngắn bằng tiếng Việt."}},
+    {{"criteria":"Lexical Resource","band":6.0,"comment":"Nhận xét ngắn bằng tiếng Việt.","improvements":"Gợi ý cải thiện ngắn bằng tiếng Việt."}},
+    {{"criteria":"Grammatical Range and Accuracy","band":6.0,"comment":"Nhận xét ngắn bằng tiếng Việt.","improvements":"Gợi ý cải thiện ngắn bằng tiếng Việt."}},
+    {{"criteria":"Pronunciation","band":6.0,"comment":"Nhận xét ngắn bằng tiếng Việt.","improvements":"Gợi ý cải thiện ngắn bằng tiếng Việt."}}
+  ]
+}}"""
+
+
+async def maybe_get_speaking_session_gemini_result(
+    request: ScoreSpeakingSessionRequest,
+    *,
+    deterministic_rubrics: list[RubricScore],
+    metrics: dict[str, float | int | str],
+) -> StructuredSpeakingSessionResult | None:
+    if gemini_client is None or int(metrics["ratable_answers"] or 0) == 0:
+        return None
+
+    try:
+        return await generate_structured_content_with_gemini_async(
+            prompt=build_speaking_session_gemini_prompt(
+                request,
+                deterministic_rubrics=deterministic_rubrics,
+                metrics=metrics,
+            ),
+            system_instruction=(
+                "You are an IELTS Speaking examiner assistant. "
+                "Return only valid JSON matching the requested schema."
+            ),
+            response_schema=StructuredSpeakingSessionResult,
+            model_candidates=GEMINI_SPEAKING_SCORING_MODEL_CANDIDATES,
+            error_context="speaking session scoring",
+            max_output_tokens=1600,
+        )
+    except Exception:  # pragma: no cover
+        logger.exception("Gemini speaking session scoring failed for session %s.", request.session_id)
+        return None
+
+
+def merge_speaking_session_result(
+    deterministic_rubrics: list[RubricScore],
+    deterministic_feedback: str,
+    gemini_result: StructuredSpeakingSessionResult | None,
+) -> tuple[list[RubricScore], str]:
+    if gemini_result is None:
+        return deterministic_rubrics, deterministic_feedback
+
+    deterministic_lookup = {rubric.criteria: rubric for rubric in deterministic_rubrics}
+    gemini_lookup = {
+        rubric.criteria.strip().lower(): rubric
+        for rubric in gemini_result.rubrics
+        if rubric.criteria and rubric.criteria.strip()
+    }
+
+    merged: list[RubricScore] = []
+    for criteria in SPEAKING_RUBRICS:
+        fallback = deterministic_lookup[criteria]
+        gemini_rubric = gemini_lookup.get(criteria.lower())
+        if gemini_rubric is None:
+            merged.append(fallback)
+            continue
+
+        merged.append(RubricScore(
+            criteria=criteria,
+            band=clamp_speaking_band_to_rule_window(
+                fallback.band,
+                round_band_half(gemini_rubric.band),
+                max_adjustment=0.5,
+            ),
+            comment=gemini_rubric.comment.strip() or fallback.comment,
+            improvements=gemini_rubric.improvements.strip() or fallback.improvements,
+            confidence=fallback.confidence,
+            evidence=fallback.evidence,
+        ))
+
+    return merged, (gemini_result.overall_feedback or "").strip() or deterministic_feedback
+
+
+@app.post("/api/ai/score-speaking-session", response_model=ScoreResponse)
+async def score_speaking_session(request: ScoreSpeakingSessionRequest):
+    if not request.answers:
+        raise HTTPException(status_code=400, detail="At least one speaking answer is required.")
+
+    deterministic_rubrics, deterministic_feedback, metrics = build_speaking_session_deterministic_result(request)
+    gemini_result = await maybe_get_speaking_session_gemini_result(
+        request,
+        deterministic_rubrics=deterministic_rubrics,
+        metrics=metrics,
+    )
+    final_rubrics, final_feedback = merge_speaking_session_result(
+        deterministic_rubrics,
+        deterministic_feedback,
+        gemini_result,
+    )
+    overall_band = round_band_half(sum(rubric.band for rubric in final_rubrics) / len(final_rubrics))
+
+    return ScoreResponse(
+        session_id=request.session_id,
+        answer_id=request.session_id,
+        overall_band=overall_band,
+        rubrics=final_rubrics,
+        overall_feedback=final_feedback,
+    )
 
 
 @app.post("/api/ai/score-writing", response_model=ScoreResponse)
@@ -2829,25 +5131,44 @@ async def score_speaking(
     question_prompt: str | None = Form(None),
     transcript_text: str | None = Form(None),
     part_number: int | None = Form(None),
+    prompt_type: str | None = Form(None),
+    target_duration_seconds: float | None = Form(None),
     duration_seconds: float | None = Form(None),
 ):
     transcript = (transcript_text or "").strip()
     segments: list[Segment] = []
+    audio_quality: SpeakingAudioQuality | None = None
+    analysis_path_for_scoring: str | None = None
+    cleanup_paths: list[str] = []
 
     if audio is not None:
         if whisper_model is None:
             raise HTTPException(status_code=503, detail="Whisper model not loaded.")
 
         suffix = os.path.splitext(audio.filename or ".wav")[1]
+        normalized_tmp_path: str | None = None
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             content = await audio.read()
             tmp.write(content)
             tmp_path = tmp.name
+            cleanup_paths.append(tmp_path)
 
         try:
+            analysis_path, normalized_tmp_path, normalization_warning = await asyncio.to_thread(
+                normalize_audio_to_16khz_mono_wav,
+                tmp_path,
+            )
+            analysis_path_for_scoring = analysis_path
+            if normalized_tmp_path is not None and normalized_tmp_path != tmp_path:
+                cleanup_paths.append(normalized_tmp_path)
+            audio_quality = await asyncio.to_thread(
+                analyze_wav_audio_quality,
+                analysis_path,
+                normalization_warning=normalization_warning,
+            )
             segments, detected_transcript = await asyncio.to_thread(
                 transcribe_audio_file,
-                tmp_path,
+                analysis_path,
                 language="en",
                 word_timestamps=True,
             )
@@ -2855,32 +5176,63 @@ async def score_speaking(
         except Exception as ex:
             logger.exception("Failed to transcribe speaking audio for answer %s.", answer_id)
             if not transcript:
-                raise HTTPException(status_code=400, detail=f"Could not transcribe audio: {ex}") from ex
+                transcript = ""
+                if audio_quality is None:
+                    audio_quality = SpeakingAudioQuality(
+                        is_usable=False,
+                        label="technical_low_confidence",
+                        warnings=[f"ASR could not decode or transcribe the audio: {ex}"],
+                    )
+                else:
+                    audio_quality.warnings.append(f"ASR could not decode or transcribe the audio: {ex}")
+                    audio_quality.is_usable = False
+                    audio_quality.label = "technical_low_confidence"
         finally:
-            os.unlink(tmp_path)
+            pass
     elif not transcript:
         raise HTTPException(status_code=400, detail="Audio file or transcript_text is required.")
 
     if not transcript.strip():
-        raise HTTPException(status_code=400, detail="Could not transcribe audio.")
+        logger.info(
+            "Scoring speaking answer %s as no response because no transcript was detected.",
+            answer_id,
+        )
 
-    rubrics, overall_feedback = await score_speaking_rubrics(
-        transcript,
-        answer_id=answer_id,
-        question_prompt=question_prompt,
-        part_number=part_number,
-        duration_seconds=duration_seconds,
-        segments=segments,
+    effective_duration_seconds = (
+        duration_seconds
+        if duration_seconds is not None and duration_seconds > 0
+        else audio_quality.duration_seconds if audio_quality is not None else None
     )
-    overall_band = round_band_half(sum(rubric.band for rubric in rubrics) / len(rubrics))
-    return ScoreResponse(
-        session_id=session_id,
-        answer_id=answer_id,
-        overall_band=overall_band,
-        rubrics=rubrics,
-        overall_feedback=overall_feedback,
-        transcript_text=transcript,
-    )
+    try:
+        rubrics, overall_feedback, speaking_evidence = await score_speaking_rubrics(
+            transcript,
+            answer_id=answer_id,
+            question_prompt=question_prompt,
+            part_number=part_number,
+            prompt_type=prompt_type,
+            target_duration_seconds=target_duration_seconds,
+            duration_seconds=effective_duration_seconds,
+            segments=segments,
+            audio_quality=audio_quality,
+            audio_path=analysis_path_for_scoring,
+        )
+        overall_band = round_band_half(sum(rubric.band for rubric in rubrics) / len(rubrics))
+        return ScoreResponse(
+            session_id=session_id,
+            answer_id=answer_id,
+            overall_band=overall_band,
+            rubrics=rubrics,
+            overall_feedback=overall_feedback,
+            transcript_text=transcript,
+            speaking_evidence=speaking_evidence,
+        )
+    finally:
+        for path in reversed(cleanup_paths):
+            try:
+                if path and os.path.exists(path):
+                    os.unlink(path)
+            except OSError:
+                pass
 
 
 def download_audio_url_to_tempfile(audio_url: str) -> str:
@@ -3502,4 +5854,8 @@ async def generate_exam_from_pdf(file: UploadFile = File(...)):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "whisper_loaded": whisper_model is not None}
+    return {
+        "status": "ok",
+        "whisper_loaded": whisper_model is not None,
+        "speaking_pronunciation": get_speaking_pronunciation_tool_status(),
+    }

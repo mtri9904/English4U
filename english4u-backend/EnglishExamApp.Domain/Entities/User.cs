@@ -23,6 +23,10 @@ public class User
     public DateTime? TokenExpiry { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+    public int ExperiencePoints { get; set; } = 0;
+    public int DailyStreakCount { get; set; } = 0;
+    public int LongestStreakCount { get; set; } = 0;
+    public DateTime? LastActivityAt { get; set; }
 
     public ICollection<UserRole> UserRoles { get; set; } = [];
     public ICollection<UserSubscription> UserSubscriptions { get; set; } = [];

@@ -96,6 +96,25 @@ var app = builder.Build();
 var uploadRoot = Path.Combine(app.Environment.ContentRootPath, "uploads");
 Directory.CreateDirectory(uploadRoot);
 
+using (var scope = app.Services.CreateScope())
+{
+    var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>()
+        .CreateLogger("StartupMigration");
+    var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+    try
+    {
+        logger.LogInformation("Applying pending database migrations...");
+        dbContext.Database.Migrate();
+        logger.LogInformation("Database migrations applied successfully.");
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Failed to apply database migrations at startup.");
+        throw;
+    }
+}
+
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();

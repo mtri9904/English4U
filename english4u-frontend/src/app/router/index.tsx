@@ -29,6 +29,7 @@ import {
     ClientPracticeExamPage,
     ClientPracticePage,
     ClientReadingSessionPage,
+    ClientProfilePage,
     ClientListeningSessionPage,
     ClientWritingSessionPage,
     ClientSpeakingSessionPage,
@@ -175,21 +176,11 @@ export const appRouter = createBrowserRouter([
             },
             {
                 path: 'progress',
-                element: (
-                    <ClientPlaceholderPage
-                        title="Tiến trình"
-                        description="Biểu đồ band, tỷ lệ đúng và mức tiến bộ theo kỹ năng sẽ hiển thị ở đây."
-                    />
-                ),
+                element: <Navigate to="/app" replace />,
             },
             {
                 path: 'profile',
-                element: (
-                    <ClientPlaceholderPage
-                        title="Hồ sơ"
-                        description="Thông tin tài khoản và dữ liệu cá nhân của bạn sẽ được quản lý tại đây."
-                    />
-                ),
+                element: <ClientProfilePage />,
             },
             {
                 path: 'settings',

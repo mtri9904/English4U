@@ -214,4 +214,26 @@ public class PracticeController(
             return TypedResults.BadRequest(new { message = ex.Message });
         }
     }
+
+    [HttpPost("sessions/{sessionId:guid}/rescore-speaking")]
+    public async Task<IResult> RescoreSpeaking(
+        Guid sessionId,
+        [FromHeader(Name = "X-User-Id")] string? userIdStr,
+        CancellationToken cancellationToken)
+    {
+        if (!TryParseUserId(userIdStr, out var userId))
+        {
+            return TypedResults.Unauthorized();
+        }
+
+        try
+        {
+            var result = await examExecutionService.RescoreSpeakingAsync(userId, sessionId, cancellationToken);
+            return TypedResults.Ok(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return TypedResults.BadRequest(new { message = ex.Message });
+        }
+    }
 }

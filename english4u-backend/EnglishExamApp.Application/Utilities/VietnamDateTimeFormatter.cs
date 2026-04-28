@@ -9,15 +9,25 @@ public static class VietnamDateTimeFormatter
     {
         if (value is null) return null;
 
-        var utcDateTime = value.Value.Kind switch
+        return ToVietnamTime(value.Value).ToString(DisplayFormat);
+    }
+
+    public static DateOnly ToVietnamDate(DateTime value) =>
+        DateOnly.FromDateTime(ToVietnamTime(value));
+
+    public static DateOnly? ToVietnamDate(DateTime? value) =>
+        value is null ? null : ToVietnamDate(value.Value);
+
+    public static DateTime ToVietnamTime(DateTime value)
+    {
+        var utcDateTime = value.Kind switch
         {
-            DateTimeKind.Utc => value.Value,
-            DateTimeKind.Local => value.Value.ToUniversalTime(),
-            _ => DateTime.SpecifyKind(value.Value, DateTimeKind.Utc),
+            DateTimeKind.Utc => value,
+            DateTimeKind.Local => value.ToUniversalTime(),
+            _ => DateTime.SpecifyKind(value, DateTimeKind.Utc),
         };
 
-        var vietnamDateTime = TimeZoneInfo.ConvertTimeFromUtc(utcDateTime, VietnamTimeZone);
-        return vietnamDateTime.ToString(DisplayFormat);
+        return TimeZoneInfo.ConvertTimeFromUtc(utcDateTime, VietnamTimeZone);
     }
 
     private static TimeZoneInfo ResolveVietnamTimeZone()

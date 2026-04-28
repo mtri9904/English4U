@@ -64,6 +64,10 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             entity.Property(e => e.ActivationToken).HasColumnName("ActivationToken");
             entity.Property(e => e.ResetPasswordToken).HasColumnName("ResetPasswordToken");
             entity.Property(e => e.TokenExpiry).HasColumnName("TokenExpiry");
+            entity.Property(e => e.ExperiencePoints).HasColumnName("experiencePoints").HasDefaultValue(0);
+            entity.Property(e => e.DailyStreakCount).HasColumnName("dailyStreakCount").HasDefaultValue(0);
+            entity.Property(e => e.LongestStreakCount).HasColumnName("longestStreakCount").HasDefaultValue(0);
+            entity.Property(e => e.LastActivityAt).HasColumnName("lastActivityAt");
             entity.Property(e => e.CreatedAt).HasColumnName("createdAt").HasDefaultValueSql("GETDATE()");
             entity.Property(e => e.UpdatedAt).HasColumnName("updatedAt").HasDefaultValueSql("GETDATE()");
         });
@@ -324,6 +328,8 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             entity.Property(e => e.AudioUrl).HasColumnName("audioUrl").HasMaxLength(500).IsRequired();
             entity.Property(e => e.DurationSeconds).HasColumnName("durationSeconds");
             entity.Property(e => e.FileSizeKB).HasColumnName("fileSizeKB");
+            entity.Property(e => e.AudioQualityData).HasColumnName("audioQualityData");
+            entity.Property(e => e.SpeechRatio).HasColumnName("speechRatio");
             entity.HasOne(e => e.Answer).WithMany(a => a.UserAudioRecords).HasForeignKey(e => e.AnswerId).OnDelete(DeleteBehavior.Cascade);
         });
 
@@ -377,6 +383,8 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             entity.Property(e => e.BandScore).HasColumnName("bandScore");
             entity.Property(e => e.AiComment).HasColumnName("aiComment");
             entity.Property(e => e.Improvements).HasColumnName("improvements");
+            entity.Property(e => e.ConfidenceScore).HasColumnName("confidenceScore");
+            entity.Property(e => e.EvidenceData).HasColumnName("evidenceData");
             entity.HasOne(e => e.Answer).WithMany(a => a.AiFeedbacks).HasForeignKey(e => e.AnswerId).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne(e => e.Rubric).WithMany(r => r.AiFeedbacks).HasForeignKey(e => e.RubricId).OnDelete(DeleteBehavior.Cascade);
         });
@@ -390,6 +398,8 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             entity.Property(e => e.TranscriptText).HasColumnName("transcriptText");
             entity.Property(e => e.ConfidenceScore).HasColumnName("confidenceScore");
             entity.Property(e => e.WordErrorRate).HasColumnName("wordErrorRate");
+            entity.Property(e => e.WordTimestampsData).HasColumnName("wordTimestampsData");
+            entity.Property(e => e.PauseStatsData).HasColumnName("pauseStatsData");
             entity.HasOne(e => e.AudioRecord).WithMany(a => a.SpeechTranscripts).HasForeignKey(e => e.AudioRecordId).OnDelete(DeleteBehavior.Cascade);
         });
 

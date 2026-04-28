@@ -1292,9 +1292,10 @@ const buildReviewSummary = (session: PracticeSessionDto) => {
         `Trạng thái: ${session.status}`,
         `Đã trả lời: ${session.answeredQuestions}/${session.totalQuestions}`,
         session.result ? `Độ chính xác: ${session.result.accuracyPercent.toFixed(1)}%` : '',
-        session.result?.readingScore != null ? `Reading score: ${session.result.readingScore}` : '',
-        session.result?.listeningScore != null ? `Listening score: ${session.result.listeningScore}` : '',
-        session.result?.writingScore != null ? `Writing score: ${session.result.writingScore.toFixed(1)}` : '',
+        session.result?.readingScore != null ? `Reading band: ${session.result.readingScore.toFixed(1)}` : '',
+        session.result?.listeningScore != null ? `Listening band: ${session.result.listeningScore.toFixed(1)}` : '',
+        session.result?.writingScore != null ? `Writing band: ${session.result.writingScore.toFixed(1)}` : '',
+        session.result?.totalBandScore != null ? `Overall band: ${session.result.totalBandScore.toFixed(1)}` : '',
         session.result?.overallFeedback ? `Overall feedback: ${normalizeText(session.result.overallFeedback)}` : '',
     ].filter(Boolean);
 
@@ -1365,7 +1366,7 @@ const buildWritingTaskBlock = ({
             ? `Bài làm của học viên:\n${normalizedAnswerText}`
             : 'Bài làm của học viên: Chưa có nội dung được lưu.',
         normalizedAnswerText ? `Số từ hiện có: ${countWords(normalizedAnswerText)}` : '',
-        answer?.scoreEarned > 0 ? `Điểm task: ${answer.scoreEarned.toFixed(1)}` : '',
+        answer?.scoreEarned > 0 ? `Band task: ${answer.scoreEarned.toFixed(1)}` : '',
         feedbackBlock ? `Feedback AI:\n${feedbackBlock}` : '',
     ].filter(Boolean);
 
@@ -1465,6 +1466,54 @@ export const findListeningQuestionFocusPayload = ({
                     reviewAnswer: reviewAnswerMap[question.id],
                     userAnswer: answerMap[question.id] ?? reviewAnswerMap[question.id]?.answerText,
                 });
+            }
+        }
+    }
+
+    return null;
+};
+
+export const findReadingQuestionFocusPayload = ({
+    passages,
+    questionNumber,
+    answerMap,
+    reviewAnswerMap,
+}: {
+    passages: PracticeSessionReadingPassageDto[];
+    questionNumber: number;
+    answerMap: Record<string, string>;
+    reviewAnswerMap: ObjectiveReviewAnswerMap;
+}): CopilotFocusPayload | null => {
+    for (const passage of passages) {
+        for (const group of sortGroups(passage.questionGroups)) {
+            for (const question of sortQuestions(group.questions)) {
+                if (question.questionNumber !== questionNumber) {
+                    continue;
+                }
+
+                const baseFocus = buildQuestionFocusPayload({
+                    group,
+                    question,
+                    reviewAnswer: reviewAnswerMap[question.id],
+                    userAnswer: answerMap[question.id] ?? reviewAnswerMap[question.id]?.answerText,
+                });
+                const passageLabel = `Passage ${passage.passageNumber ?? 'N/A'}${passage.title ? `: ${normalizeText(passage.title)}` : ''}`;
+
+                return {
+                    ...baseFocus,
+                    text: [
+                        passageLabel,
+                        `Bài đọc liên quan:\n${normalizeText(passage.paragraphsData) || 'Passage chưa có nội dung.'}`,
+                        `Câu hỏi cần giải thích:\n${baseFocus.text}`,
+                    ].join('\n\n'),
+                    images: dedupeImages([
+                        ...buildImagePayloads(
+                            parseAssetImageUrls(passage.assetsData),
+                            passageLabel,
+                        ),
+                        ...(baseFocus.images ?? []),
+                    ]),
+                };
             }
         }
     }

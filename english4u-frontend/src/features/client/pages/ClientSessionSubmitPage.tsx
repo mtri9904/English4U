@@ -16,7 +16,14 @@ import { ArrowLeftOutlined, BulbOutlined, ReloadOutlined, SendOutlined } from '@
 import { createPortal } from 'react-dom';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { streamCopilotChat } from '../api/copilot.api';
-import { usePracticeSessionQuery, useStartPracticeSessionMutation, useSubmitReadingListeningMutation, useSubmitSpeakingMutation, useSubmitWritingMutation } from '../api/session.api';
+import {
+    usePracticeSessionQuery,
+    useRescoreSpeakingMutation,
+    useStartPracticeSessionMutation,
+    useSubmitReadingListeningMutation,
+    useSubmitSpeakingMutation,
+    useSubmitWritingMutation,
+} from '../api/session.api';
 import { ReviewCopilotDrawer } from '../components/ReviewCopilotDrawer';
 import { ListeningAttemptModeModal } from '../components/ListeningAttemptModeModal';
 import { SpeakingSessionReview } from '../components/speaking/SpeakingSessionReview';
@@ -24,6 +31,7 @@ import {
     buildListeningQuestionFocusPayload,
     buildObjectiveReviewCopilotContext,
     buildQuestionFocusPayload,
+    findReadingQuestionFocusPayload,
     buildWritingReviewCopilotContext,
     buildWritingTaskFocusPayload,
     findListeningQuestionFocusPayload,
@@ -48,6 +56,7 @@ import type {
     PracticeSessionListeningPartDto,
     PracticeSessionQuestionDto,
     PracticeSessionQuestionGroupDto,
+    PracticeSessionRewardDto,
 } from '../types/session.types';
 import { ListeningBody, ReadingBody } from './ClientObjectiveSessionRunnerPage';
 
@@ -86,6 +95,21 @@ const formatSeconds = (value?: number | null) => {
 const getSessionStatusLabel = (status?: string | null) => (
     status ? statusLabelMap[status] ?? status : 'N/A'
 );
+
+const formatRewardSummary = (reward?: PracticeSessionRewardDto | null) => {
+    if (!reward) {
+        return null;
+    }
+
+    const rewardLabel = reward.experienceAwarded > 0
+        ? `+${reward.experienceAwarded} XP`
+        : 'Đề này đã được tính XP trước đó';
+    const levelLabel = reward.levelUpOccurred
+        ? `Lv.${reward.currentLevel} - lên cấp`
+        : `Lv.${reward.currentLevel}`;
+
+    return `${rewardLabel} • Streak ${reward.dailyStreakCount} ngày • ${levelLabel}`;
+};
 
 const WRITING_SUBMIT_MIN_WORDS = 10;
 const CLIENT_LAYOUT_CONTENT_GUTTER = 24;
@@ -322,11 +346,20 @@ const buildCopilotOutgoingMessage = (message: string, context: ReviewCopilotCont
         );
     }
 
-    if (isObjectiveSkill(context.skillType) && context.focusedQuestionNumber != null) {
+    if (isObjectiveSkill(context.skillType) && (context.focusedQuestionNumber != null || !!context.currentFocusText?.trim())) {
         prefixes.push(
             [
-                'Với câu objective đang focus, không được chỉ trả lời bằng một chữ cái, một từ hoặc ký hiệu đáp án trần.',
-                'Hãy nêu đáp án trước, rồi giải thích ngắn vì sao đáp án đó đúng dựa trên dữ kiện trong bài review.',
+                'Với câu objective đang được hỏi hoặc đang focus, không được chỉ trả lời bằng một chữ cái, một từ hoặc ký hiệu đáp án trần.',
+                'Hãy trả lời đúng trọng tâm câu hỏi của học viên, nêu đáp án rồi giải thích ngắn vì sao dựa trên dữ kiện trong bài review.',
+            ].join(' '),
+        );
+    }
+
+    if (context.skillType.trim().toUpperCase() === 'READING' && context.currentFocusText?.trim()) {
+        prefixes.push(
+            [
+                'Nếu đây là câu Reading và học viên hỏi kiểu "đọc đâu", "vì sao chọn", "loại thế nào", hãy chỉ rõ ý/đoạn trong passage liên quan.',
+                'Nếu học viên nhắc nhiều câu, trả lời lần lượt từng câu; không dùng focus cũ nếu tin nhắn hiện tại đã nêu số câu khác.',
             ].join(' '),
         );
     }
@@ -455,6 +488,70 @@ const parseQuestionRangeFromListeningTranscriptSegment = (value?: string | null)
     }
 
     return { startQuestion, endQuestion };
+};
+
+const buildQuestionNumberRange = (startQuestion: number, endQuestion: number) => {
+    if (!Number.isFinite(startQuestion) || !Number.isFinite(endQuestion) || startQuestion <= 0 || endQuestion <= 0) {
+        return [];
+    }
+
+    const normalizedStart = Math.min(startQuestion, endQuestion);
+    const normalizedEnd = Math.max(startQuestion, endQuestion);
+    const rangeLength = normalizedEnd - normalizedStart + 1;
+    if (rangeLength > 12) {
+        return [];
+    }
+
+    return Array.from({ length: rangeLength }, (_, index) => normalizedStart + index);
+};
+
+const dedupeQuestionNumbers = (numbers: number[]) => {
+    const seen = new Set<number>();
+
+    return numbers.filter((number) => {
+        if (!Number.isFinite(number) || number <= 0 || seen.has(number)) {
+            return false;
+        }
+
+        seen.add(number);
+        return true;
+    });
+};
+
+const extractReferencedQuestionNumbers = (message: string, focusedQuestionNumber?: number | null) => {
+    const normalizedMessage = normalizeCopilotIntentText(message)
+        .replace(/[–—]/g, '-')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    const questionPrefix = String.raw`(?:cau|questions?|q)`;
+    const separator = String.raw`(?:-|to|den|toi|va|and|,|&|\+)`;
+    const prefixedRangeMatch = normalizedMessage.match(new RegExp(String.raw`\b${questionPrefix}\s*(\d{1,3})\s*${separator}\s*(\d{1,3})\b`, 'i'));
+    if (prefixedRangeMatch) {
+        return buildQuestionNumberRange(Number(prefixedRangeMatch[1]), Number(prefixedRangeMatch[2]));
+    }
+
+    const hasQuestionIntent = new RegExp(String.raw`\b${questionPrefix}\b`, 'i').test(normalizedMessage);
+    const hasAnswerIntent = /\b(doc dau|o dau|cho nao|doan nao|vi sao|tai sao|giai thich|chon|dap an|dung|sai|loai)\b/i.test(normalizedMessage);
+    if (hasQuestionIntent && hasAnswerIntent) {
+        const bareRangeMatch = normalizedMessage.match(/\b(\d{1,3})\s*(?:-|to|den|toi)\s*(\d{1,3})\b/i);
+        if (bareRangeMatch) {
+            return buildQuestionNumberRange(Number(bareRangeMatch[1]), Number(bareRangeMatch[2]));
+        }
+    }
+
+    const explicitNumbers = Array.from(normalizedMessage.matchAll(new RegExp(String.raw`\b${questionPrefix}\s*(\d{1,3})\b`, 'gi')))
+        .map((match) => Number(match[1]))
+        .filter((number) => Number.isFinite(number) && number > 0);
+    if (explicitNumbers.length > 0) {
+        return dedupeQuestionNumbers(explicitNumbers);
+    }
+
+    if (focusedQuestionNumber != null && /\b(cau nay|question nay|question this|this question|q nay)\b/i.test(normalizedMessage)) {
+        return [focusedQuestionNumber];
+    }
+
+    return [];
 };
 
 const detectListeningReplayScopes = (segments: Array<{ text: string }>) => {
@@ -1380,8 +1477,8 @@ const ObjectiveSessionReviewRunner = ({
                 return;
             }
 
-            const effectiveCopilotContext = skillType === 'LISTENING'
-                ? (() => {
+            const effectiveCopilotContext = (() => {
+                if (skillType === 'LISTENING') {
                     const referencedQuestionNumber = extractReferencedQuestionNumber(
                         userMessage,
                         copilotContext.focusedQuestionNumber,
@@ -1415,8 +1512,53 @@ const ObjectiveSessionReviewRunner = ({
                         focusedQuestionNumber: listeningQuestionFocus.questionNumber ?? referencedQuestionNumber,
                         contextImages: mergeCopilotImages(copilotContext.contextImages, listeningQuestionFocus.images),
                     };
-                })()
-                : copilotContext;
+                }
+
+                if (skillType === 'READING') {
+                    const referencedQuestionNumbers = extractReferencedQuestionNumbers(
+                        userMessage,
+                        copilotContext.focusedQuestionNumber,
+                    );
+                    if (referencedQuestionNumbers.length === 0) {
+                        return copilotContext;
+                    }
+
+                    const readingQuestionFocuses = referencedQuestionNumbers
+                        .map((questionNumber) => findReadingQuestionFocusPayload({
+                            passages: readingPassages,
+                            questionNumber,
+                            answerMap,
+                            reviewAnswerMap,
+                        }))
+                        .filter((focus): focus is CopilotFocusPayload => !!focus);
+
+                    if (readingQuestionFocuses.length === 0) {
+                        return copilotContext;
+                    }
+
+                    const firstFocus = readingQuestionFocuses[0];
+                    const focusLabel = readingQuestionFocuses.length === 1
+                        ? firstFocus.label
+                        : `Câu ${referencedQuestionNumbers.join(', ')}`;
+                    const focusText = readingQuestionFocuses.length === 1
+                        ? firstFocus.text
+                        : readingQuestionFocuses
+                            .map((focus) => `=== ${focus.label} ===\n${focus.text}`)
+                            .join('\n\n');
+
+                    return {
+                        ...copilotContext,
+                        currentFocusLabel: focusLabel,
+                        currentFocusText: focusText,
+                        focusedQuestionNumber: readingQuestionFocuses.length === 1
+                            ? firstFocus.questionNumber ?? referencedQuestionNumbers[0]
+                            : null,
+                        contextImages: mergeCopilotImages(copilotContext.contextImages, ...readingQuestionFocuses.map((focus) => focus.images)),
+                    };
+                }
+
+                return copilotContext;
+            })();
             const requestedReplayQuestionNumber = skillType === 'LISTENING'
                 ? extractRequestedReplayQuestionNumber(
                     userMessage,
@@ -1732,9 +1874,10 @@ const ObjectiveSessionReviewRunner = ({
                         justifyContent: 'flex-end',
                         alignItems: 'center',
                         minWidth: 0,
-                        width: '100%',
+                        width: 'auto',
                         maxWidth: '100%',
                         overflow: 'hidden',
+                        flex: '0 0 auto',
                     }}
                 >
                     <Button
@@ -2054,6 +2197,7 @@ export const ClientSessionSubmitPage = () => {
     const submitMutation = useSubmitReadingListeningMutation();
     const submitWritingMutation = useSubmitWritingMutation();
     const submitSpeakingMutation = useSubmitSpeakingMutation();
+    const rescoreSpeakingMutation = useRescoreSpeakingMutation();
     const startSessionMutation = useStartPracticeSessionMutation();
 
     useEffect(() => {
@@ -2078,14 +2222,15 @@ export const ClientSessionSubmitPage = () => {
                 ? submitSpeakingMutation
                 : submitMutation;
         mutation.mutate(sessionId, {
-            onSuccess: () => {
+            onSuccess: (submitResult) => {
                 refetch();
+                const rewardSummary = formatRewardSummary(submitResult.reward);
                 message.success(
                     isWritingSkill(session.skillType)
-                        ? 'Đã nộp bài Writing. AI đang chấm...'
+                        ? (rewardSummary ? `Writing đã chấm xong. ${rewardSummary}` : 'Writing đã chấm xong.')
                         : isSpeakingSkill(session.skillType)
-                            ? 'Đã nộp bài Speaking. AI đang chấm...'
-                            : 'Đã tự động nộp bài.',
+                            ? (rewardSummary ? `Speaking đã chấm xong. ${rewardSummary}` : 'Speaking đã chấm xong.')
+                            : (rewardSummary ? `Đã tự động nộp bài. ${rewardSummary}` : 'Đã tự động nộp bài.'),
                 );
             },
             onError: (error: any) => {
@@ -2187,6 +2332,7 @@ export const ClientSessionSubmitPage = () => {
         : isSpeakingSession
             ? submitSpeakingMutation.data
             : submitMutation.data;
+    const latestReward = latestMutationResult?.reward ?? null;
     const result = session?.result ?? latestMutationResult ?? null;
     const canRetryWritingScore = isWritingSession && session?.status === 'Submitted' && result?.writingScore == null;
     const canSubmitNow = !!session && (session.status === 'InProgress' || canRetryWritingScore) && isSupportedRunnerSkill(session.skillType);
@@ -2324,20 +2470,27 @@ export const ClientSessionSubmitPage = () => {
     }
 
     if (isSpeakingSession) {
-        const canRetrySpeakingScore = session.status !== 'InProgress' && result?.speakingScore == null;
-        const canSubmitSpeaking = session.status === 'InProgress' || canRetrySpeakingScore;
+        const canRescoreSpeaking = session.status !== 'InProgress';
+        const canSubmitSpeaking = session.status === 'InProgress' || canRescoreSpeaking;
+        const speakingActionLoading = submitSpeakingMutation.isPending || rescoreSpeakingMutation.isPending;
 
         return (
             <SpeakingSessionReview
                 session={session}
                 result={result}
-                submitLoading={submitSpeakingMutation.isPending}
+                submitLoading={speakingActionLoading}
                 canSubmitNow={canSubmitSpeaking}
                 onSubmit={() => {
-                    submitSpeakingMutation.mutate(sessionId, {
-                        onSuccess: () => {
+                    const mutation = canRescoreSpeaking ? rescoreSpeakingMutation : submitSpeakingMutation;
+                    mutation.mutate(sessionId, {
+                        onSuccess: (submitResult) => {
                             refetch();
-                            message.success(canRetrySpeakingScore ? 'Đã gửi lại yêu cầu chấm Speaking.' : 'Đã nộp bài Speaking.');
+                            const rewardSummary = formatRewardSummary(submitResult.reward);
+                            message.success(
+                                canRescoreSpeaking
+                                    ? (rewardSummary ? `Đã chấm lại Speaking. ${rewardSummary}` : 'Đã chấm lại Speaking.')
+                                    : (rewardSummary ? `Đã nộp bài Speaking. ${rewardSummary}` : 'Đã nộp bài Speaking.'),
+                            );
                         },
                         onError: (error: any) => {
                             refetch();
@@ -2377,12 +2530,12 @@ export const ClientSessionSubmitPage = () => {
     const showStackedObjectiveSummary = showObjectiveReview && objectiveReviewLayout.open;
     const mainColLg = isWritingSession ? 12 : (showStackedObjectiveSummary ? 24 : 15);
     const resultColLg = isWritingSession ? 12 : (showStackedObjectiveSummary ? 24 : 9);
-    const objectiveAnsweredValue = result
-        ? `${result.answeredQuestions}/${result.totalQuestions}`
-        : `${session.answeredQuestions}/${session.totalQuestions}`;
     const objectiveAccuracyValue = `${result?.accuracyPercent ?? 0}%`;
     const objectiveSkillLabel = getSkillLabel(session.skillType);
-    const objectiveScoreValue = result?.totalAutoScore?.toFixed(1) || '0.0';
+    const objectiveBandValue = result?.totalBandScore != null ? result.totalBandScore.toFixed(1) : '—';
+    const objectiveRawScoreValue = result
+        ? `${result.totalAutoScore.toFixed(1)}/${result.maxAutoScore.toFixed(1)}`
+        : '0.0';
     const summaryInfoCards = [
         { key: 'startedAt', label: 'Bắt đầu', value: formatDateTimeToMinute(session.startedAt) || 'N/A' },
         { key: 'endedAt', label: 'Kết thúc', value: formatDateTimeToMinute(session.endedAt) || 'Chưa nộp' },
@@ -2390,9 +2543,9 @@ export const ClientSessionSubmitPage = () => {
         { key: 'progress', label: 'Tiến độ', value: progressLabel },
     ];
     const objectiveStatCards = [
-        { key: 'score', label: 'Điểm đạt được', value: objectiveScoreValue, accent: '#2563eb', tone: '#eff6ff' },
+        { key: 'band', label: 'Band IELTS', value: objectiveBandValue, accent: '#2563eb', tone: '#eff6ff' },
+        { key: 'score', label: 'Raw score', value: objectiveRawScoreValue, accent: '#0891b2', tone: '#ecfeff' },
         { key: 'correct', label: 'Câu đúng', value: String(result?.correctQuestions ?? 0), accent: '#16a34a', tone: '#f0fdf4' },
-        { key: 'answered', label: 'Đã trả lời', value: objectiveAnsweredValue, accent: '#d97706', tone: '#fff7ed' },
         { key: 'accuracy', label: 'Độ chính xác', value: objectiveAccuracyValue, accent: '#7c3aed', tone: '#f5f3ff' },
     ];
 
@@ -2592,9 +2745,10 @@ export const ClientSessionSubmitPage = () => {
             }
 
             submitWritingMutation.mutate(sessionId, {
-                onSuccess: () => {
+                onSuccess: (submitResult) => {
                     refetch();
-                    message.success('Đã nộp bài Writing. AI đang chấm...');
+                    const rewardSummary = formatRewardSummary(submitResult.reward);
+                    message.success(rewardSummary ? `Đã chấm xong Writing. ${rewardSummary}` : 'Đã chấm xong Writing.');
                 },
                 onError: (error: any) => {
                     refetch();
@@ -2611,7 +2765,13 @@ export const ClientSessionSubmitPage = () => {
         }
 
         if (isObjectiveSkill(session.skillType)) {
-            submitMutation.mutate(sessionId, { onSuccess: () => refetch() });
+            submitMutation.mutate(sessionId, {
+                onSuccess: (submitResult) => {
+                    refetch();
+                    const rewardSummary = formatRewardSummary(submitResult.reward);
+                    message.success(rewardSummary ? `Đã nộp bài. ${rewardSummary}` : 'Đã nộp bài thành công.');
+                },
+            });
         }
     };
 
@@ -2639,10 +2799,11 @@ export const ClientSessionSubmitPage = () => {
                             display: flex;
                             align-items: center;
                             gap: 12px;
-                            width: 100%;
+                            width: auto;
                             min-width: 0;
                             height: 100%;
-                            flex: 1 1 auto;
+                            flex: 1 1 0;
+                            overflow: hidden;
                         }
 
                         .session-submit-back-button {
@@ -2662,6 +2823,7 @@ export const ClientSessionSubmitPage = () => {
                             gap: 10px;
                             min-width: 0;
                             flex: 1 1 auto;
+                            overflow: hidden;
                         }
 
                         .session-submit-title-accent {
@@ -2675,6 +2837,7 @@ export const ClientSessionSubmitPage = () => {
 
                         .session-submit-page-title {
                             min-width: 0;
+                            flex: 1 1 auto;
                             overflow: hidden;
                             text-overflow: ellipsis;
                             white-space: nowrap;
@@ -2687,8 +2850,9 @@ export const ClientSessionSubmitPage = () => {
                             display: flex;
                             align-items: center;
                             gap: 8px;
-                            flex-wrap: wrap;
-                            min-width: 0;
+                            flex: 0 0 auto;
+                            flex-wrap: nowrap;
+                            min-width: max-content;
                         }
 
                         .session-submit-header-chip {
@@ -2783,6 +2947,31 @@ export const ClientSessionSubmitPage = () => {
                         @keyframes session-submit-progress-pulse {
                             0%, 100% { transform: scale(0.9); box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.18); }
                             50% { transform: scale(1); box-shadow: 0 0 0 10px rgba(37, 99, 235, 0); }
+                        }
+
+                        @media (max-width: 980px) {
+                            .session-submit-page-toolbar {
+                                gap: 8px;
+                            }
+
+                            .session-submit-title-accent,
+                            .session-submit-status-chip {
+                                display: none;
+                            }
+
+                            .session-submit-page-title {
+                                font-size: 0.92rem;
+                            }
+
+                            .session-submit-header-action {
+                                padding-inline: 12px;
+                            }
+                        }
+
+                        @media (max-width: 760px) {
+                            .session-submit-skill-chip {
+                                display: none;
+                            }
                         }
                     `}</style>
                     <div className="session-submit-page-toolbar">
@@ -2880,6 +3069,24 @@ export const ClientSessionSubmitPage = () => {
                 }}
             >
                 <Space direction="vertical" size={20} style={{ width: '100%' }}>
+                    {latestReward ? (
+                        <Alert
+                            type={latestReward.experienceAwarded > 0 ? 'success' : 'info'}
+                            showIcon
+                            message={latestReward.levelUpOccurred
+                                ? `Lên cấp thành công: Lv.${latestReward.currentLevel}`
+                                : `Tiến trình đã cập nhật: Lv.${latestReward.currentLevel}`}
+                            description={latestReward.experienceAwarded > 0
+                                ? `Bạn nhận +${latestReward.experienceAwarded} XP. Streak hiện tại là ${latestReward.dailyStreakCount} ngày liên tiếp.`
+                                : `Đề này đã được cộng XP từ lần hoàn thành trước. Streak hiện tại là ${latestReward.dailyStreakCount} ngày liên tiếp.`}
+                            style={{
+                                borderRadius: 18,
+                                border: latestReward.experienceAwarded > 0 ? '1px solid #bbf7d0' : '1px solid #bfdbfe',
+                                boxShadow: '0 12px 28px rgba(15, 23, 42, 0.06)',
+                            }}
+                        />
+                    ) : null}
+
                     {showWritingScoringView ? (
                         <Card
                             style={{
@@ -3336,7 +3543,7 @@ export const ClientSessionSubmitPage = () => {
                                             }}
                                         >
                                             <Text style={{ display: 'block', color: 'rgba(255,255,255,0.72)', fontSize: 13 }}>
-                                                Điểm tổng kết
+                                                Band tổng kết
                                             </Text>
                                             <Text
                                                 strong
@@ -3349,7 +3556,7 @@ export const ClientSessionSubmitPage = () => {
                                                     letterSpacing: '-0.03em',
                                                 }}
                                             >
-                                                {objectiveScoreValue}
+                                                {objectiveBandValue}
                                             </Text>
                                         </div>
                                     </div>
