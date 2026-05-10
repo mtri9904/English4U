@@ -1,5 +1,7 @@
 @echo off
 setlocal
+set "ASPNETCORE_ENVIRONMENT=Development"
+set "DOTNET_ENVIRONMENT=Development"
 echo [*] Su dung Gemma API key tu cau hinh backend (appsettings/env cua backend).
 
 set "DOTNET_EF=%USERPROFILE%\.dotnet\tools\dotnet-ef.exe"

@@ -400,3 +400,4 @@ C:\Users\Hande\OneDrive\Documents\DoAnTotNghiep\English4skills\english4u-backend
 C:\Users\Hande\OneDrive\Documents\DoAnTotNghiep\English4skills\english4u-backend\EnglishExamApp.API\obj\Debug\net9.0\EnglishExamApp.API.pdb
 C:\Users\Hande\OneDrive\Documents\DoAnTotNghiep\English4skills\english4u-backend\EnglishExamApp.API\obj\Debug\net9.0\EnglishExamApp.API.genruntimeconfig.cache
 C:\Users\Hande\OneDrive\Documents\DoAnTotNghiep\English4skills\english4u-backend\EnglishExamApp.API\obj\Debug\net9.0\ref\EnglishExamApp.API.dll
+C:\Users\Hande\OneDrive\Documents\DoAnTotNghiep\English4skills\english4u-backend\EnglishExamApp.API\bin\Debug\net9.0\appsettings.example.json

@@ -1,6 +1,9 @@
 using EnglishExamApp.API.Realtime;
+using EnglishExamApp.API.Authentication;
 using EnglishExamApp.Application.Interfaces;
+using EnglishExamApp.Application.Realtime;
 using EnglishExamApp.Application.Utilities;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -8,9 +11,11 @@ namespace EnglishExamApp.API.Controllers;
 
 [ApiController]
 [Route("api/notifications")]
+[Authorize]
 public class NotificationController(
     IApplicationDbContext context,
-    IRealtimeEventDispatcher realtimeDispatcher) : ControllerBase
+    IRealtimeEventDispatcher realtimeDispatcher,
+    ICurrentUserService currentUser) : ControllerBase
 {
     public sealed record NotificationPagedRequest(int PageNumber = 1, int PageSize = 8);
     public sealed record NotificationListItemDto(Guid Id, string Title, string? Message, bool IsRead, string CreatedAt);
@@ -20,11 +25,10 @@ public class NotificationController(
 
     [HttpGet("my")]
     public async Task<IResult> GetMyNotifications(
-        [FromHeader(Name = "X-User-Id")] string? userIdStr,
         [FromQuery] NotificationPagedRequest request,
         CancellationToken cancellationToken)
     {
-        if (!Guid.TryParse(userIdStr, out var userId))
+        if (!currentUser.TryGetUserId(out var userId))
             return TypedResults.Unauthorized();
 
         var pageNumber = request.PageNumber <= 0 ? 1 : request.PageNumber;
@@ -53,10 +57,9 @@ public class NotificationController(
 
     [HttpGet("my/stats")]
     public async Task<IResult> GetMyNotificationStats(
-        [FromHeader(Name = "X-User-Id")] string? userIdStr,
         CancellationToken cancellationToken)
     {
-        if (!Guid.TryParse(userIdStr, out var userId))
+        if (!currentUser.TryGetUserId(out var userId))
             return TypedResults.Unauthorized();
 
         var total = await context.Notifications.CountAsync(n => n.UserId == userId, cancellationToken);
@@ -67,12 +70,11 @@ public class NotificationController(
 
     [HttpPatch("{id:guid}/read")]
     public async Task<IResult> UpdateReadStatus(
-        [FromHeader(Name = "X-User-Id")] string? userIdStr,
         [FromRoute] Guid id,
         [FromBody] UpdateReadStatusRequest request,
         CancellationToken cancellationToken)
     {
-        if (!Guid.TryParse(userIdStr, out var userId))
+        if (!currentUser.TryGetUserId(out var userId))
             return TypedResults.Unauthorized();
 
         var notification = await context.Notifications
@@ -88,10 +90,9 @@ public class NotificationController(
 
     [HttpPatch("my/mark-all-read")]
     public async Task<IResult> MarkAllAsRead(
-        [FromHeader(Name = "X-User-Id")] string? userIdStr,
         CancellationToken cancellationToken)
     {
-        if (!Guid.TryParse(userIdStr, out var userId))
+        if (!currentUser.TryGetUserId(out var userId))
             return TypedResults.Unauthorized();
 
         var unreadNotifications = await context.Notifications

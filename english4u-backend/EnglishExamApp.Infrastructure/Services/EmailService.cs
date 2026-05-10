@@ -2,22 +2,24 @@ using System.Net;
 using System.Net.Mail;
 using EnglishExamApp.Application.Interfaces;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
 namespace EnglishExamApp.Infrastructure.Services;
 
-public class EmailService(IConfiguration configuration) : IEmailService
+public class EmailService(
+    IConfiguration configuration,
+    ILogger<EmailService> logger) : IEmailService
 {
     public async Task SendEmailAsync(string toEmail, string subject, string body)
     {
         var smtpServer = configuration["Email:SmtpServer"] ?? "smtp.gmail.com";
         var smtpPort = int.Parse(configuration["Email:SmtpPort"] ?? "587");
-        var fromEmail = configuration["Email:FromEmail"] ?? "minhtritamm@gmail.com";
-        var appPassword = configuration["Email:AppPassword"]?.Replace(" ", ""); // Remove spaces
+        var fromEmail = configuration["Email:FromEmail"] ?? string.Empty;
+        var appPassword = configuration["Email:AppPassword"]?.Replace(" ", "");
 
-        if (string.IsNullOrEmpty(appPassword))
+        if (string.IsNullOrWhiteSpace(fromEmail) || string.IsNullOrWhiteSpace(appPassword))
         {
-            Console.WriteLine($"[EMAIL MOCK] To: {toEmail}, Subject: {subject}");
-            Console.WriteLine($"Body: {body}");
+            logger.LogInformation("Email delivery skipped because SMTP credentials are not configured. To: {ToEmail}, Subject: {Subject}", toEmail, subject);
             return;
         }
 
@@ -38,14 +40,14 @@ public class EmailService(IConfiguration configuration) : IEmailService
             mailMessage.To.Clear();
             mailMessage.To.Add(toEmail.Trim());
 
-            Console.WriteLine($"[EMAIL SENDING] Attempting to send from {fromEmail} to {toEmail.Trim()}...");
+            logger.LogInformation("Sending email to {ToEmail}.", toEmail.Trim());
             await client.SendMailAsync(mailMessage);
-            Console.WriteLine($"[EMAIL SUCCESS] Sent activation to: {toEmail.Trim()}");
+            logger.LogInformation("Email sent to {ToEmail}.", toEmail.Trim());
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[EMAIL ERROR] Failed to send email to {toEmail}: {ex.Message}");
-            throw; // Reraise to let AuthController know
+            logger.LogError(ex, "Failed to send email to {ToEmail}.", toEmail);
+            throw;
         }
     }
 }

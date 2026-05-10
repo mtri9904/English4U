@@ -1,5 +1,6 @@
 C:\EnglishExamApp\publish\EnglishExamApp.API.exe
 C:\EnglishExamApp\publish\appsettings.Development.json
+C:\EnglishExamApp\publish\appsettings.example.json
 C:\EnglishExamApp\publish\appsettings.json
 C:\EnglishExamApp\publish\EnglishExamApp.API.dll
 C:\EnglishExamApp\publish\EnglishExamApp.API.runtimeconfig.json

@@ -1,7 +1,9 @@
 using EnglishExamApp.Application.Interfaces;
+using EnglishExamApp.Application.Realtime;
 using EnglishExamApp.Application.Utilities;
 using EnglishExamApp.API.Realtime;
 using EnglishExamApp.Domain.Entities;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -9,6 +11,7 @@ namespace EnglishExamApp.API.Controllers;
 
 [ApiController]
 [Route("api/admin/notifications")]
+[Authorize(Roles = "Admin")]
 public class AdminNotificationController(
     IApplicationDbContext context,
     IRealtimeEventDispatcher realtimeDispatcher) : ControllerBase
@@ -106,7 +109,7 @@ public class AdminNotificationController(
                     first.Message,
                     CreatedAtUtc = group.Key.CreatedAtBatch,
                     UserDisplayName = userCount == 1
-                        ? (string.IsNullOrWhiteSpace(first.DisplayName) ? GetDisplayNameFromEmail(first.Email) : first.DisplayName!)
+                        ? UserDisplayNameFormatter.FromDisplayNameOrEmail(first.DisplayName, first.Email)
                         : $"{userCount} người nhận",
                     UserEmail = userCount == 1 ? first.Email : $"{userCount} tài khoản",
                     UserRole = distinctRoles.Count == 1 ? distinctRoles[0] : "ALL",
@@ -139,12 +142,7 @@ public class AdminNotificationController(
     [HttpGet("stats")]
     public async Task<IResult> GetNotificationStats(CancellationToken cancellationToken)
     {
-        var vietnamTimeZone = ResolveVietnamTimeZone();
-        var nowVn = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, vietnamTimeZone);
-        var todayStartVn = nowVn.Date;
-        var todayEndVn = todayStartVn.AddDays(1);
-        var todayStartUtc = TimeZoneInfo.ConvertTimeToUtc(todayStartVn, vietnamTimeZone);
-        var todayEndUtc = TimeZoneInfo.ConvertTimeToUtc(todayEndVn, vietnamTimeZone);
+        var (todayStartUtc, todayEndUtc) = VietnamDateTimeFormatter.GetTodayUtcRange();
 
         var rawNotifications = await context.Notifications
             .AsNoTracking()
@@ -307,36 +305,6 @@ public class AdminNotificationController(
         await context.SaveChangesAsync(cancellationToken);
         await PublishNotificationChangedAsync(cancellationToken);
         return TypedResults.Ok(new { message = "All notifications marked as read.", updatedCount = unreadNotifications.Count });
-    }
-
-    private static TimeZoneInfo ResolveVietnamTimeZone()
-    {
-        try
-        {
-            return TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
-        }
-        catch
-        {
-            try
-            {
-                return TimeZoneInfo.FindSystemTimeZoneById("Asia/Ho_Chi_Minh");
-            }
-            catch
-            {
-                return TimeZoneInfo.Utc;
-            }
-        }
-    }
-
-    private static string GetDisplayNameFromEmail(string email)
-    {
-        if (string.IsNullOrWhiteSpace(email))
-        {
-            return "user";
-        }
-
-        var atIndex = email.IndexOf('@');
-        return atIndex > 0 ? email[..atIndex] : email;
     }
 
     private static DateTime TruncateToSecondUtc(DateTime value)

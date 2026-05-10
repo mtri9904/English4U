@@ -17,14 +17,9 @@ const createAuthHeaders = () => {
     };
 
     const token = localStorage.getItem('token');
-    const userId = localStorage.getItem('userId');
 
     if (token) {
         headers.Authorization = `Bearer ${token}`;
-    }
-
-    if (userId) {
-        headers['X-User-Id'] = userId;
     }
 
     return headers;

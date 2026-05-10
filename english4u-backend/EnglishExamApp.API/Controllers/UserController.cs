@@ -1,18 +1,21 @@
-using EnglishExamApp.API.Realtime;
+using EnglishExamApp.API.Authentication;
 using EnglishExamApp.Application.DTOs.Users;
 using EnglishExamApp.Application.Interfaces;
 using EnglishExamApp.Application.Utilities;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using System.Security.Cryptography;
 
 namespace EnglishExamApp.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class UserController(
     IApplicationDbContext context,
-    IRealtimeEventDispatcher realtimeDispatcher) : ControllerBase
+    ICurrentUserService currentUser,
+    IPasswordHasher passwordHasher,
+    IUserPresenceService userPresenceService) : ControllerBase
 {
     private static readonly TimeSpan OnlineThreshold = TimeSpan.FromMinutes(2);
     private static readonly string[] ManagedRoles = ["Student", "Admin"];
@@ -43,9 +46,9 @@ public class UserController(
     public sealed record ChangePasswordRequest(string OldPassword, string NewPassword);
 
     [HttpGet("profile")]
-    public async Task<IResult> GetProfile([FromHeader(Name = "X-User-Id")] string? userIdStr, CancellationToken cancellationToken)
+    public async Task<IResult> GetProfile(CancellationToken cancellationToken)
     {
-        if (!Guid.TryParse(userIdStr, out var userId))
+        if (!currentUser.TryGetUserId(out var userId))
             return TypedResults.Unauthorized();
 
         var rawProfile = await context.Users
@@ -181,11 +184,10 @@ public class UserController(
 
     [HttpPut("profile")]
     public async Task<IResult> UpdateProfile(
-        [FromHeader(Name = "X-User-Id")] string? userIdStr,
         [FromBody] UpdateProfileRequest request,
         CancellationToken cancellationToken)
     {
-        if (!Guid.TryParse(userIdStr, out var userId)) 
+        if (!currentUser.TryGetUserId(out var userId))
             return TypedResults.Unauthorized();
 
         var user = await context.Users.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
@@ -205,20 +207,19 @@ public class UserController(
 
     [HttpPut("change-password")]
     public async Task<IResult> ChangePassword(
-        [FromHeader(Name = "X-User-Id")] string? userIdStr,
         [FromBody] ChangePasswordRequest request,
         CancellationToken cancellationToken)
     {
-        if (!Guid.TryParse(userIdStr, out var userId)) 
+        if (!currentUser.TryGetUserId(out var userId))
             return TypedResults.Unauthorized();
 
         var user = await context.Users.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
         if (user is null) return TypedResults.NotFound();
 
-        if (!VerifyPassword(request.OldPassword, user.PasswordHash))
+        if (!passwordHasher.VerifyPassword(request.OldPassword, user.PasswordHash))
             return TypedResults.BadRequest(new { message = "Mật khẩu cũ không chính xác" });
 
-        user.PasswordHash = HashPassword(request.NewPassword);
+        user.PasswordHash = passwordHasher.HashPassword(request.NewPassword);
         user.UpdatedAt = DateTime.UtcNow;
 
         await context.SaveChangesAsync(cancellationToken);
@@ -226,6 +227,7 @@ public class UserController(
     }
 
     [HttpGet("students")]
+    [Authorize(Roles = "Admin")]
     public async Task<IResult> GetStudents(CancellationToken cancellationToken)
     {
         var onlineFrom = DateTime.UtcNow - OnlineThreshold;
@@ -268,6 +270,7 @@ public class UserController(
     }
 
     [HttpPut("students/{studentId:guid}/active")]
+    [Authorize(Roles = "Admin")]
     public async Task<IResult> UpdateStudentActive(
         [FromRoute] Guid studentId,
         [FromBody] UpdateStudentActiveRequest request,
@@ -293,81 +296,48 @@ public class UserController(
         await context.SaveChangesAsync(cancellationToken);
         if (shouldPublishPresenceChanged)
         {
-            await PublishUserPresenceChangedAsync(cancellationToken);
+            await userPresenceService.PublishPresenceChangedAsync(cancellationToken);
         }
         return TypedResults.Ok(new { message = "Student active status updated successfully." });
     }
 
     [HttpPost("activity/heartbeat")]
-    public async Task<IResult> Heartbeat(
-        [FromHeader(Name = "X-User-Id")] string? userIdStr,
-        CancellationToken cancellationToken)
+    public async Task<IResult> Heartbeat(CancellationToken cancellationToken)
     {
-        if (!Guid.TryParse(userIdStr, out var userId))
+        if (!currentUser.TryGetUserId(out var userId))
             return TypedResults.Unauthorized();
 
-        var user = await context.Users.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
-        if (user is null)
-            return TypedResults.NotFound();
-
-        if (!user.IsActive)
+        var result = await userPresenceService.HeartbeatAsync(userId, cancellationToken);
+        if (result.Status == UserPresenceHeartbeatStatus.NotFound)
         {
-            var wasOnline = user.IsOnline;
-            user.IsOnline = false;
-            await context.SaveChangesAsync(cancellationToken);
-            if (wasOnline)
-            {
-                await PublishUserPresenceChangedAsync(cancellationToken);
-            }
+            return TypedResults.NotFound();
+        }
+
+        if (result.Status == UserPresenceHeartbeatStatus.Inactive)
+        {
             return TypedResults.Forbid();
         }
 
-        var wasPreviouslyOnline = user.IsOnline;
-        user.LastSeenAt = DateTime.UtcNow;
-        user.IsOnline = true;
-        user.UpdatedAt = DateTime.UtcNow;
-
-        await context.SaveChangesAsync(cancellationToken);
-        if (!wasPreviouslyOnline)
-        {
-            await PublishUserPresenceChangedAsync(cancellationToken);
-        }
         return TypedResults.Ok(new { message = "Heartbeat updated." });
     }
 
     [HttpPost("activity/offline")]
-    public async Task<IResult> MarkOffline(
-        [FromHeader(Name = "X-User-Id")] string? userIdStr,
-        [FromQuery] string? userId,
-        CancellationToken cancellationToken)
+    public async Task<IResult> MarkOffline(CancellationToken cancellationToken)
     {
-        var rawUserId = !string.IsNullOrWhiteSpace(userIdStr) ? userIdStr : userId;
-        if (!Guid.TryParse(rawUserId, out var parsedUserId))
-            return TypedResults.Ok();
+        if (!currentUser.TryGetUserId(out var userId))
+            return TypedResults.Unauthorized();
 
-        var user = await context.Users.FirstOrDefaultAsync(u => u.Id == parsedUserId, cancellationToken);
-        if (user is null)
+        var userFound = await userPresenceService.MarkOfflineAsync(userId, cancellationToken);
+        if (!userFound)
             return TypedResults.Ok();
-
-        var wasOnline = user.IsOnline;
-        user.LastSeenAt = DateTime.UtcNow;
-        user.IsOnline = false;
-        user.UpdatedAt = DateTime.UtcNow;
-        await context.SaveChangesAsync(cancellationToken);
-        if (wasOnline)
-        {
-            await PublishUserPresenceChangedAsync(cancellationToken);
-        }
 
         return TypedResults.Ok(new { message = "User marked offline." });
     }
 
     [HttpDelete]
-    public async Task<IResult> DeleteAccount(
-        [FromHeader(Name = "X-User-Id")] string? userIdStr,
-        CancellationToken cancellationToken)
+    public async Task<IResult> DeleteAccount(CancellationToken cancellationToken)
     {
-        if (!Guid.TryParse(userIdStr, out var userId)) 
+        if (!currentUser.TryGetUserId(out var userId))
             return TypedResults.Unauthorized();
 
         var user = await context.Users.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
@@ -378,26 +348,4 @@ public class UserController(
 
         return TypedResults.Ok(new { message = "Tài khoản của bạn đã được xóa thành công." });
     }
-
-    private static string HashPassword(string password)
-    {
-        var salt = RandomNumberGenerator.GetBytes(16);
-        var hash = Rfc2898DeriveBytes.Pbkdf2(password, salt, 100_000, HashAlgorithmName.SHA256, 32);
-        return $"{Convert.ToBase64String(salt)}.{Convert.ToBase64String(hash)}";
-    }
-
-    private static bool VerifyPassword(string password, string storedHash)
-    {
-        var parts = storedHash.Split('.');
-        if (parts.Length != 2) return false;
-
-        var salt = Convert.FromBase64String(parts[0]);
-        var hash = Convert.FromBase64String(parts[1]);
-        var computedHash = Rfc2898DeriveBytes.Pbkdf2(password, salt, 100_000, HashAlgorithmName.SHA256, 32);
-
-        return CryptographicOperations.FixedTimeEquals(hash, computedHash);
-    }
-
-    private Task PublishUserPresenceChangedAsync(CancellationToken cancellationToken) =>
-        realtimeDispatcher.PublishAsync(RealtimeEventTypes.UsersPresenceChanged, cancellationToken: cancellationToken);
 }

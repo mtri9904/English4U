@@ -1,0 +1,10 @@
+name: Local Config
+version: 1.0.0
+schema: v1
+
+models:
+  - title: Xiaomi MiMo
+    provider: openai
+    model: MiMo-V2.5-Pro
+    apiBase: https://token-plan-sgp.xiaomimimo.com/v1
+    apiKey: tp-xxxxxxxx

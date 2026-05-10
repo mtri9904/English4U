@@ -1,6 +1,8 @@
+using EnglishExamApp.Application.Billing;
 using EnglishExamApp.Application.Interfaces;
 using EnglishExamApp.Application.Utilities;
 using EnglishExamApp.Domain.Entities;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -8,6 +10,7 @@ namespace EnglishExamApp.API.Controllers;
 
 [ApiController]
 [Route("api/admin/billing")]
+[Authorize(Roles = "Admin")]
 public class AdminBillingController(IApplicationDbContext context) : ControllerBase
 {
     public sealed record BillingOverviewDto(
@@ -273,7 +276,7 @@ public class AdminBillingController(IApplicationDbContext context) : ControllerB
             .ToListAsync(cancellationToken);
 
         var subscriptionIds = rawPayments
-            .Select(p => ExtractSubscriptionId(p.TransactionId))
+            .Select(p => PaymentTransactionMetadata.ExtractSubscriptionId(p.TransactionId))
             .Where(id => id.HasValue)
             .Select(id => id!.Value)
             .Distinct()
@@ -287,13 +290,13 @@ public class AdminBillingController(IApplicationDbContext context) : ControllerB
         var payments = rawPayments
             .Select(p =>
             {
-                var subscriptionId = ExtractSubscriptionId(p.TransactionId);
+                var subscriptionId = PaymentTransactionMetadata.ExtractSubscriptionId(p.TransactionId);
                 subscriptionMap.TryGetValue(subscriptionId ?? Guid.Empty, out var subscriptionName);
 
                 return new PaymentListItemDto(
                     p.Id,
                     p.UserId,
-                    string.IsNullOrWhiteSpace(p.DisplayName) ? GetDisplayNameFromEmail(p.Email) : p.DisplayName!,
+                    UserDisplayNameFormatter.FromDisplayNameOrEmail(p.DisplayName, p.Email),
                     p.Email,
                     subscriptionName,
                     p.Amount,
@@ -308,44 +311,4 @@ public class AdminBillingController(IApplicationDbContext context) : ControllerB
         return TypedResults.Ok(new PagedResult<PaymentListItemDto>(payments, totalCount, pageNumber, pageSize));
     }
 
-    private static Guid? ExtractSubscriptionId(string? transactionId)
-    {
-        if (string.IsNullOrWhiteSpace(transactionId))
-        {
-            return null;
-        }
-
-        const string marker = "SUB:";
-        var markerIndex = transactionId.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
-        if (markerIndex < 0)
-        {
-            return null;
-        }
-
-        var raw = transactionId[(markerIndex + marker.Length)..]
-            .Split('|', ';', ',', ' ')
-            .FirstOrDefault();
-        if (string.IsNullOrWhiteSpace(raw))
-        {
-            return null;
-        }
-
-        if (Guid.TryParseExact(raw, "N", out var guidN))
-        {
-            return guidN;
-        }
-
-        return Guid.TryParse(raw, out var guid) ? guid : null;
-    }
-
-    private static string GetDisplayNameFromEmail(string email)
-    {
-        if (string.IsNullOrWhiteSpace(email))
-        {
-            return "user";
-        }
-
-        var atIndex = email.IndexOf('@');
-        return atIndex > 0 ? email[..atIndex] : email;
-    }
 }

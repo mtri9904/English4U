@@ -1,19 +1,21 @@
+using EnglishExamApp.API.Authentication;
 using EnglishExamApp.Application.DTOs.ExamExecution;
 using EnglishExamApp.Application.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace EnglishExamApp.API.Controllers;
 
 [ApiController]
 [Route("api/practice")]
+[Authorize]
 public class PracticeController(
     IExamService examService,
-    IExamExecutionService examExecutionService) : ControllerBase
+    IExamExecutionService examExecutionService,
+    ICurrentUserService currentUser) : ControllerBase
 {
-    private static bool TryParseUserId(string? rawUserId, out Guid userId) =>
-        Guid.TryParse(rawUserId, out userId);
-
     [HttpGet("exams")]
+    [AllowAnonymous]
     public async Task<IResult> GetPublishedExams(CancellationToken cancellationToken)
     {
         var exams = await examService.GetPublishedPracticeExamsAsync(cancellationToken);
@@ -21,6 +23,7 @@ public class PracticeController(
     }
 
     [HttpGet("exams/{examId:guid}")]
+    [AllowAnonymous]
     public async Task<IResult> GetPublishedExamDetail(Guid examId, CancellationToken cancellationToken)
     {
         var exam = await examService.GetPublishedPracticeExamDetailAsync(examId, cancellationToken);
@@ -34,10 +37,9 @@ public class PracticeController(
     public async Task<IResult> StartPracticeExam(
         Guid examId,
         [FromQuery] bool forceNew,
-        [FromHeader(Name = "X-User-Id")] string? userIdStr,
         CancellationToken cancellationToken)
     {
-        if (!TryParseUserId(userIdStr, out var userId))
+        if (!currentUser.TryGetUserId(out var userId))
         {
             return TypedResults.Unauthorized();
         }
@@ -55,10 +57,9 @@ public class PracticeController(
 
     [HttpGet("my-exams")]
     public async Task<IResult> GetMyPracticeSessions(
-        [FromHeader(Name = "X-User-Id")] string? userIdStr,
         CancellationToken cancellationToken)
     {
-        if (!TryParseUserId(userIdStr, out var userId))
+        if (!currentUser.TryGetUserId(out var userId))
         {
             return TypedResults.Unauthorized();
         }
@@ -70,10 +71,9 @@ public class PracticeController(
     [HttpGet("sessions/{sessionId:guid}")]
     public async Task<IResult> GetPracticeSession(
         Guid sessionId,
-        [FromHeader(Name = "X-User-Id")] string? userIdStr,
         CancellationToken cancellationToken)
     {
-        if (!TryParseUserId(userIdStr, out var userId))
+        if (!currentUser.TryGetUserId(out var userId))
         {
             return TypedResults.Unauthorized();
         }
@@ -87,11 +87,10 @@ public class PracticeController(
     [HttpPatch("sessions/{sessionId:guid}/answers")]
     public async Task<IResult> UpdatePracticeSessionAnswers(
         Guid sessionId,
-        [FromHeader(Name = "X-User-Id")] string? userIdStr,
         [FromBody] UpdatePracticeSessionAnswersDto dto,
         CancellationToken cancellationToken)
     {
-        if (!TryParseUserId(userIdStr, out var userId))
+        if (!currentUser.TryGetUserId(out var userId))
         {
             return TypedResults.Unauthorized();
         }
@@ -111,14 +110,13 @@ public class PracticeController(
     [RequestFormLimits(MultipartBodyLengthLimit = 25 * 1024 * 1024)]
     public async Task<IResult> UploadSpeakingRecording(
         Guid sessionId,
-        [FromHeader(Name = "X-User-Id")] string? userIdStr,
         [FromForm] Guid speakingQuestionId,
         [FromForm] string? answerText,
         [FromForm] double? durationSeconds,
         [FromForm(Name = "audio")] IFormFile? audio,
         CancellationToken cancellationToken)
     {
-        if (!TryParseUserId(userIdStr, out var userId))
+        if (!currentUser.TryGetUserId(out var userId))
         {
             return TypedResults.Unauthorized();
         }
@@ -152,10 +150,9 @@ public class PracticeController(
     [HttpPost("sessions/{sessionId:guid}/submit-reading-listening")]
     public async Task<IResult> SubmitReadingListening(
         Guid sessionId,
-        [FromHeader(Name = "X-User-Id")] string? userIdStr,
         CancellationToken cancellationToken)
     {
-        if (!TryParseUserId(userIdStr, out var userId))
+        if (!currentUser.TryGetUserId(out var userId))
         {
             return TypedResults.Unauthorized();
         }
@@ -174,10 +171,9 @@ public class PracticeController(
     [HttpPost("sessions/{sessionId:guid}/submit-writing")]
     public async Task<IResult> SubmitWriting(
         Guid sessionId,
-        [FromHeader(Name = "X-User-Id")] string? userIdStr,
         CancellationToken cancellationToken)
     {
-        if (!TryParseUserId(userIdStr, out var userId))
+        if (!currentUser.TryGetUserId(out var userId))
         {
             return TypedResults.Unauthorized();
         }
@@ -196,10 +192,9 @@ public class PracticeController(
     [HttpPost("sessions/{sessionId:guid}/submit-speaking")]
     public async Task<IResult> SubmitSpeaking(
         Guid sessionId,
-        [FromHeader(Name = "X-User-Id")] string? userIdStr,
         CancellationToken cancellationToken)
     {
-        if (!TryParseUserId(userIdStr, out var userId))
+        if (!currentUser.TryGetUserId(out var userId))
         {
             return TypedResults.Unauthorized();
         }
@@ -218,10 +213,9 @@ public class PracticeController(
     [HttpPost("sessions/{sessionId:guid}/rescore-speaking")]
     public async Task<IResult> RescoreSpeaking(
         Guid sessionId,
-        [FromHeader(Name = "X-User-Id")] string? userIdStr,
         CancellationToken cancellationToken)
     {
-        if (!TryParseUserId(userIdStr, out var userId))
+        if (!currentUser.TryGetUserId(out var userId))
         {
             return TypedResults.Unauthorized();
         }

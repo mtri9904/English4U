@@ -1,0 +1,301 @@
+{
+  "schema_version": "speaking-rubric-v3.0",
+  "purpose": "Machine-readable IELTS-style Speaking examiner rubric used as the phase-0 scoring contract.",
+  "source_basis": [
+    "Official IELTS Speaking assessment criteria, paraphrased for implementation.",
+    "Examiner-style session judgement: final bands should reflect the whole speaking performance, not an isolated prompt average.",
+    "Audio-derived pronunciation and fluency evidence should be treated separately from transcript-derived language evidence."
+  ],
+  "criteria_order": [
+    "Fluency and Coherence",
+    "Lexical Resource",
+    "Grammatical Range and Accuracy",
+    "Pronunciation"
+  ],
+  "llm_refiner_criteria": [
+    "Fluency and Coherence",
+    "Lexical Resource",
+    "Grammatical Range and Accuracy"
+  ],
+  "band_scale": {
+    "min": 0.0,
+    "max": 9.0,
+    "step": 0.5,
+    "reporting": "Round each criterion and the final speaking band to the nearest 0.5 IELTS band."
+  },
+  "global_examiner_principles": [
+    "Use spoken performance evidence. A transcript is evidence, not ground truth.",
+    "Reward communicative control and intelligibility, not memorized length or rare words alone.",
+    "Do not inflate a band when evidence is missing. Use confidence and cap rules instead.",
+    "Separate language-related hesitation from thinking pauses when evidence allows.",
+    "A strong answer must show enough language sample for the claimed band.",
+    "The final session score must consider all configured parts and any no-response prompts."
+  ],
+  "criteria": {
+    "Fluency and Coherence": {
+      "examiner_focus": [
+        "continuity of speech",
+        "hesitation and repair control",
+        "logical progression of ideas",
+        "natural cohesive devices",
+        "part-appropriate answer development"
+      ],
+      "primary_evidence_groups": {
+        "audio_timing": [
+          "words_per_minute",
+          "speech_ratio",
+          "pause_ratio",
+          "long_pause_count",
+          "filled_pause_count"
+        ],
+        "discourse": [
+          "idea_progression",
+          "answer_relevance",
+          "topic_development",
+          "cohesive_device_naturalness",
+          "self_correction_density"
+        ]
+      },
+      "positive_evidence": [
+        "Keeps going without excessive long silences.",
+        "Develops answers beyond isolated phrases.",
+        "Uses connectors naturally and not mechanically.",
+        "Can repair or rephrase without losing the listener.",
+        "Part 2 can sustain a long turn with a clear route through the cue."
+      ],
+      "negative_evidence": [
+        "Frequent long pauses interrupt meaning.",
+        "Answers are mostly short fragments.",
+        "Ideas are hard to follow or jump without a clear link.",
+        "Cohesive devices are absent, overused, or formulaic.",
+        "The candidate relies on repeated memorized chunks."
+      ],
+      "band_anchors": {
+        "4": "Frequent hesitation, limited continuity, simple linking, and little sustained development.",
+        "5": "Can keep speaking but with noticeable repetition, self-correction, slow pace, or limited progression.",
+        "6": "Generally willing to speak at length, with some hesitation or repair; ideas are mostly clear.",
+        "7": "Speaks at length without strain; hesitation is language-appropriate and ideas are logically developed.",
+        "8": "Fluent, flexible, coherent speech with rare lapses and natural discourse control.",
+        "9": "Fully fluent, precise, and coherent speech with no noticeable effort or communication strain."
+      }
+    },
+    "Lexical Resource": {
+      "examiner_focus": [
+        "range of vocabulary",
+        "precision and appropriacy",
+        "collocation control",
+        "paraphrase ability",
+        "topic-specific language"
+      ],
+      "primary_evidence_groups": {
+        "transcript": [
+          "topic_vocabulary_density",
+          "lexical_sophistication",
+          "collocation_quality",
+          "paraphrase_attempts",
+          "meaningful_repetition_ratio"
+        ],
+        "error_spans": [
+          "word_choice_errors",
+          "collocation_errors",
+          "overgeneral_wording",
+          "memorized_chunk_risk"
+        ]
+      },
+      "positive_evidence": [
+        "Uses topic-appropriate vocabulary precisely.",
+        "Paraphrases common ideas instead of repeating the prompt.",
+        "Uses natural collocations and some less common items accurately.",
+        "Keeps meaning clear when searching for words."
+      ],
+      "negative_evidence": [
+        "Repeats basic words when more precise wording is needed.",
+        "Uses rare or long words inaccurately.",
+        "Word choice or collocation errors make meaning unclear.",
+        "Relies on memorized expressions without adapting them to the prompt."
+      ],
+      "band_anchors": {
+        "4": "Basic vocabulary, frequent repetition, limited flexibility, and frequent word-choice problems.",
+        "5": "Enough vocabulary for familiar topics but limited precision and noticeable repetition.",
+        "6": "Adequate range for the task, with some paraphrase and occasional inaccuracy.",
+        "7": "Flexible vocabulary, effective paraphrase, and some less common or topic-specific items with minor errors.",
+        "8": "Wide, precise, natural vocabulary and collocation with rare lapses.",
+        "9": "Full, natural lexical flexibility with precise idiomatic and topic-specific control."
+      }
+    },
+    "Grammatical Range and Accuracy": {
+      "examiner_focus": [
+        "sentence range",
+        "subordination and clause control",
+        "accuracy of core grammar",
+        "error impact on meaning",
+        "spoken grammar acceptability"
+      ],
+      "primary_evidence_groups": {
+        "syntax": [
+          "clause_count",
+          "subordinate_clause_ratio",
+          "sentence_unit_length",
+          "tense_aspect_variety",
+          "complex_structure_success_rate"
+        ],
+        "error_spans": [
+          "grammar_error_density",
+          "high_impact_errors",
+          "agreement_errors",
+          "tense_errors",
+          "fragment_risk"
+        ]
+      },
+      "positive_evidence": [
+        "Uses a mix of simple and complex structures.",
+        "Controls tense, agreement, articles, and clause links well enough for clear meaning.",
+        "Errors are occasional or low impact at higher bands.",
+        "Can extend ideas with because, although, if, when, relative clauses, or similar structures."
+      ],
+      "negative_evidence": [
+        "Mostly short simple clauses with little range.",
+        "Frequent grammar errors reduce clarity.",
+        "Attempts complex structures but loses control.",
+        "ASR punctuation or casing should not be treated as strong grammar evidence."
+      ],
+      "band_anchors": {
+        "4": "Very limited range with frequent errors; meaning is often hard to follow.",
+        "5": "Basic structures are present but errors are frequent and range is limited.",
+        "6": "Mix of simple and complex forms with noticeable errors that usually do not block meaning.",
+        "7": "Good range and control; errors occur but are not frequent or seriously confusing.",
+        "8": "Wide range with flexible, mostly accurate control and only occasional slips.",
+        "9": "Full range used naturally and accurately, with errors only as rare slips."
+      }
+    },
+    "Pronunciation": {
+      "examiner_focus": [
+        "intelligibility",
+        "segmental sound control",
+        "word stress",
+        "sentence stress",
+        "rhythm and chunking",
+        "intonation"
+      ],
+      "primary_evidence_groups": {
+        "audio": [
+          "acoustic_pronunciation_score",
+          "segmental_score",
+          "prosody_score",
+          "intelligibility_score",
+          "phone_timing_score",
+          "phone_match_score",
+          "forced_alignment_quality",
+          "pitch_variation_score",
+          "rhythm_score",
+          "stress_score",
+          "chunking_score",
+          "low_confidence_word_ratio"
+        ],
+        "issue_spans": [
+          "phone_mismatches",
+          "final_consonant_risk",
+          "consonant_cluster_risk",
+          "word_stress_risk",
+          "compressed_or_stretched_phone_timing"
+        ]
+      },
+      "positive_evidence": [
+        "Speech is easy to understand despite accent.",
+        "Stress, rhythm, and intonation support meaning.",
+        "Problem sounds are isolated rather than systematic.",
+        "Chunking makes phrases clear."
+      ],
+      "negative_evidence": [
+        "Sound errors repeatedly reduce intelligibility.",
+        "Flat or misleading intonation makes meaning harder to follow.",
+        "Word stress or rhythm problems affect listener effort.",
+        "Pronunciation cannot be confidently scored without usable audio evidence."
+      ],
+      "band_anchors": {
+        "4": "Pronunciation problems frequently strain comprehension; limited control of features.",
+        "5": "Usually understandable, but mispronunciation and stress/rhythm issues often require effort.",
+        "6": "Generally understandable with some effective pronunciation features and some recurring problems.",
+        "7": "Mostly clear and natural, with good use of stress/rhythm/intonation and limited listener strain.",
+        "8": "Very clear, flexible pronunciation features, only occasional minor lapses.",
+        "9": "Fully intelligible and natural pronunciation control across features."
+      }
+    }
+  },
+  "part_expectations": {
+    "1": {
+      "label": "Part 1 short-answer interview",
+      "target_duration_seconds": 30,
+      "examiner_expectation": "Direct answers on familiar topics, usually extended with at least one reason, example, contrast, or detail."
+    },
+    "2_long_turn": {
+      "label": "Part 2 long turn",
+      "target_duration_seconds": 120,
+      "examiner_expectation": "Sustained individual talk with a clear route through cue-card points and enough development to show range."
+    },
+    "2_follow_up": {
+      "label": "Part 2 follow-up",
+      "target_duration_seconds": 35,
+      "examiner_expectation": "Shorter response that still answers directly and gives a reason or example."
+    },
+    "3": {
+      "label": "Part 3 discussion",
+      "target_duration_seconds": 60,
+      "examiner_expectation": "Extended discussion with reasons, comparison, speculation, abstraction, or evaluation."
+    }
+  },
+  "band_cap_rules": [
+    {
+      "id": "no_ratable_speech",
+      "condition": "no transcript tokens or technically unusable audio with fewer than 8 words",
+      "max_overall_band": 1.0,
+      "max_criteria_band": 1.0,
+      "reason": "No ratable spoken language evidence."
+    },
+    {
+      "id": "very_short_language_sample",
+      "condition": "session total word count below 12",
+      "max_overall_band": 4.0,
+      "reason": "Too little language sample for a higher examiner-style band."
+    },
+    {
+      "id": "short_language_sample",
+      "condition": "session total word count below 25",
+      "max_overall_band": 5.0,
+      "reason": "Limited sample prevents reliable evidence for higher bands."
+    },
+    {
+      "id": "missing_multiple_parts",
+      "condition": "three-part session has ratable evidence from one part only",
+      "max_overall_band": 5.5,
+      "reason": "Examiner-style judgement needs evidence across the interview."
+    },
+    {
+      "id": "missing_pronunciation_evidence",
+      "condition": "pronunciation engines required for production are unavailable",
+      "max_pronunciation_band": 6.5,
+      "reason": "Pronunciation above this level requires audio-backed phoneme and prosody evidence."
+    },
+    {
+      "id": "low_asr_confidence",
+      "condition": "mean ASR confidence below 0.55 or many low-confidence spans",
+      "confidence_penalty": 0.22,
+      "reason": "Transcript-derived language evidence is uncertain."
+    },
+    {
+      "id": "bad_audio_quality",
+      "condition": "audio quality is not usable",
+      "confidence_penalty": 0.25,
+      "reason": "Audio evidence is unreliable."
+    }
+  ],
+  "llm_refiner_rules": [
+    "Use deterministic anchor bands as guardrails.",
+    "Adjust only when transcript evidence clearly supports it.",
+    "For single-answer refinement, do not score Pronunciation; pronunciation must come from audio-backed engines.",
+    "For session-level refinement, use Pronunciation only from supplied audio evidence and anchors.",
+    "Never reward length alone, rare words alone, or connector count alone.",
+    "Return concise Vietnamese feedback with concrete evidence.",
+    "If evidence is missing or uncertain, keep the band conservative and preserve confidence warnings."
+  ]
+}

@@ -30,6 +30,22 @@ public static class VietnamDateTimeFormatter
         return TimeZoneInfo.ConvertTimeFromUtc(utcDateTime, VietnamTimeZone);
     }
 
+    public static (DateTime StartUtc, DateTime EndUtc) GetTodayUtcRange()
+    {
+        var todayVn = DateOnly.FromDateTime(ToVietnamTime(DateTime.UtcNow));
+        return GetUtcRange(todayVn);
+    }
+
+    public static (DateTime StartUtc, DateTime EndUtc) GetUtcRange(DateOnly vietnamDate)
+    {
+        var startVn = vietnamDate.ToDateTime(TimeOnly.MinValue);
+        var endVn = startVn.AddDays(1);
+
+        return (
+            TimeZoneInfo.ConvertTimeToUtc(startVn, VietnamTimeZone),
+            TimeZoneInfo.ConvertTimeToUtc(endVn, VietnamTimeZone));
+    }
+
     private static TimeZoneInfo ResolveVietnamTimeZone()
     {
         try

@@ -25,6 +25,8 @@ import ReactMarkdown from 'react-markdown';
 import { getEffectiveMcqGroupType, getQuestionTypeLabel, inferQuestionGroupOptionLabelType, type OptionLabelType } from '@/shared/lib/examDisplay';
 import { getOptionLabel } from '@/shared/utils/optionLabel.utils';
 import { usePracticeSessionQuery, useUpdatePracticeSessionAnswersMutation } from '../api/session.api';
+import { buildReadingPassageDisplaySegments } from '../lib/readingPassageText';
+import { resolveQuestionSpecificCorrectAnswer } from '../lib/reviewCopilotContext';
 import type {
     PracticeSessionDto,
     PracticeSessionAnswerDto,
@@ -73,6 +75,7 @@ const FILL_TYPES = new Set([
 const TABLE_TITLE_PLACEHOLDER = 'Tiêu đề bảng';
 
 const INLINE_TEMPLATE_INPUT_TYPES = new Set(['text', 'shared-select']);
+const MAX_MCQ_MULTIPLE_SELECTIONS = 2;
 
 type ObjectiveReviewAnswerMap = Record<string, PracticeSessionAnswerDto | undefined>;
 type RenderQuestionAction = (params: {
@@ -132,19 +135,42 @@ const resolveAnswerBoxText = (group: PracticeSessionQuestionGroupDto, rawAnswer:
     return resolvedTokens.length > 0 ? resolvedTokens.join(' | ') : rawAnswer;
 };
 
+const getEffectiveObjectiveGroupType = (group: PracticeSessionQuestionGroupDto) => (
+    getEffectiveMcqGroupType({
+        groupType: group.groupType,
+        contentData: group.contentData,
+        questionCount: group.questions.length,
+        hasQuestionContent: group.questions.some((item) => !!item.content?.trim()),
+    }) || group.groupType || ''
+).trim().toUpperCase();
+
+const isChooseNGroup = (group: PracticeSessionQuestionGroupDto) => (
+    getEffectiveObjectiveGroupType(group) === 'MCQ_CHOOSE_N' && group.questions.length > 1
+);
+
+const formatAnswerTokenListForReview = (value: string) => value
+    .split('|')
+    .map((token) => token.trim())
+    .filter(Boolean)
+    .join(', ');
+
 const formatReviewCorrectAnswer = (
     group: PracticeSessionQuestionGroupDto,
     question: PracticeSessionQuestionDto,
     answer?: PracticeSessionAnswerDto,
 ) => {
-    const fromAnswer = (answer?.correctAnswer ?? '').trim();
-    if (fromAnswer) return resolveAnswerBoxText(group, fromAnswer);
-
-    const fromQuestion = (question.correctAnswer ?? '').trim();
-    if (fromQuestion) return resolveAnswerBoxText(group, fromQuestion);
+    const correctAnswer = resolveQuestionSpecificCorrectAnswer(group, question, answer).trim();
+    if (correctAnswer) {
+        const resolved = resolveAnswerBoxText(group, correctAnswer);
+        return isChooseNGroup(group) ? formatAnswerTokenListForReview(resolved) : resolved;
+    }
 
     return '';
 };
+
+const getReviewCorrectAnswerLabel = () => (
+    'Đáp án đúng'
+);
 
 const parseSharedPromptContent = (contentData?: string | null) => {
     if (!contentData) {
@@ -1431,12 +1457,22 @@ const GroupBlock = ({
                                                 disabled={readOnly}
                                                 style={{ display: 'grid', gap: 8 }}
                                                 value={checkedValues}
-                                                onChange={(nextValues) => onAnswerChange(question.id, (nextValues as string[]).join('|'))}
+                                                onChange={(nextValues) => {
+                                                    const nextCheckedValues = nextValues as string[];
+                                                    if (nextCheckedValues.length > MAX_MCQ_MULTIPLE_SELECTIONS) {
+                                                        return;
+                                                    }
+
+                                                    onAnswerChange(question.id, nextCheckedValues.join('|'));
+                                                }}
                                             >
                                                 {options.map((option, index) => {
                                                     const optionValue = getOptionLabel(index, optionLabelType);
+                                                    const isChecked = checkedValues.includes(optionValue);
+                                                    const isDisabled = readOnly
+                                                        || (!isChecked && checkedValues.length >= MAX_MCQ_MULTIPLE_SELECTIONS);
                                                     return (
-                                                        <Checkbox key={option.id} value={optionValue}>
+                                                        <Checkbox key={option.id} value={optionValue} disabled={isDisabled}>
                                                             {renderSelectableOptionContent({
                                                                 label: optionValue,
                                                                 text: option.optionText,
@@ -1448,7 +1484,7 @@ const GroupBlock = ({
                                             </Checkbox.Group>
                                             {readOnly && getReviewAnswerState(question.id, reviewAnswerMap)?.isCorrect === false && formatReviewCorrectAnswer(group, question, getReviewAnswerState(question.id, reviewAnswerMap)) ? (
                                                 <Text style={{ color: '#15803d', fontSize: 13 }}>
-                                                    Đáp án đúng: <b>{formatReviewCorrectAnswer(group, question, getReviewAnswerState(question.id, reviewAnswerMap))}</b>
+                                                    {getReviewCorrectAnswerLabel()}: <b>{formatReviewCorrectAnswer(group, question, getReviewAnswerState(question.id, reviewAnswerMap))}</b>
                                                 </Text>
                                             ) : null}
                                         </Space>
@@ -1460,24 +1496,33 @@ const GroupBlock = ({
                 })() : !rendersInlineTemplateAnswers && effectiveGroupType === 'MCQ_CHOOSE_N' ? (() => {
                     const options = getSharedOptions(group);
                     const isSingleQuestionN = group.questions.length === 1;
+                    const optionOrder = new Map(
+                        options.map((_, index) => [getOptionLabel(index, optionLabelType), index]),
+                    );
 
                     let checkedValues: string[] = [];
                     if (isSingleQuestionN) {
                         checkedValues = (answerMap[group.questions[0]?.id] ?? '').split('|').map(s => s.trim()).filter(Boolean);
                     } else {
-                        checkedValues = group.questions.map(q => answerMap[q.id]).filter(Boolean);
+                        checkedValues = group.questions
+                            .map(q => answerMap[q.id])
+                            .filter(Boolean)
+                            .sort((left, right) => (optionOrder.get(left) ?? Number.MAX_SAFE_INTEGER) - (optionOrder.get(right) ?? Number.MAX_SAFE_INTEGER));
                     }
 
                     const handleChange = (nextChecked: string[]) => {
+                        const orderedChecked = [...nextChecked].sort((left, right) => (
+                            (optionOrder.get(left) ?? Number.MAX_SAFE_INTEGER) - (optionOrder.get(right) ?? Number.MAX_SAFE_INTEGER)
+                        ));
                         if (isSingleQuestionN) {
                             if (group.questions[0]) {
-                                onAnswerChange(group.questions[0].id, nextChecked.join('|'));
+                                onAnswerChange(group.questions[0].id, orderedChecked.join('|'));
                             }
                         } else {
-                            if (nextChecked.length > group.questions.length) return;
+                            if (orderedChecked.length > group.questions.length) return;
                             
                             group.questions.forEach((q, idx) => {
-                                onAnswerChange(q.id, nextChecked[idx] ?? '');
+                                onAnswerChange(q.id, orderedChecked[idx] ?? '');
                             });
                         }
                     };
@@ -1576,9 +1621,16 @@ const GroupBlock = ({
                                                 })}
                                             </div>
                                             {reviewAnswer?.isCorrect === false && correctAnswer ? (
-                                                <Text style={{ color: '#15803d', fontSize: 13 }}>
-                                                    Đáp án đúng: <b>{correctAnswer}</b>
-                                                </Text>
+                                                <Space direction="vertical" size={2}>
+                                                    {submittedAnswer ? (
+                                                        <Text style={{ color: '#b91c1c', fontSize: 13 }}>
+                                                            Bạn đã nhập: <b>{submittedAnswer}</b>
+                                                        </Text>
+                                                    ) : null}
+                                                    <Text style={{ color: '#15803d', fontSize: 13 }}>
+                                                        {getReviewCorrectAnswerLabel()}: <b>{correctAnswer}</b>
+                                                    </Text>
+                                                </Space>
                                             ) : null}
                                             {!submittedAnswer ? (
                                                 <Text type="secondary" style={{ fontSize: 13 }}>
@@ -1624,6 +1676,8 @@ export const ReadingBody = ({
             </Card>
         );
     }
+
+    const passageTextSegments = buildReadingPassageDisplaySegments(passage.paragraphsData);
 
     return (
         <Card id="runner-active-section" key={passage.id} bodyStyle={{ padding: 0, overflow: 'hidden' }} style={{ borderRadius: 22 }}>
@@ -1676,9 +1730,42 @@ export const ReadingBody = ({
                                     background: '#fff',
                                 }}
                             >
-                                <ReactMarkdown components={markdownComponents}>
-                                    {formatTemplateText(passage.paragraphsData)}
-                                </ReactMarkdown>
+                                {passageTextSegments.length > 0 ? (
+                                    <Space direction="vertical" size={12} style={{ width: '100%' }}>
+                                        {passageTextSegments.map((segment, segmentIndex) => (
+                                            <div
+                                                key={`passage-segment-${segmentIndex}`}
+                                                style={{
+                                                    display: 'grid',
+                                                    gridTemplateColumns: segment.paragraphNumber != null ? 'auto minmax(0, 1fr)' : 'minmax(0, 1fr)',
+                                                    gap: segment.paragraphNumber != null ? 10 : 0,
+                                                    alignItems: 'start',
+                                                }}
+                                            >
+                                                {segment.paragraphNumber != null ? (
+                                                    <Tag color="blue" style={{ marginInlineEnd: 0, marginTop: 2 }}>
+                                                        Đoạn {segment.paragraphNumber}
+                                                    </Tag>
+                                                ) : null}
+                                                <div
+                                                    style={{
+                                                        minWidth: 0,
+                                                        fontWeight: segment.kind === 'heading' ? 700 : undefined,
+                                                        color: segment.kind === 'heading' ? '#0f172a' : undefined,
+                                                    }}
+                                                >
+                                                    <ReactMarkdown components={markdownComponents}>
+                                                        {formatTemplateText(segment.text)}
+                                                    </ReactMarkdown>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </Space>
+                                ) : (
+                                    <ReactMarkdown components={markdownComponents}>
+                                        {formatTemplateText(passage.paragraphsData)}
+                                    </ReactMarkdown>
+                                )}
                             </div>
                         ) : (
                             <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Passage chưa có nội dung." />

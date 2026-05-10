@@ -1,0 +1,23 @@
+# Python cache/build outputs
+.env
+.env.*
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+.runtime/
+
+# .NET build outputs
+bin/
+obj/
+
+# Speaking evaluation local media and generated outputs
+AiScoringService/evaluation/audio/*
+!AiScoringService/evaluation/audio/.gitkeep
+AiScoringService/evaluation/segments/*
+!AiScoringService/evaluation/segments/.gitkeep
+AiScoringService/evaluation/reports/*
+!AiScoringService/evaluation/reports/.gitkeep
+AiScoringService/evaluation/**/*.pyc
+AiScoringService/evaluation/**/__pycache__/

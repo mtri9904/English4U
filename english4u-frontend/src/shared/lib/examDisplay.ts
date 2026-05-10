@@ -153,7 +153,14 @@ const ROMAN_LABEL_TOKENS = new Set([
 const sanitizeLabelToken = (value: string) =>
     value.trim().replace(/^[([{\s]+|[\])}.,;:\s]+$/g, '').toLowerCase();
 
-const isRomanLabelToken = (value?: string | null) => ROMAN_LABEL_TOKENS.has(sanitizeLabelToken(value ?? ''));
+const isRomanLabelToken = (value?: string | null) => {
+    const trimmed = (value ?? '').trim().replace(/^[([{\s]+|[\])}.,;:\s]+$/g, '');
+    if (!trimmed || trimmed !== trimmed.toLowerCase()) {
+        return false;
+    }
+
+    return ROMAN_LABEL_TOKENS.has(sanitizeLabelToken(trimmed));
+};
 
 const parsePromptText = (contentData?: string | null) => {
     if (!contentData) {

@@ -1,13 +1,17 @@
 using EnglishExamApp.API.Realtime;
+using EnglishExamApp.API.Authentication;
 using EnglishExamApp.Application.DTOs.Exams;
 using EnglishExamApp.Application.Interfaces;
+using EnglishExamApp.Application.Realtime;
 using EnglishExamApp.Application.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace EnglishExamApp.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize(Roles = "Admin")]
 public class ExamController(
     IExamService examService,
     IExamPdfGenerationService examPdfGenerationService,
@@ -16,7 +20,8 @@ public class ExamController(
     IWritingVisualExtractionService writingVisualExtractionService,
     IPdfGenerationProgressTracker pdfGenerationProgressTracker,
     IRealtimeEventDispatcher realtimeDispatcher,
-    ILogger<ExamController> logger) : ControllerBase
+    ILogger<ExamController> logger,
+    ICurrentUserService currentUser) : ControllerBase
 {
     private const long MaxSpeakingPromptAudioBytes = 30 * 1024 * 1024;
 
@@ -51,9 +56,13 @@ public class ExamController(
     [HttpPost]
     public async Task<IResult> CreateExam(
         [FromBody] CreateExamDto dto,
-        [FromHeader(Name = "X-User-Id")] Guid createdBy,
         CancellationToken cancellationToken)
     {
+        if (!currentUser.TryGetUserId(out var createdBy))
+        {
+            return TypedResults.Unauthorized();
+        }
+
         Guid examId;
         try
         {
@@ -193,11 +202,10 @@ public class ExamController(
     [RequestFormLimits(MultipartBodyLengthLimit = 50 * 1024 * 1024)]
     public async Task<IResult> GenerateExamFromPdf(
         [FromForm(Name = "file")] IFormFile? file,
-        [FromHeader(Name = "X-User-Id")] Guid createdBy,
         [FromHeader(Name = "X-Client-Request-Id")] string? clientRequestId,
         CancellationToken cancellationToken)
     {
-        if (createdBy == Guid.Empty)
+        if (!currentUser.TryGetUserId(out var createdBy))
         {
             return TypedResults.Unauthorized();
         }
@@ -390,9 +398,13 @@ public class ExamController(
     [HttpGet("generate-from-pdf/progress")]
     public IResult GetGenerateExamFromPdfProgress(
         [FromQuery] string? clientRequestId,
-        [FromQuery] Guid? uploadId,
-        [FromHeader(Name = "X-User-Id")] Guid requestedBy)
+        [FromQuery] Guid? uploadId)
     {
+        if (!currentUser.TryGetUserId(out var requestedBy))
+        {
+            return TypedResults.Unauthorized();
+        }
+
         if (string.IsNullOrWhiteSpace(clientRequestId) && !uploadId.HasValue)
         {
             return TypedResults.BadRequest(new { message = "clientRequestId or uploadId is required." });
@@ -409,7 +421,7 @@ public class ExamController(
             return TypedResults.NotFound(new { message = "Progress snapshot not found." });
         }
 
-        if (requestedBy != Guid.Empty && snapshot.UploadedBy != requestedBy)
+        if (snapshot.UploadedBy != requestedBy)
         {
             return TypedResults.Forbid();
         }

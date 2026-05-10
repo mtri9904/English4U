@@ -24,12 +24,9 @@ public sealed class GeminiWritingVisualExtractionService(
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
 
-    private readonly string _apiKey = FirstNonEmpty(
-        configuration["GeminiVisualExtraction:ApiKey"],
-        configuration["GeminiScoring:ApiKey"],
-        configuration["GeminiCopilot:ApiKey"],
-        configuration["GEMINI_API_KEY"],
-        configuration["GemmaExamGeneration:ApiKey"]);
+    private readonly string _apiKey = GeminiConfiguration.ResolveApiKey(
+        configuration,
+        "GeminiVisualExtraction:ApiKey");
 
     private readonly string _baseUrl = FirstNonEmpty(
         configuration["GeminiVisualExtraction:BaseUrl"],
@@ -51,7 +48,8 @@ public sealed class GeminiWritingVisualExtractionService(
 
         if (string.IsNullOrWhiteSpace(_apiKey))
         {
-            throw new InvalidOperationException("Gemini visual extraction API key is missing.");
+            throw new InvalidOperationException(
+                GeminiConfiguration.BuildMissingApiKeyMessage("Gemini visual extraction", "GeminiVisualExtraction:ApiKey"));
         }
 
         var imagePart = await TryBuildInlineImagePartAsync(request.ImageUrl.Trim(), cancellationToken);

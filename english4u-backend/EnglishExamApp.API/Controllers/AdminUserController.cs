@@ -7,7 +7,7 @@ namespace EnglishExamApp.API.Controllers;
 
 [ApiController]
 [Route("api/admin/users")]
-// [Authorize(Roles = "Admin")] // Uncomment when authentication is fully integrated via roles
+[Authorize(Roles = "Admin")]
 public class AdminUserController(IUserService userService) : ControllerBase
 {
     [HttpGet("stats")]

@@ -78,10 +78,21 @@ const stripCodeFenceWrapper = (value: string) => {
 
 const hasVietnameseCharacters = (value: string) => /[ăâđêôơưáàảãạấầẩẫậắằẳẵặéèẻẽẹếềểễệíìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵ]/i.test(value);
 
+const normalizeCopilotText = (value: string) => (
+    value
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+);
+
 const copilotReasoningMarkers = [
+    'current focus:',
     "user's current focus",
     "user's question",
     'context:',
+    'question content:',
     'current_location_text',
     'current_focus_text',
     'review_document',
@@ -90,6 +101,7 @@ const copilotReasoningMarkers = [
     'the content of the transcript window',
     'scanning the transcript window',
     'scanning the transcript',
+    'scanning for',
     'the provided text',
     'state that',
     'does not contain the answer',
@@ -97,9 +109,14 @@ const copilotReasoningMarkers = [
     'question 11',
     'question 12',
     'correct answers:',
+    'correct answer for',
     'evidence for',
     'drafting the response',
+    'drafting:',
+    'execution:',
+    'response structure:',
     'refining the vietnamese',
+    'refining',
     'final polish',
     'self-correction',
     'the previous response was cut off',
@@ -112,6 +129,10 @@ const copilotReasoningMarkers = [
     'start from',
     'highlight the part',
     'final check',
+    'check constraints',
+    'constraint:',
+    'constraints:',
+    'plan:',
     'observation:',
     'action:',
     'analysis:',
@@ -133,7 +154,19 @@ const copilotReasoningMarkers = [
     "student's status",
     "the student didn't answer",
     'correct answer:',
+    "student's choice:",
+    'student choice:',
+    'student chose',
     'student answer:',
+    'the question is about',
+    'the statement says',
+    'found in paragraph',
+    'found in đoạn',
+    'this matches',
+    'direct answer:',
+    'specify the location:',
+    'provide the english evidence:',
+    'english quotes included',
     'there is no transcript window',
     'the review_document',
     'wait,',
@@ -146,10 +179,191 @@ const copilotReasoningMarkers = [
     'step 4',
 ];
 
-const looksLikeReasoningParagraph = (value: string) => {
-    const normalized = value.trim().toLowerCase();
+const copilotAnswerIntroMarkers = [
+    'doc o',
+    'de tra loi dung',
+    'de tra loi',
+    'vi sao dap an',
+    'vi sao',
+    'bang chung',
+    'giai thich',
+    'dap an la',
+    'dap an dung',
+    'dap an',
+    'do do',
+    'ket luan',
+    'phan tich',
+    'dua vao',
+    'tu transcript',
+    'theo transcript',
+    'duoi day la',
+];
+
+const copilotMetaLineMarkers = [
+    'transcript window',
+    'transcript segment',
+    'current focus:',
+    'question content:',
+    "student's choice:",
+    'student choice:',
+    'current_focus_label',
+    'current_focus_text',
+    'evidence segment',
+    'relevant text',
+    'correct answer:',
+    'correct answer for',
+    'correct answers:',
+    'evidence in text:',
+    'identify the timestamp',
+    'identify the specific timestamps',
+    'provide english quotes',
+    'explain in vietnamese',
+    'follow strict system instructions',
+    'map analysis',
+    'replay audio',
+    'tapescript',
+    'quote:',
+    'explanation:',
+    'answer a:',
+    'answer b:',
+    'answer c:',
+    'answer d:',
+    'answer e:',
+    'answer f:',
+    'answer g:',
+    'answer h:',
+    'evidence from paragraph',
+    'direct answer:',
+    'context provided',
+    'identify the specific time range',
+    'tone:',
+    'no external knowledge',
+    'no meta-talk',
+    'no latex',
+    'clear, natural',
+    'use labels',
+    'english quotes included',
+    'observation:',
+    'analysis:',
+    'reasoning:',
+    'plan:',
+    'execution:',
+    'response structure:',
+    'drafting:',
+    'refining',
+    'self-correction',
+    'final polish:',
+    'check constraints:',
+    'requirement:',
+    'follow the system instructions',
+    'identify the specific transcript lines',
+    'explain the location markers',
+    'connect these markers',
+    'map analysis (from image)',
+];
+
+const stripLeadingQuoteAndBulletMarkers = (value: string) => value.replace(/^[\s>"'`*-–—]+/, '').trim();
+
+const looksLikeRepeatedUserQuestionLine = (value: string) => {
+    const normalized = normalizeCopilotText(stripLeadingQuoteAndBulletMarkers(value));
+    return normalized.startsWith('cau nay nghe doan nao')
+        || normalized.includes('nghe doan nao de tra loi dung')
+        || normalized.includes('nghe cho nao de tra loi dung')
+        || normalized.includes('cau nay nghe cho nao')
+        || normalized.includes('cau nay nam o dau');
+};
+
+const looksLikeCopilotAnswerIntroLine = (value: string) => {
+    const normalized = normalizeCopilotText(stripLeadingQuoteAndBulletMarkers(value));
     if (!normalized) {
         return false;
+    }
+
+    return copilotAnswerIntroMarkers.some((marker) => normalized.startsWith(marker));
+};
+
+const findUserFacingAnswerStartIndex = (value: string) => {
+    const patterns = [
+        /(?:Đọc|Doc)\s+(?:ở|o)\s*:/i,
+        /(?:Để|De)\s+(?:trả|tra)\s+(?:lời|loi)/i,
+        /(?:Đ|D)áp\s+(?:án|an)(?:\s+(?:đúng|dung))?/i,
+        /(?:Dẫn|Dan)\s+(?:chứng|chung)/i,
+        /(?:Bằng|Bang)\s+(?:chứng|chung)/i,
+        /(?:Em|Bạn|Ban)\s+(?:cần|can)\s+(?:đọc|doc)/i,
+    ];
+
+    const indexes = patterns
+        .map((pattern) => {
+            const match = value.match(pattern);
+            return match?.index ?? -1;
+        })
+        .filter((index) => index >= 0);
+
+    return indexes.length > 0 ? Math.min(...indexes) : -1;
+};
+
+const looksLikeCopilotMetaLine = (value: string) => {
+    const normalized = normalizeCopilotText(stripLeadingQuoteAndBulletMarkers(value));
+    if (!normalized) {
+        return false;
+    }
+
+    if (/^[a-e]\s*\(correct\)\.?$/i.test(normalized)) {
+        return true;
+    }
+
+    if (/^question\s+\d+\s*:/.test(normalized)) {
+        return true;
+    }
+
+    return copilotMetaLineMarkers.some((marker) => normalized.includes(marker));
+};
+
+const looksLikeSelfCheckLine = (value: string) => {
+    const normalized = normalizeCopilotText(stripLeadingQuoteAndBulletMarkers(value));
+    if (!normalized) {
+        return false;
+    }
+
+    return /^(?:no meta-talk|no latex|correct labels|correct format|language|no internal thoughts|start immediately|check against mandatory rules)\??\s*:?\s*(?:yes|vietnamese)?\.?$/i.test(normalized)
+        || /^(?:student chose correctly|student did not answer|student didn't answer),?\s+so\b/i.test(normalized);
+};
+
+const looksLikePromptChecklistFragment = (value: string) => {
+    const normalized = normalizeCopilotText(stripLeadingQuoteAndBulletMarkers(value));
+    if (!normalized) {
+        return false;
+    }
+
+    const labelHits = [
+        'doc o',
+        'dap an dung',
+        'dan chung',
+        'vi sao khop',
+        'vi sao lua chon',
+    ].filter((label) => normalized.includes(label)).length;
+
+    return labelHits >= 2
+        && /(?:^|\s)(?:1|2|3|4|5)\.\s*["']?/.test(normalized)
+        && /["']/.test(value);
+};
+
+const looksLikeReasoningParagraph = (value: string) => {
+    const normalized = normalizeCopilotText(stripLeadingQuoteAndBulletMarkers(value));
+    if (!normalized) {
+        return false;
+    }
+
+    if (/^(?:current focus|question\s+\d+\s+content|student'?s choice|student choice|student chose|result|the question is about|the statement says|scanning|found in|this matches|answer\s+[a-h]:|evidence from|direct answer|specify the location|provide the english evidence|explain why|tone|no external knowledge|no meta-talk|no latex|clear, natural|use labels|english quotes included)\b/i.test(normalized)) {
+        return true;
+    }
+
+    if (/^(?:correct answer(?:s)?(?:\s+for\b)?|location|evidence in text|evidence|explanation|plan|execution|response structure|drafting|refining|self-correction|final polish|constraint(?:s)?|check constraints)\s*:/i.test(normalized)) {
+        return true;
+    }
+
+    if (/^(?:dap an dung|de tra loi)\s+(?:cho\s+)?cau\s+nay\.?$/i.test(normalized)) {
+        return true;
     }
 
     return copilotReasoningMarkers.some((marker) => normalized.includes(marker));
@@ -169,7 +383,13 @@ const looksLikeStandaloneEnglishParagraph = (value: string) => {
         return false;
     }
 
-    return trimmed.length >= 28;
+    const normalized = trimmed.toLowerCase();
+    if (/^(?:["'“”‘’]|the passage says|the text says|evidence:|quote:)/i.test(trimmed)) {
+        return false;
+    }
+
+    return trimmed.length >= 28
+        && /^(?:i need|we need|the user|user asks|looking at|from the context|the review document|correct answer|student answer|analysis|reasoning|thought|step \d+|need to|must |must not |provided context|provided transcript|system instruction)/i.test(normalized);
 };
 
 const canonicalizeParagraph = (value: string) => (
@@ -184,12 +404,67 @@ const canonicalizeParagraph = (value: string) => (
         .trim()
 );
 
-const likelyVietnameseAnswerLinePattern = /^(để|bạn|cụ thể|tóm lại|mình|ở đây|trong đoạn|đáp án|bằng chứng|giải thích|vì|do đó|vậy|nghe|hãy nghe|với câu|ở câu)/i;
+const likelyVietnameseAnswerLinePattern = /^(đọc ở|để|bạn|cụ thể|tóm lại|mình|ở đây|trong đoạn|đáp án|bằng chứng|giải thích|vì|do đó|vậy|nghe|hãy nghe|với câu|ở câu)/i;
 
 const trimToUserFacingVietnameseStart = (value: string) => {
     const lines = value
         .split('\n')
         .map((line) => line.trimRight());
+
+    for (let index = 0; index < lines.length; index += 1) {
+        const answerStartIndex = findUserFacingAnswerStartIndex(lines[index]);
+        if (answerStartIndex > 0 || (answerStartIndex === 0 && index > 0)) {
+            return [
+                lines[index].slice(answerStartIndex).trim(),
+                ...lines.slice(index + 1),
+            ].join('\n').trim();
+        }
+    }
+
+    const answerIntroLineIndex = lines.findIndex((line) => looksLikeCopilotAnswerIntroLine(line));
+    if (answerIntroLineIndex > 0) {
+        return lines
+            .slice(answerIntroLineIndex)
+            .join('\n')
+            .trim();
+    }
+
+    const hasMetaNoise = lines.some((line) => {
+        const trimmed = line.trim();
+        return trimmed
+            && (
+                looksLikeReasoningParagraph(trimmed)
+                || looksLikeCopilotMetaLine(trimmed)
+                || looksLikeSelfCheckLine(trimmed)
+                || looksLikePromptChecklistFragment(trimmed)
+                || looksLikeRepeatedUserQuestionLine(trimmed)
+            );
+    });
+    if (hasMetaNoise) {
+        const filteredLines = lines.filter((line) => {
+            const trimmed = line.trim();
+            if (!trimmed) {
+                return false;
+            }
+
+            if (looksLikeReasoningParagraph(trimmed)
+                || looksLikeCopilotMetaLine(trimmed)
+                || looksLikeSelfCheckLine(trimmed)
+                || looksLikePromptChecklistFragment(trimmed)
+                || looksLikeRepeatedUserQuestionLine(trimmed)
+                || looksLikeStandaloneEnglishParagraph(trimmed)) {
+                return false;
+            }
+
+            return true;
+        });
+
+        if (filteredLines.length === 0) {
+            return '';
+        }
+
+        return filteredLines.join('\n').trim();
+    }
 
     const firstMeaningfulVietnameseLineIndex = lines.findIndex((line) => {
         const trimmed = line.trim();
@@ -198,6 +473,18 @@ const trimToUserFacingVietnameseStart = (value: string) => {
         }
 
         if (looksLikeReasoningParagraph(trimmed)) {
+            return false;
+        }
+
+        if (looksLikeCopilotMetaLine(trimmed)) {
+            return false;
+        }
+
+        if (looksLikeSelfCheckLine(trimmed) || looksLikePromptChecklistFragment(trimmed)) {
+            return false;
+        }
+
+        if (looksLikeRepeatedUserQuestionLine(trimmed)) {
             return false;
         }
 
@@ -248,6 +535,14 @@ const cleanCopilotDisplayText = (value?: string | null) => {
 
     const filteredParagraphs = paragraphs.filter((paragraph) => {
         if (looksLikeReasoningParagraph(paragraph)) {
+            return false;
+        }
+
+        if (looksLikeCopilotMetaLine(paragraph)) {
+            return false;
+        }
+
+        if (looksLikeSelfCheckLine(paragraph) || looksLikePromptChecklistFragment(paragraph)) {
             return false;
         }
 
@@ -732,7 +1027,8 @@ export const ReviewCopilotDrawer = ({
                             {messages.map((message) => {
                                 const isUser = message.role === 'user';
                                 const isStreamingMessage = message.status === 'streaming';
-                                const isThinkingPlaceholder = isStreamingMessage && !message.content.trim();
+                                const formattedMessageContent = isUser ? message.content : formatCopilotMarkdown(message.content);
+                                const isThinkingPlaceholder = isStreamingMessage && !formattedMessageContent.trim();
                                 const bubbleBackground = isUser
                                     ? 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)'
                                     : '#ffffff';
@@ -763,7 +1059,82 @@ export const ReviewCopilotDrawer = ({
                                             }}
                                         >
                                             {isUser ? (
-                                                <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.65 }}>{message.content}</div>
+                                                <div>
+                                                    {(message.focusChips && message.focusChips.length > 0) ? (
+                                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
+                                                            {message.focusChips.map((chip) => (
+                                                                <span
+                                                                    key={chip.label}
+                                                                    style={{
+                                                                        display: 'inline-flex',
+                                                                        alignItems: 'center',
+                                                                        gap: 4,
+                                                                        padding: '2px 8px',
+                                                                        borderRadius: 999,
+                                                                        background: 'rgba(255,255,255,0.18)',
+                                                                        border: '1px solid rgba(255,255,255,0.32)',
+                                                                        color: 'rgba(255,255,255,0.92)',
+                                                                        fontSize: 11,
+                                                                        fontWeight: 600,
+                                                                        lineHeight: 1.5,
+                                                                        whiteSpace: 'nowrap',
+                                                                        maxWidth: 180,
+                                                                        overflow: 'hidden',
+                                                                        textOverflow: 'ellipsis',
+                                                                    }}
+                                                                    title={chip.label}
+                                                                >
+                                                                    <PushpinOutlined style={{ fontSize: 10, flexShrink: 0 }} />
+                                                                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{chip.label}</span>
+                                                                </span>
+                                                            ))}
+                                                            {message.selectionLabel ? (
+                                                                <span
+                                                                    style={{
+                                                                        display: 'inline-flex',
+                                                                        alignItems: 'center',
+                                                                        gap: 4,
+                                                                        padding: '2px 8px',
+                                                                        borderRadius: 999,
+                                                                        background: 'rgba(255,255,255,0.18)',
+                                                                        border: '1px solid rgba(255,255,255,0.32)',
+                                                                        color: 'rgba(255,255,255,0.92)',
+                                                                        fontSize: 11,
+                                                                        fontWeight: 600,
+                                                                        lineHeight: 1.5,
+                                                                        whiteSpace: 'nowrap',
+                                                                    }}
+                                                                >
+                                                                    <ScissorOutlined style={{ fontSize: 10, flexShrink: 0 }} />
+                                                                    <span>{message.selectionLabel}</span>
+                                                                </span>
+                                                            ) : null}
+                                                        </div>
+                                                    ) : message.selectionLabel ? (
+                                                        <div style={{ marginBottom: 8 }}>
+                                                            <span
+                                                                style={{
+                                                                    display: 'inline-flex',
+                                                                    alignItems: 'center',
+                                                                    gap: 4,
+                                                                    padding: '2px 8px',
+                                                                    borderRadius: 999,
+                                                                    background: 'rgba(255,255,255,0.18)',
+                                                                    border: '1px solid rgba(255,255,255,0.32)',
+                                                                    color: 'rgba(255,255,255,0.92)',
+                                                                    fontSize: 11,
+                                                                    fontWeight: 600,
+                                                                    lineHeight: 1.5,
+                                                                    whiteSpace: 'nowrap',
+                                                                }}
+                                                            >
+                                                                <ScissorOutlined style={{ fontSize: 10, flexShrink: 0 }} />
+                                                                <span>{message.selectionLabel}</span>
+                                                            </span>
+                                                        </div>
+                                                    ) : null}
+                                                    <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.65 }}>{message.content}</div>
+                                                </div>
                                             ) : isThinkingPlaceholder ? (
                                                 <div
                                                     style={{
@@ -787,8 +1158,8 @@ export const ReviewCopilotDrawer = ({
                                                 <Space direction="vertical" size={10} style={{ width: '100%' }}>
                                                     <ReactMarkdown components={markdownComponents}>
                                                         {isStreamingMessage
-                                                            ? `${formatCopilotMarkdown(message.content)}▍`
-                                                            : formatCopilotMarkdown(message.content)}
+                                                            ? `${formattedMessageContent}▍`
+                                                            : formattedMessageContent}
                                                     </ReactMarkdown>
                                                     {replayAction ? (
                                                         <div

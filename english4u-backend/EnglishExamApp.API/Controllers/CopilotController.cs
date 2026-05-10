@@ -1,23 +1,26 @@
 using System.Text.Json;
+using EnglishExamApp.API.Authentication;
 using EnglishExamApp.Application.DTOs.Copilot;
 using EnglishExamApp.Application.Interfaces;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace EnglishExamApp.API.Controllers;
 
 [ApiController]
 [Route("api/copilot")]
+[Authorize]
 public class CopilotController(
     IReadingCopilotService readingCopilotService,
-    ILogger<CopilotController> logger) : ControllerBase
+    ILogger<CopilotController> logger,
+    ICurrentUserService currentUser) : ControllerBase
 {
     [HttpPost("chat")]
     public async Task Chat(
         [FromBody] CopilotChatRequestDto request,
-        [FromHeader(Name = "X-User-Id")] string? userIdStr,
         CancellationToken cancellationToken)
     {
-        if (!Guid.TryParse(userIdStr, out _))
+        if (!currentUser.TryGetUserId(out _))
         {
             Response.StatusCode = StatusCodes.Status401Unauthorized;
             await Response.WriteAsJsonAsync(new { message = "Unauthorized." }, cancellationToken);

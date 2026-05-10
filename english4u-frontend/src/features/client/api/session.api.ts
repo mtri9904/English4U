@@ -17,6 +17,7 @@ export const sessionKeys = {
 };
 
 type StartExamVariables = string | { examId: string; forceNew?: boolean };
+const SPEAKING_SCORING_TIMEOUT_MS = 30 * 60 * 1000;
 
 export const sessionApi = {
     getMyExams: async (): Promise<PracticeSessionListItemDto[]> => {
@@ -72,7 +73,7 @@ export const sessionApi = {
             formData,
             {
                 headers: { 'Content-Type': 'multipart/form-data' },
-                timeout: 5 * 60 * 1000,
+                timeout: SPEAKING_SCORING_TIMEOUT_MS,
             },
         );
         return response.data;
@@ -89,13 +90,13 @@ export const sessionApi = {
     },
     submitSpeaking: async (sessionId: string): Promise<PracticeSessionResultDto> => {
         const response = await axiosInstance.post<PracticeSessionResultDto>(`/practice/sessions/${sessionId}/submit-speaking`, undefined, {
-            timeout: 5 * 60 * 1000,
+            timeout: SPEAKING_SCORING_TIMEOUT_MS,
         });
         return response.data;
     },
     rescoreSpeaking: async (sessionId: string): Promise<PracticeSessionResultDto> => {
         const response = await axiosInstance.post<PracticeSessionResultDto>(`/practice/sessions/${sessionId}/rescore-speaking`, undefined, {
-            timeout: 5 * 60 * 1000,
+            timeout: SPEAKING_SCORING_TIMEOUT_MS,
         });
         return response.data;
     },

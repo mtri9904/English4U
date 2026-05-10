@@ -342,6 +342,70 @@ const parseListeningTranscriptPartBoundaryMarker = (
     return null;
 };
 
+const isListeningTranscriptInstructionText = (text?: string | null) => {
+    const normalized = text ? normalizeListeningMarkerText(text) : '';
+    if (!normalized) {
+        return false;
+    }
+
+    return /\bbefore you hear\b.*\bquestions?\b/.test(normalized)
+        || /\bfirst you have some time to look at questions?\b/.test(normalized)
+        || /\bnow listen(?: carefully)? and answer questions?\b/.test(normalized)
+        || /\byou now have\b.*\bto check your answers\b/.test(normalized)
+        || /\bnow turn to (?:section|part)\b/.test(normalized)
+        || /\bthat is the end of (?:section|part)\b/.test(normalized);
+};
+
+const parseSplitTurnBoundaryMarker = (
+    currentText: string,
+    nextText: string | undefined,
+    partCount: number,
+): Pick<ListeningTranscriptPartBoundaryMarker, 'partNumber' | 'priority'> | null => {
+    const current = normalizeListeningMarkerText(currentText);
+    const nextTokens = normalizeListeningMarkerText(nextText ?? '').split(/\s+/).filter(Boolean);
+    if (!current || nextTokens.length === 0) {
+        return null;
+    }
+
+    let partToken: string | undefined;
+    if (/\bturn to (?:section|part)$/.test(current)) {
+        partToken = nextTokens[0];
+    } else if (/\bturn to$/.test(current) && (nextTokens[0] === 'section' || nextTokens[0] === 'part')) {
+        partToken = nextTokens[1];
+    }
+
+    const partNumber = partToken ? listeningPartNumberWords[partToken] : null;
+    if (partNumber == null || partNumber < 1 || partNumber > partCount) {
+        return null;
+    }
+
+    return {
+        partNumber,
+        priority: 4,
+    };
+};
+
+const trimTrailingSplitTurnMarker = (text: string) => (
+    text
+        .replace(/\s*(?:now\s+)?turn\s+to(?:\s+(?:section|part))?\s*$/i, '')
+        .trim()
+);
+
+const trimLeadingSplitTurnMarkerPart = (text: string, partNumber: number) => {
+    const numberTokens = Object.entries(listeningPartNumberWords)
+        .filter(([, value]) => value === partNumber)
+        .map(([token]) => token)
+        .join('|');
+
+    if (!numberTokens) {
+        return text.trim();
+    }
+
+    return text
+        .replace(new RegExp(`^\\s*(?:(?:section|part)\\s+)?(?:${numberTokens})\\b\\s*[.:-]?\\s*`, 'i'), '')
+        .trim();
+};
+
 export const splitListeningTranscriptSegmentsByPart = (
     segments: ListeningTranscriptSerializableSegment[],
     partCount: number,
@@ -365,30 +429,61 @@ export const splitListeningTranscriptSegmentsByPart = (
         };
     }
 
-    const boundaryIndexByPart = new Map<number, { index: number; priority: number }>();
-    normalizedSegments.forEach((segment, index) => {
-        const marker = parseListeningTranscriptPartBoundaryMarker(segment.text, effectivePartCount);
-        if (!marker || marker.partNumber < 1 || marker.partNumber > effectivePartCount) {
-            return;
-        }
-
-        const boundaryIndex = index + marker.boundaryOffset;
-        if (boundaryIndex < 0 || boundaryIndex >= normalizedSegments.length) {
-            return;
-        }
-
-        const existing = boundaryIndexByPart.get(marker.partNumber);
+    const boundaryIndexByPart = new Map<number, {
+        index: number;
+        previousEndIndex: number;
+        priority: number;
+        splitAcrossSegments?: boolean;
+    }>();
+    const registerBoundary = (
+        partNumber: number,
+        boundary: {
+            index: number;
+            previousEndIndex: number;
+            priority: number;
+            splitAcrossSegments?: boolean;
+        },
+    ) => {
+        const existing = boundaryIndexByPart.get(partNumber);
         if (
             !existing
-            || boundaryIndex < existing.index
-            || (boundaryIndex === existing.index && marker.priority > existing.priority)
+            || boundary.index < existing.index
+            || (boundary.index === existing.index && boundary.priority > existing.priority)
         ) {
-            boundaryIndexByPart.set(marker.partNumber, { index: boundaryIndex, priority: marker.priority });
+            boundaryIndexByPart.set(partNumber, boundary);
+        }
+    };
+
+    normalizedSegments.forEach((segment, index) => {
+        const marker = parseListeningTranscriptPartBoundaryMarker(segment.text, effectivePartCount);
+        if (marker && marker.partNumber >= 1 && marker.partNumber <= effectivePartCount) {
+            const boundaryIndex = index + marker.boundaryOffset;
+            if (boundaryIndex >= 0 && boundaryIndex < normalizedSegments.length) {
+                registerBoundary(marker.partNumber, {
+                    index: boundaryIndex,
+                    previousEndIndex: index,
+                    priority: marker.priority,
+                });
+            }
+        }
+
+        const splitMarker = parseSplitTurnBoundaryMarker(
+            segment.text,
+            normalizedSegments[index + 1]?.text,
+            effectivePartCount,
+        );
+        if (splitMarker && index + 1 < normalizedSegments.length) {
+            registerBoundary(splitMarker.partNumber, {
+                index: index + 1,
+                previousEndIndex: index + 1,
+                priority: splitMarker.priority,
+                splitAcrossSegments: true,
+            });
         }
     });
 
     if (!boundaryIndexByPart.has(1)) {
-        boundaryIndexByPart.set(1, { index: 0, priority: 0 });
+        boundaryIndexByPart.set(1, { index: 0, previousEndIndex: 0, priority: 0 });
     }
 
     const sortedBoundaries = [...boundaryIndexByPart.entries()]
@@ -413,9 +508,28 @@ export const splitListeningTranscriptSegmentsByPart = (
         }
 
         const nextBoundary = sortedBoundaries.find(([candidatePartNumber]) => candidatePartNumber > partNumber);
-        const endIndexExclusive = nextBoundary ? nextBoundary[1] : normalizedSegments.length;
+        const nextBoundaryInfo = nextBoundary ? boundaryIndexByPart.get(nextBoundary[0]) : null;
+        const endIndexExclusive = nextBoundaryInfo ? nextBoundaryInfo.previousEndIndex : normalizedSegments.length;
         const partSegments = normalizedSegments.slice(startIndex, Math.max(startIndex + 1, endIndexExclusive));
-        return partSegments.length > 0 ? partSegments : normalizedSegments;
+        const boundaryInfo = boundaryIndexByPart.get(partNumber);
+        const cleanedSegments = partSegments
+            .map((segment, offset) => {
+                const globalIndex = startIndex + offset;
+                let text = segment.text;
+
+                if (boundaryInfo?.splitAcrossSegments && globalIndex === boundaryInfo.index) {
+                    text = trimLeadingSplitTurnMarkerPart(text, partNumber);
+                }
+
+                if (nextBoundaryInfo?.splitAcrossSegments && globalIndex === nextBoundaryInfo.previousEndIndex - 1) {
+                    text = trimTrailingSplitTurnMarker(text);
+                }
+
+                return { ...segment, text };
+            })
+            .filter((segment) => segment.text.trim());
+
+        return cleanedSegments.length > 0 ? cleanedSegments : normalizedSegments;
     });
 
     return {
@@ -938,13 +1052,16 @@ export const findListeningTranscriptSnippetByTime = (
         return null;
     }
 
-    const startIndex = preferredMatches[0].index;
-    const endIndex = preferredMatches[preferredMatches.length - 1].index;
+    const contentMatches = preferredMatches.filter(({ segment }) => (
+        !isListeningTranscriptInstructionText(segment.text)
+    ));
+    if (contentMatches.length === 0) {
+        return null;
+    }
 
     return normalizeInferredSnippetText(
-        segments
-            .slice(startIndex, endIndex + 1)
-            .map((segment) => segment.text)
+        contentMatches
+            .map(({ segment }) => segment.text)
             .join(' '),
     ) || null;
 };

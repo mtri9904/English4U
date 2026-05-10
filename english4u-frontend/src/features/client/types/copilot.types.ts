@@ -49,6 +49,8 @@ export interface CopilotChatMessage extends CopilotChatHistoryItem {
     createdAt: number;
     status?: 'streaming' | 'done' | 'error';
     replayAction?: CopilotReplayAction | null;
+    focusChips?: CopilotFocusPayload[] | null;
+    selectionLabel?: string | null;
 }
 
 export interface CopilotChatRequest {

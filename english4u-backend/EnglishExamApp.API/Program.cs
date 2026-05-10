@@ -1,5 +1,6 @@
-using System.Text;
 using System.IdentityModel.Tokens.Jwt;
+using EnglishExamApp.API.Authentication;
+using EnglishExamApp.API.Payments;
 using EnglishExamApp.API.Realtime;
 using EnglishExamApp.Application.Interfaces;
 using EnglishExamApp.Application.Services;
@@ -7,11 +8,12 @@ using EnglishExamApp.Infrastructure.Data;
 using EnglishExamApp.Infrastructure.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens;
 using Microsoft.Extensions.FileProviders;
 using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
+var jwtKey = RequireConfiguration(builder.Configuration, "Jwt:Key");
+var defaultConnectionString = RequireConnectionString(builder.Configuration, "DefaultConnection");
 
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
@@ -20,17 +22,8 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidateAudience = true,
-            ValidateLifetime = true,
-            ValidateIssuerSigningKey = true,
-            ValidIssuer = builder.Configuration["Jwt:Issuer"],
-            ValidAudience = builder.Configuration["Jwt:Audience"],
-            IssuerSigningKey = new SymmetricSecurityKey(
-                Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!))
-        };
+        options.TokenValidationParameters =
+            JwtAuthenticationConfiguration.CreateTokenValidationParameters(builder.Configuration, jwtKey);
     });
 builder.Services.AddAuthorization();
 
@@ -45,15 +38,21 @@ builder.Services.AddCors(options =>
 });
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseSqlServer(defaultConnectionString));
 
 builder.Services.AddScoped<IApplicationDbContext>(provider =>
     provider.GetRequiredService<ApplicationDbContext>());
+builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
+builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
+builder.Services.AddScoped<IAuthCodeGenerator, SecureAuthCodeGenerator>();
+builder.Services.AddScoped<IVnpayPaymentService, VnpayPaymentService>();
 
 builder.Services.AddScoped<IExamService, ExamService>();
 builder.Services.AddScoped<IExamExecutionService, ExamExecutionService>();
 builder.Services.AddScoped<IUserService, UserService>();
+builder.Services.AddScoped<IUserPresenceService, UserPresenceService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
+builder.Services.AddScoped<IPasswordHasher, Pbkdf2PasswordHasher>();
 builder.Services.AddScoped<ISpeakingMediaStorageService, LocalSpeakingMediaStorageService>();
 builder.Services.AddSingleton<IPdfGenerationProgressTracker, PdfGenerationProgressTracker>();
 builder.Services.AddSingleton<RealtimeEventDispatcher>();
@@ -65,16 +64,18 @@ builder.Services.AddSingleton<IRealtimeEventPublisher>(provider =>
 builder.Services.AddHttpClient<IAiIntegrationService, AiScoringHttpService>(client =>
 {
     var baseUrl = builder.Configuration["AiScoringService:BaseUrl"] ?? "http://localhost:8000";
+    var timeoutMinutes = builder.Configuration.GetValue<double?>("AiScoringService:TimeoutMinutes") ?? 30d;
     client.BaseAddress = new Uri(baseUrl);
-    client.Timeout = TimeSpan.FromMinutes(5);
+    client.Timeout = TimeSpan.FromMinutes(Math.Clamp(timeoutMinutes, 1d, 60d));
 });
 
-builder.Services.AddHttpClient<IExamPdfGenerationService, GemmaPdfExamGenerationService>(client =>
+builder.Services.AddHttpClient<IGemmaCompletionClient, GemmaCompletionClient>(client =>
 {
     var baseUrl = builder.Configuration["GemmaExamGeneration:BaseUrl"] ?? "https://generativelanguage.googleapis.com/v1beta/openai/";
     client.BaseAddress = new Uri(baseUrl);
     client.Timeout = TimeSpan.FromMinutes(3);
 });
+builder.Services.AddScoped<IExamPdfGenerationService, GemmaPdfExamGenerationService>();
 
 builder.Services.AddHttpClient<IReadingCopilotService, GeminiReadingCopilotService>(client =>
 {
@@ -156,17 +157,8 @@ app.Map("/ws/realtime", async context =>
         return;
     }
 
-    var tokenValidationParameters = new TokenValidationParameters
-    {
-        ValidateIssuer = true,
-        ValidateAudience = true,
-        ValidateLifetime = true,
-        ValidateIssuerSigningKey = true,
-        ValidIssuer = builder.Configuration["Jwt:Issuer"],
-        ValidAudience = builder.Configuration["Jwt:Audience"],
-        IssuerSigningKey = new SymmetricSecurityKey(
-            Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!))
-    };
+    var tokenValidationParameters =
+        JwtAuthenticationConfiguration.CreateTokenValidationParameters(builder.Configuration, jwtKey);
 
     var tokenHandler = new JwtSecurityTokenHandler();
     try
@@ -193,3 +185,27 @@ app.Map("/ws/realtime", async context =>
 });
 
 app.Run();
+
+static string RequireConfiguration(IConfiguration configuration, string key)
+{
+    var value = configuration[key];
+    if (!string.IsNullOrWhiteSpace(value))
+    {
+        return value;
+    }
+
+    throw new InvalidOperationException(
+        $"Missing required configuration '{key}'. Set it with environment variable '{key.Replace(":", "__")}' or user-secrets key '{key}'.");
+}
+
+static string RequireConnectionString(IConfiguration configuration, string name)
+{
+    var value = configuration.GetConnectionString(name);
+    if (!string.IsNullOrWhiteSpace(value))
+    {
+        return value;
+    }
+
+    throw new InvalidOperationException(
+        $"Missing required connection string '{name}'. Set it with environment variable 'ConnectionStrings__{name}' or user-secrets key 'ConnectionStrings:{name}'.");
+}

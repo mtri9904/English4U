@@ -1,0 +1,7 @@
+services:
+  languagetool:
+    image: ${LANGUAGETOOL_DOCKER_IMAGE:-meyay/languagetool:latest}
+    container_name: english4skills-languagetool
+    ports:
+      - "${LANGUAGETOOL_HOST_PORT:-8081}:8081"
+    restart: unless-stopped

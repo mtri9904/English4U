@@ -36,6 +36,7 @@ import {
     buildWritingTaskFocusPayload,
     findListeningQuestionFocusPayload,
     inferListeningQuestionEvidenceMatch,
+    resolveQuestionSpecificCorrectAnswer,
 } from '../lib/reviewCopilotContext';
 import { setListeningAttemptMode, type ListeningAttemptMode } from '../lib/listeningSessionState';
 import { getSessionRunnerPath, getSkillLabel, isObjectiveSkill, isSpeakingSkill, isSupportedRunnerSkill, isWritingSkill } from '../lib/sessionRouting';
@@ -350,7 +351,7 @@ const buildCopilotOutgoingMessage = (message: string, context: ReviewCopilotCont
         prefixes.push(
             [
                 'Với câu objective đang được hỏi hoặc đang focus, không được chỉ trả lời bằng một chữ cái, một từ hoặc ký hiệu đáp án trần.',
-                'Hãy trả lời đúng trọng tâm câu hỏi của học viên, nêu đáp án rồi giải thích ngắn vì sao dựa trên dữ kiện trong bài review.',
+                'Hãy trả lời đúng trọng tâm câu hỏi của học viên, nêu đáp án rồi giải thích đủ rõ vì sao dựa trên dữ kiện trong bài review.',
             ].join(' '),
         );
     }
@@ -359,7 +360,36 @@ const buildCopilotOutgoingMessage = (message: string, context: ReviewCopilotCont
         prefixes.push(
             [
                 'Nếu đây là câu Reading và học viên hỏi kiểu "đọc đâu", "vì sao chọn", "loại thế nào", hãy chỉ rõ ý/đoạn trong passage liên quan.',
+                'Không cần trả lời theo khuôn cứng; hãy giải đáp tự nhiên như gia sư, nhưng phải ưu tiên trả lời trực tiếp câu hỏi của học viên.',
+                'Bắt đầu ngay bằng câu trả lời cho học viên; không viết phần nháp như Current Focus, Student choice, Scanning, Found in Paragraph, Tone hoặc No meta-talk.',
+                'Nếu học viên hỏi "đọc chỗ nào để trả lời đúng", hãy bắt đầu bằng đáp án đúng và vị trí/dẫn chứng chứng minh đáp án đúng; sau đó mới giải thích vì sao đáp án học viên sai nếu cần.',
+                'Nhãn [Đoạn 1, câu 2] trong ngữ cảnh được tạo theo đúng nhãn Đoạn đang hiển thị ở FE; không tự đếm lại đoạn theo cách khác. Hãy dùng nhãn đó khi hữu ích và trích đúng câu/cụm tiếng Anh then chốt, không chỉ nói chung chung.',
                 'Nếu học viên nhắc nhiều câu, trả lời lần lượt từng câu; không dùng focus cũ nếu tin nhắn hiện tại đã nêu số câu khác.',
+            ].join(' '),
+        );
+
+        if (hasReadingEvidenceLocationIntent(trimmedMessage)) {
+            prefixes.push(
+                [
+                    'Đây là yêu cầu tìm vị trí bằng chứng trong Reading.',
+                    'Nếu context có cả "Học viên chọn" và "Đáp án đúng", hãy dùng "Đáp án đúng" để tìm bằng chứng trước; không được lấy đáp án học viên đã sai làm trung tâm trả lời.',
+                    'Trả lời theo cùng một khung, viết trực tiếp cho học viên, không nhắc lại tên khung hay quy tắc.',
+                    'Thứ tự nội dung: nơi đọc trong bài; đáp án đúng; dẫn chứng tiếng Anh ngắn; vì sao dẫn chứng khớp với đáp án.',
+                    'Kể cả khi học viên làm sai, câu đầu tiên vẫn phải chỉ nơi đọc và đáp án đúng; không được bắt đầu bằng lựa chọn sai của học viên.',
+                    'Nếu học viên chọn sai, thêm một đoạn cuối giải thích vì sao lựa chọn đó chưa đúng. Nếu học viên đã chọn đúng thì không nhắc lỗi.',
+                    'Không tự kiểm tra lại ở cuối câu trả lời, không viết các dòng như "No meta-talk", "Correct labels", "Correct format" hoặc "Start immediately".',
+                ].join(' '),
+            );
+        }
+    }
+
+    if (isObjectiveSkill(context.skillType) && (context.contextImages?.length ?? 0) > 0) {
+        prefixes.push(
+            [
+                'Ngữ cảnh hiện có ảnh/sơ đồ/bảng/map liên quan.',
+                'Nếu câu hỏi objective có hình, sơ đồ, map, bảng hoặc diagram, hãy đọc cả ảnh được đính kèm và passage/transcript; không chỉ dựa vào đoạn văn.',
+                'Khi đáp án phụ thuộc vào hình, hãy nói rõ chi tiết nhìn thấy trong hình đã nối với câu/cụm nào trong bài.',
+                'Nếu hình không đủ rõ hoặc không xác nhận được chi tiết, hãy nói rõ giới hạn đó thay vì đoán.',
             ].join(' '),
         );
     }
@@ -396,6 +426,15 @@ const normalizeCopilotIntentText = (value: string) => (
         .replace(/[\u0300-\u036f]/g, '')
         .replace(/đ/g, 'd')
 );
+
+const hasReadingEvidenceLocationIntent = (message: string) => {
+    const normalizedMessage = normalizeCopilotIntentText(message)
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    return /\b(doc dau|doc cho nao|cho nao|doan nao|o dau|tim o dau|bang chung|dan chung|vi tri|line nao|cau nao trong bai)\b/i.test(normalizedMessage)
+        && /\b(dung|duoc|lam duoc|tra loi|tim dap an|dap an|chon|cau nay|question nay|q nay|vi sao)\b/i.test(normalizedMessage);
+};
 
 const sortObjectiveQuestions = (questions: PracticeSessionQuestionDto[]) => (
     [...questions].sort((left, right) => {
@@ -555,10 +594,24 @@ const extractReferencedQuestionNumbers = (message: string, focusedQuestionNumber
 };
 
 const detectListeningReplayScopes = (segments: Array<{ text: string }>) => {
-    const events: Array<{ segmentIndex: number; startQuestion: number; endQuestion: number }> = [];
+    const maxSegmentIndex = Math.max(segments.length - 1, 0);
+    const events: Array<{
+        firstSegmentIndex: number;
+        lastSegmentIndex: number;
+        startQuestion: number;
+        endQuestion: number;
+    }> = [];
 
     segments.forEach((segment, index) => {
-        const questionRange = parseQuestionRangeFromListeningTranscriptSegment(segment.text);
+        let eventSegmentIndex = index;
+        let questionRange = parseQuestionRangeFromListeningTranscriptSegment(segment.text);
+        if (!questionRange && segments[index + 1]) {
+            questionRange = parseQuestionRangeFromListeningTranscriptSegment(
+                `${segment.text ?? ''} ${segments[index + 1].text ?? ''}`,
+            );
+            eventSegmentIndex = index + 1;
+        }
+
         if (!questionRange) {
             return;
         }
@@ -568,7 +621,8 @@ const detectListeningReplayScopes = (segments: Array<{ text: string }>) => {
             && previousEvent.startQuestion === questionRange.startQuestion
             && previousEvent.endQuestion === questionRange.endQuestion) {
             events[events.length - 1] = {
-                segmentIndex: index,
+                firstSegmentIndex: Math.min(previousEvent.firstSegmentIndex, eventSegmentIndex),
+                lastSegmentIndex: Math.max(previousEvent.lastSegmentIndex, eventSegmentIndex),
                 startQuestion: questionRange.startQuestion,
                 endQuestion: questionRange.endQuestion,
             };
@@ -576,7 +630,8 @@ const detectListeningReplayScopes = (segments: Array<{ text: string }>) => {
         }
 
         events.push({
-            segmentIndex: index,
+            firstSegmentIndex: eventSegmentIndex,
+            lastSegmentIndex: eventSegmentIndex,
             startQuestion: questionRange.startQuestion,
             endQuestion: questionRange.endQuestion,
         });
@@ -584,13 +639,16 @@ const detectListeningReplayScopes = (segments: Array<{ text: string }>) => {
 
     return events.map((event, index) => {
         const nextEvent = events[index + 1];
+        const startSegmentIndex = Math.min(event.lastSegmentIndex + 1, maxSegmentIndex);
+        const endSegmentIndex = nextEvent
+            ? Math.min(nextEvent.firstSegmentIndex - 1, maxSegmentIndex)
+            : maxSegmentIndex;
+
         return {
             startQuestion: event.startQuestion,
             endQuestion: event.endQuestion,
-            startSegmentIndex: Math.min(event.segmentIndex + 1, Math.max(segments.length - 1, 0)),
-            endSegmentIndex: nextEvent
-                ? Math.max(event.segmentIndex + 1, nextEvent.segmentIndex - 1)
-                : Math.max(segments.length - 1, 0),
+            startSegmentIndex,
+            endSegmentIndex,
         };
     });
 };
@@ -607,6 +665,27 @@ const findListeningReplayScopeForQuestion = (
         .find((scope) => scope.startQuestion <= questionNumber && questionNumber <= scope.endQuestion) ?? null;
 };
 
+const getListeningReplayScopeBounds = (
+    segments: Array<{ text: string; startTime: number; endTime?: number | null }>,
+    questionNumber?: number | null,
+) => {
+    const scope = findListeningReplayScopeForQuestion(segments, questionNumber);
+    if (!scope || scope.endSegmentIndex < scope.startSegmentIndex) {
+        return null;
+    }
+
+    const firstSegment = segments[scope.startSegmentIndex];
+    const lastSegment = segments[scope.endSegmentIndex];
+    if (!firstSegment || !lastSegment) {
+        return null;
+    }
+
+    return {
+        startSecond: firstSegment.startTime,
+        endSecond: lastSegment.endTime ?? lastSegment.startTime,
+    };
+};
+
 const selectListeningReplayScopeSegments = <T,>({
     segments,
     scope,
@@ -618,6 +697,10 @@ const selectListeningReplayScopeSegments = <T,>({
     questionNumber: number;
     maxSegments: number;
 }) => {
+    if (scope.endSegmentIndex < scope.startSegmentIndex) {
+        return [];
+    }
+
     const scopeSegments = segments.slice(scope.startSegmentIndex, scope.endSegmentIndex + 1);
     if (scopeSegments.length <= maxSegments) {
         return scopeSegments;
@@ -664,9 +747,44 @@ const buildListeningScopeReplayMatch = (
     };
 };
 
+const isReplayMatchInsideQuestionScope = (
+    segments: ReturnType<typeof parseListeningTranscriptEnvelope>['segments'],
+    questionNumber: number,
+    replayMatch: { startTime: number; endTime?: number | null } | null,
+) => {
+    if (!replayMatch) {
+        return false;
+    }
+
+    const scope = findListeningReplayScopeForQuestion(segments, questionNumber);
+    if (!scope) {
+        return true;
+    }
+
+    const firstSegment = segments[scope.startSegmentIndex];
+    const lastSegment = segments[scope.endSegmentIndex];
+    if (!firstSegment || !lastSegment || scope.endSegmentIndex < scope.startSegmentIndex) {
+        return true;
+    }
+
+    const scopeStartTime = firstSegment.startTime;
+    const scopeEndTime = lastSegment.endTime ?? lastSegment.startTime;
+    return replayMatch.startTime >= scopeStartTime - 1.5
+        && replayMatch.startTime <= scopeEndTime + 1.5;
+};
+
 const summarizeAnswerValue = (value?: string | null) => {
     const trimmed = (value ?? '').trim();
-    return trimmed || 'Chưa trả lời';
+    if (!trimmed) {
+        return 'Chưa trả lời';
+    }
+
+    const tokens = trimmed
+        .split('|')
+        .map((token) => token.trim())
+        .filter(Boolean);
+
+    return tokens.length > 1 ? tokens.join(', ') : trimmed;
 };
 
 const isObjectiveWeaknessSummaryIntent = (message: string, skillType: string) => {
@@ -703,15 +821,19 @@ const buildObjectiveWeaknessSummary = ({
     const containers = skillType === 'READING'
         ? readingPassages.map((passage, index) => ({
             label: `Passage ${passage.passageNumber ?? index + 1}`,
-            questions: sortObjectiveGroups(passage.questionGroups).flatMap((group) => sortObjectiveQuestions(group.questions)),
+            questions: sortObjectiveGroups(passage.questionGroups).flatMap((group) => (
+                sortObjectiveQuestions(group.questions).map((question) => ({ group, question }))
+            )),
         }))
         : listeningParts.map((part, index) => ({
             label: `Part ${part.partNumber ?? index + 1}`,
-            questions: sortObjectiveGroups(part.questionGroups).flatMap((group) => sortObjectiveQuestions(group.questions)),
+            questions: sortObjectiveGroups(part.questionGroups).flatMap((group) => (
+                sortObjectiveQuestions(group.questions).map((question) => ({ group, question }))
+            )),
         }));
 
     const partLines = containers.map((container) => {
-        const wrongEntries = container.questions.flatMap((question) => {
+        const wrongEntries = container.questions.flatMap(({ group, question }) => {
             const reviewAnswer = reviewAnswerMap[question.id];
             if (reviewAnswer?.isCorrect !== false) {
                 return [];
@@ -720,7 +842,11 @@ const buildObjectiveWeaknessSummary = ({
             return [{
                 questionNumber: question.questionNumber,
                 userAnswer: summarizeAnswerValue(answerMap[question.id] ?? reviewAnswer.answerText),
-                correctAnswer: summarizeAnswerValue(reviewAnswer.correctAnswer ?? question.correctAnswer),
+                correctAnswer: summarizeAnswerValue(
+                    resolveQuestionSpecificCorrectAnswer(group, question, reviewAnswer)
+                    || reviewAnswer.correctAnswer
+                    || question.correctAnswer,
+                ),
             }];
         });
 
@@ -736,7 +862,7 @@ const buildObjectiveWeaknessSummary = ({
     });
 
     const totalWrong = containers.reduce((total, container) => (
-        total + container.questions.filter((question) => reviewAnswerMap[question.id]?.isCorrect === false).length
+        total + container.questions.filter(({ question }) => reviewAnswerMap[question.id]?.isCorrect === false).length
     ), 0);
 
     return [
@@ -900,13 +1026,18 @@ const buildListeningReplayActionForQuestion = ({
             questionNumber,
             transcriptData.alignments,
         );
+        const locatedQuestionReviewAnswer = locatedQuestion ? reviewAnswerMap?.[locatedQuestion.id] : undefined;
         const inferredReplayMatch = locatedGroup && locatedQuestion
             ? inferListeningQuestionEvidenceMatch({
                 segments: transcriptSegments,
                 group: locatedGroup,
                 question: {
                     ...locatedQuestion,
-                    correctAnswer: reviewAnswerMap?.[locatedQuestion.id]?.correctAnswer || locatedQuestion.correctAnswer,
+                    correctAnswer: resolveQuestionSpecificCorrectAnswer(
+                        locatedGroup,
+                        locatedQuestion,
+                        locatedQuestionReviewAnswer,
+                    ) || locatedQuestion.correctAnswer,
                 },
             })
             : null;
@@ -916,13 +1047,22 @@ const buildListeningReplayActionForQuestion = ({
             continue;
         }
 
-        const preferredReplayMatch = inferredReplayMatch ?? replayMatch;
+        const replayMatchInsideQuestionScope = isReplayMatchInsideQuestionScope(
+            transcriptSegments,
+            questionNumber,
+            replayMatch,
+        );
+        const replayScopeBounds = getListeningReplayScopeBounds(transcriptSegments, questionNumber);
+        const preferredReplayMatch = inferredReplayMatch
+            ?? (replayMatchInsideQuestionScope ? replayMatch : null);
 
         if (preferredReplayMatch) {
             return createListeningReplayAction({
                 audioUrl,
                 answerStartSecond: preferredReplayMatch.startTime,
                 answerEndSecond: preferredReplayMatch.endTime,
+                replayStartLimitSecond: replayScopeBounds?.startSecond,
+                replayEndLimitSecond: replayScopeBounds?.endSecond,
                 transcriptSnippet: preferredReplayMatch.text,
                 questionNumber,
                 matchType: 'exact',
@@ -935,6 +1075,8 @@ const buildListeningReplayActionForQuestion = ({
                 audioUrl,
                 answerStartSecond: scopeReplayMatch.startTime,
                 answerEndSecond: scopeReplayMatch.endTime,
+                replayStartLimitSecond: replayScopeBounds?.startSecond,
+                replayEndLimitSecond: replayScopeBounds?.endSecond,
                 transcriptSnippet: scopeReplayMatch.text,
                 questionNumber,
                 matchType: 'scope',
@@ -949,6 +1091,8 @@ const createListeningReplayAction = ({
     audioUrl,
     answerStartSecond,
     answerEndSecond,
+    replayStartLimitSecond,
+    replayEndLimitSecond,
     transcriptSnippet,
     questionNumber,
     matchType = 'exact',
@@ -956,14 +1100,22 @@ const createListeningReplayAction = ({
     audioUrl: string;
     answerStartSecond: number;
     answerEndSecond?: number | null;
+    replayStartLimitSecond?: number | null;
+    replayEndLimitSecond?: number | null;
     transcriptSnippet?: string | null;
     questionNumber?: number | null;
     matchType?: 'exact' | 'scope';
 }): CopilotReplayAction => {
-    const playAtSecond = Math.max(0, answerStartSecond - LISTENING_REPLAY_PREROLL_SECONDS);
-    const replayEndSecond = answerEndSecond != null
+    const playAtSecond = Math.max(
+        replayStartLimitSecond ?? 0,
+        answerStartSecond - LISTENING_REPLAY_PREROLL_SECONDS,
+    );
+    const unclippedReplayEndSecond = answerEndSecond != null
         ? answerEndSecond + LISTENING_REPLAY_POSTROLL_SECONDS
         : null;
+    const replayEndSecond = unclippedReplayEndSecond != null && replayEndLimitSecond != null
+        ? Math.min(unclippedReplayEndSecond, replayEndLimitSecond)
+        : unclippedReplayEndSecond;
     const answerTimestampLabel = formatTranscriptRangeLabel(answerStartSecond, answerEndSecond);
     const timestampLabel = formatTranscriptRangeLabel(playAtSecond, replayEndSecond);
 
@@ -1021,6 +1173,44 @@ const resolveListeningTranscriptSnippetForReplay = ({
         );
         if (snippet) {
             return snippet;
+        }
+    }
+
+    return null;
+};
+
+const resolveListeningReplayScopeBounds = ({
+    parts,
+    activePartIndex,
+    questionNumber,
+}: {
+    parts: PracticeSessionListeningPartDto[];
+    activePartIndex: number;
+    questionNumber?: number | null;
+}) => {
+    if (questionNumber == null) {
+        return null;
+    }
+
+    const orderedParts = parts
+        .map((part, index) => ({ part, index }))
+        .sort((left, right) => {
+            if (left.index === activePartIndex) {
+                return -1;
+            }
+
+            if (right.index === activePartIndex) {
+                return 1;
+            }
+
+            return left.index - right.index;
+        });
+
+    for (const { part } of orderedParts) {
+        const transcriptData = parseListeningTranscriptEnvelope(part.transcriptData);
+        const scopeBounds = getListeningReplayScopeBounds(transcriptData.segments, questionNumber);
+        if (scopeBounds) {
+            return scopeBounds;
         }
     }
 
@@ -1429,6 +1619,8 @@ const ObjectiveSessionReviewRunner = ({
                         content: userMessage,
                         createdAt: Date.now(),
                         status: 'done',
+                        focusChips: copilotFocuses.length > 0 ? [...copilotFocuses] : null,
+                        selectionLabel: copilotSelectedText ? 'Từ khóa trích đoạn' : null,
                     },
                     {
                         id: createCopilotMessageId('model'),
@@ -1461,6 +1653,8 @@ const ObjectiveSessionReviewRunner = ({
                         content: userMessage,
                         createdAt: Date.now(),
                         status: 'done',
+                        focusChips: copilotFocuses.length > 0 ? [...copilotFocuses] : null,
+                        selectionLabel: copilotSelectedText ? 'Từ khóa trích đoạn' : null,
                     },
                     {
                         id: createCopilotMessageId('model'),
@@ -1589,9 +1783,11 @@ const ObjectiveSessionReviewRunner = ({
                     content: userMessage,
                     createdAt: Date.now(),
                     status: 'done',
+                    focusChips: copilotFocuses.length > 0 ? [...copilotFocuses] : null,
+                    selectionLabel: copilotSelectedText ? 'Từ khóa trích đoạn' : null,
                 },
                 {
-                    id: assistantMessageId,
+                    id: assistantMessageId!,
                     role: 'model',
                     content: '',
                     createdAt: Date.now(),
@@ -1676,11 +1872,18 @@ const ObjectiveSessionReviewRunner = ({
                                                     answerEndSecond: inferredReplay.answerEndSecond,
                                                     questionNumber: replayQuestionNumber,
                                                 }) ?? inferredReplay.transcriptSnippet;
+                                                const replayScopeBounds = resolveListeningReplayScopeBounds({
+                                                    parts: listeningParts,
+                                                    activePartIndex: activeItemIndex,
+                                                    questionNumber: replayQuestionNumber,
+                                                });
 
                                                 return createListeningReplayAction({
                                                     audioUrl: sharedListeningAudioUrl,
                                                     answerStartSecond: inferredReplay.answerStartSecond,
                                                     answerEndSecond: inferredReplay.answerEndSecond,
+                                                    replayStartLimitSecond: replayScopeBounds?.startSecond,
+                                                    replayEndLimitSecond: replayScopeBounds?.endSecond,
                                                     transcriptSnippet,
                                                     questionNumber: replayQuestionNumber,
                                                 });
@@ -1793,6 +1996,18 @@ const ObjectiveSessionReviewRunner = ({
                 reviewAnswer,
                 userAnswer: answerMap[question.id] ?? reviewAnswer?.answerText,
             })
+            : skillType === 'READING' && question.questionNumber != null
+                ? findReadingQuestionFocusPayload({
+                    passages: readingPassages,
+                    questionNumber: question.questionNumber,
+                    answerMap,
+                    reviewAnswerMap,
+                }) ?? buildQuestionFocusPayload({
+                    group,
+                    question,
+                    reviewAnswer,
+                    userAnswer: answerMap[question.id] ?? reviewAnswer?.answerText,
+                })
             : buildQuestionFocusPayload({
                 group,
                 question,

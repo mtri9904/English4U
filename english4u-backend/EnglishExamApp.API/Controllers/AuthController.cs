@@ -1,12 +1,7 @@
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
-using System.Security.Cryptography;
-using System.Text;
-using EnglishExamApp.API.Realtime;
+using EnglishExamApp.API.Authentication;
 using EnglishExamApp.Application.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens;
 
 namespace EnglishExamApp.API.Controllers;
 
@@ -16,7 +11,11 @@ public class AuthController(
     IApplicationDbContext context,
     IConfiguration configuration,
     IEmailService emailService,
-    IRealtimeEventDispatcher realtimeDispatcher) : ControllerBase
+    IWebHostEnvironment environment,
+    IPasswordHasher passwordHasher,
+    IJwtTokenService jwtTokenService,
+    IAuthCodeGenerator authCodeGenerator,
+    IUserPresenceService userPresenceService) : ControllerBase
 {
     public sealed record ForgotPasswordRequest(string Email);
     public sealed record ResetPasswordRequest(string Token, string NewPassword);
@@ -59,12 +58,7 @@ public class AuthController(
 
         if (user is null)
         {
-            var studentRole = await context.Roles.FirstOrDefaultAsync(r => r.Name == "Student", cancellationToken);
-            if (studentRole is null)
-            {
-                studentRole = new Domain.Entities.Role { Id = Guid.NewGuid(), Name = "Student" };
-                context.Roles.Add(studentRole);
-            }
+            var studentRole = await GetOrCreateRoleAsync(AuthRoles.Student, cancellationToken);
 
             user = new Domain.Entities.User
             {
@@ -91,24 +85,13 @@ public class AuthController(
         if (!user.IsActive)
             return TypedResults.BadRequest(new { message = "Tài khoản của bạn đã bị khóa. Vui lòng liên hệ quản trị viên." });
 
-        user.LastLoginAt = DateTime.UtcNow;
-        user.LastSeenAt = DateTime.UtcNow;
-        user.IsOnline = true;
         if (string.IsNullOrEmpty(user.AvatarUrl) && !string.IsNullOrEmpty(payload.Picture))
             user.AvatarUrl = payload.Picture;
 
-        await context.SaveChangesAsync(cancellationToken);
-        await PublishUserPresenceChangedAsync(cancellationToken);
+        await userPresenceService.MarkLoggedInAsync(user, cancellationToken);
 
-        var roleName = user.UserRoles.FirstOrDefault()?.Role.Name ?? "Student";
-        var token = GenerateJwtToken(user.Id.ToString(), user.Email, roleName);
-
-        return TypedResults.Ok(new AuthResponseDto(
-            Token: token,
-            UserId: user.Id.ToString(),
-            Email: user.Email,
-            DisplayName: user.DisplayName,
-            Role: roleName));
+        var roleName = ResolvePrimaryRoleName(user);
+        return TypedResults.Ok(BuildAuthResponse(user, roleName));
     }
 
     [HttpPost("register")]
@@ -118,20 +101,14 @@ public class AuthController(
         if (emailExists)
             return TypedResults.Conflict(new { message = "Email đã được sử dụng." });
 
-        var studentRole = await context.Roles.FirstOrDefaultAsync(r => r.Name == "Student", cancellationToken);
-        if (studentRole is null)
-        {
-            studentRole = new Domain.Entities.Role { Id = Guid.NewGuid(), Name = "Student" };
-            context.Roles.Add(studentRole);
-        }
+        var studentRole = await GetOrCreateRoleAsync(AuthRoles.Student, cancellationToken);
 
-        // Generate 4-digit OTP
-        var otp = RandomNumberGenerator.GetInt32(1000, 9999).ToString();
+        var otp = authCodeGenerator.GenerateOtpCode();
         var user = new Domain.Entities.User
         {
             Id = Guid.NewGuid(),
             Email = request.Email,
-            PasswordHash = HashPassword(request.Password),
+            PasswordHash = passwordHasher.HashPassword(request.Password),
             DisplayName = request.DisplayName ?? request.Email.Split('@')[0],
             IsActive = true,
             IsEmailConfirmed = false,
@@ -152,18 +129,7 @@ public class AuthController(
 
         try
         {
-            // Send Activation Email with OTP
-            var emailBody = $@"
-                <div style='font-family: Arial, sans-serif; padding: 20px; text-align: center; border: 1px solid #eee; border-radius: 10px;'>
-                    <h2 style='color: #137dc5;'>Chào mừng bạn đến với English4U!</h2>
-                    <p>Mã xác thực của bạn là:</p>
-                    <div style='font-size: 32px; font-weight: bold; letter-spacing: 10px; padding: 20px; background: #f4f4f4; border-radius: 5px; display: inline-block; margin: 10px 0;'>
-                        {otp}
-                    </div>
-                    <p>Mã này sẽ hết hạn sau 1 phút.</p>
-                    <p>Vui lòng không chia sẻ mã này với bất kỳ ai.</p>
-                </div>";
-
+            var emailBody = AuthEmailTemplates.BuildActivationOtpEmail(otp);
             await emailService.SendEmailAsync(user.Email, "Mã xác thực tài khoản English4U", emailBody);
             return TypedResults.Ok(new { message = "Đã gửi mã xác nhận vào email của bạn. Vui lòng kiểm tra." });
         }
@@ -216,20 +182,14 @@ public class AuthController(
         if (user is null)
             return TypedResults.Ok(new { message = "Nếu email tồn tại trong hệ thống, bạn sẽ sớm nhận được link reset mật khẩu." });
 
-        var resetToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+        var resetToken = authCodeGenerator.GeneratePasswordResetToken();
         user.ResetPasswordToken = resetToken;
         user.TokenExpiry = DateTime.UtcNow.AddHours(1);
         await context.SaveChangesAsync(cancellationToken);
 
         var frontendUrl = configuration["FrontendUrl"] ?? "http://localhost:5173";
         var resetLink = $"{frontendUrl}/reset-password?token={resetToken}";
-        var emailBody = $@"
-            <div style='font-family: Arial, sans-serif; padding: 20px;'>
-                <h2>Yêu cầu đặt lại mật khẩu</h2>
-                <p>Bạn đã yêu cầu đặt lại mật khẩu. Click vào link bên dưới để tiếp tục:</p>
-                <a href='{resetLink}' style='padding: 10px 20px; background: #137dc5; color: white; text-decoration: none; border-radius: 5px;'>Đặt lại mật khẩu</a>
-                <p>Link này sẽ hết hạn sau 1 giờ.</p>
-            </div>";
+        var emailBody = AuthEmailTemplates.BuildResetPasswordEmail(resetLink);
 
         await emailService.SendEmailAsync(user.Email, "Đặt lại mật khẩu English4U", emailBody);
 
@@ -243,7 +203,7 @@ public class AuthController(
         if (user is null || user.TokenExpiry < DateTime.UtcNow)
             return TypedResults.BadRequest(new { message = "Token không hợp lệ hoặc đã hết hạn." });
 
-        user.PasswordHash = HashPassword(request.NewPassword);
+        user.PasswordHash = passwordHasher.HashPassword(request.NewPassword);
         user.ResetPasswordToken = null;
         user.TokenExpiry = null;
         user.UpdatedAt = DateTime.UtcNow;
@@ -261,7 +221,7 @@ public class AuthController(
                 .ThenInclude(ur => ur.Role)
             .FirstOrDefaultAsync(u => u.Email == request.Email, cancellationToken);
 
-        if (user is null || !VerifyPassword(request.Password, user.PasswordHash))
+        if (user is null || !passwordHasher.VerifyPassword(request.Password, user.PasswordHash))
             return TypedResults.Unauthorized();
 
         if (!user.IsActive)
@@ -273,48 +233,45 @@ public class AuthController(
         if (user.Provider == "google")
             return TypedResults.BadRequest(new { message = "Tài khoản này sử dụng đăng nhập Google. Vui lòng dùng nút 'Đăng nhập bằng Google'." });
 
-        var roleName = user.UserRoles.FirstOrDefault()?.Role.Name ?? "Student";
+        var roleName = ResolvePrimaryRoleName(user);
 
-        user.LastLoginAt = DateTime.UtcNow;
-        user.LastSeenAt = DateTime.UtcNow;
-        user.IsOnline = true;
-        await context.SaveChangesAsync(cancellationToken);
-        await PublishUserPresenceChangedAsync(cancellationToken);
+        await userPresenceService.MarkLoggedInAsync(user, cancellationToken);
 
-        var token = GenerateJwtToken(user.Id.ToString(), user.Email, roleName);
-
-        return TypedResults.Ok(new AuthResponseDto(
-            Token: token,
-            UserId: user.Id.ToString(),
-            Email: user.Email,
-            DisplayName: user.DisplayName,
-            Role: roleName));
+        return TypedResults.Ok(BuildAuthResponse(user, roleName));
     }
 
     [HttpPost("seed-admin")]
     public async Task<IResult> SeedAdmin(CancellationToken cancellationToken)
     {
+        if (!environment.IsDevelopment())
+        {
+            return TypedResults.NotFound();
+        }
+
         var exists = await context.Users.AnyAsync(u => u.Email == "admin@english4u.com", cancellationToken);
         if (exists)
             return TypedResults.Conflict(new { message = "Admin already exists." });
 
-        // Ensure roles exist
-        var roles = new[] { "Admin", "Student", "Teacher", "ContentCreator" };
-        foreach (var roleName in roles)
+        foreach (var roleName in AuthRoles.SeedRoles)
         {
-            if (!await context.Roles.AnyAsync(r => r.Name == roleName, cancellationToken))
-            {
-                context.Roles.Add(new Domain.Entities.Role { Id = Guid.NewGuid(), Name = roleName });
-            }
+            await GetOrCreateRoleAsync(roleName, cancellationToken);
         }
         await context.SaveChangesAsync(cancellationToken);
 
-        var adminRole = await context.Roles.FirstAsync(r => r.Name == "Admin", cancellationToken);
+        var adminRole = await context.Roles.FirstAsync(r => r.Name == AuthRoles.Admin, cancellationToken);
+        var seedAdminPassword = configuration["SeedAdmin:Password"];
+        if (string.IsNullOrWhiteSpace(seedAdminPassword))
+        {
+            return TypedResults.Problem(
+                "SeedAdmin:Password is not configured.",
+                statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+
         var adminUser = new Domain.Entities.User
         {
             Id = Guid.NewGuid(),
             Email = "admin@english4u.com",
-            PasswordHash = HashPassword("Admin@123"),
+            PasswordHash = passwordHasher.HashPassword(seedAdminPassword),
             DisplayName = "System Admin",
             IsActive = true,
             CreatedAt = DateTime.UtcNow,
@@ -333,50 +290,38 @@ public class AuthController(
         return TypedResults.Ok(new { message = "Seeding successful. Added Admin, Student, Teacher, and ContentCreator roles." });
     }
 
-    private string GenerateJwtToken(string userId, string email, string role)
+    private async Task<Domain.Entities.Role> GetOrCreateRoleAsync(
+        string roleName,
+        CancellationToken cancellationToken)
     {
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(configuration["Jwt:Key"]!));
-        var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
-
-        var claims = new[]
+        var role = await context.Roles.FirstOrDefaultAsync(r => r.Name == roleName, cancellationToken);
+        if (role is not null)
         {
-            new Claim(JwtRegisteredClaimNames.Sub, userId),
-            new Claim(JwtRegisteredClaimNames.Email, email),
-            new Claim(ClaimTypes.Role, role),
-            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+            return role;
+        }
+
+        role = new Domain.Entities.Role
+        {
+            Id = Guid.NewGuid(),
+            Name = roleName
         };
+        context.Roles.Add(role);
 
-        var expireMinutes = int.Parse(configuration["Jwt:ExpireMinutes"] ?? "1440");
-
-        var token = new JwtSecurityToken(
-            issuer: configuration["Jwt:Issuer"],
-            audience: configuration["Jwt:Audience"],
-            claims: claims,
-            expires: DateTime.UtcNow.AddMinutes(expireMinutes),
-            signingCredentials: credentials);
-
-        return new JwtSecurityTokenHandler().WriteToken(token);
+        return role;
     }
 
-    private static string HashPassword(string password)
+    private AuthResponseDto BuildAuthResponse(Domain.Entities.User user, string roleName)
     {
-        var salt = RandomNumberGenerator.GetBytes(16);
-        var hash = Rfc2898DeriveBytes.Pbkdf2(password, salt, 100_000, HashAlgorithmName.SHA256, 32);
-        return $"{Convert.ToBase64String(salt)}.{Convert.ToBase64String(hash)}";
+        var token = jwtTokenService.GenerateToken(user.Id, user.Email, roleName);
+
+        return new AuthResponseDto(
+            Token: token,
+            UserId: user.Id.ToString(),
+            Email: user.Email,
+            DisplayName: user.DisplayName,
+            Role: roleName);
     }
 
-    private static bool VerifyPassword(string password, string storedHash)
-    {
-        var parts = storedHash.Split('.');
-        if (parts.Length != 2) return false;
-
-        var salt = Convert.FromBase64String(parts[0]);
-        var hash = Convert.FromBase64String(parts[1]);
-        var computedHash = Rfc2898DeriveBytes.Pbkdf2(password, salt, 100_000, HashAlgorithmName.SHA256, 32);
-
-        return CryptographicOperations.FixedTimeEquals(hash, computedHash);
-    }
-
-    private Task PublishUserPresenceChangedAsync(CancellationToken cancellationToken) =>
-        realtimeDispatcher.PublishAsync(RealtimeEventTypes.UsersPresenceChanged, cancellationToken: cancellationToken);
+    private static string ResolvePrimaryRoleName(Domain.Entities.User user) =>
+        user.UserRoles.FirstOrDefault()?.Role.Name ?? AuthRoles.Student;
 }

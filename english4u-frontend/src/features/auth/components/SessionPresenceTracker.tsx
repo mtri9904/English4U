@@ -111,26 +111,27 @@ const tryAcquireOrRenewLeadership = () => {
     }
 };
 
-const sendOfflineKeepalive = () => {
-    const { userId, isLoggedIn } = getAuthState();
-    if (!isLoggedIn || !userId) {
+const sendOfflineWithToken = (token: string | null, keepalive = false) => {
+    if (!token) {
         return;
     }
 
-    void fetch(`${API_BASE_URL}/user/activity/offline?userId=${encodeURIComponent(userId)}`, {
+    void fetch(`${API_BASE_URL}/user/activity/offline`, {
         method: 'POST',
-        keepalive: true,
+        headers: {
+            Authorization: `Bearer ${token}`,
+        },
+        keepalive,
     });
 };
 
-const sendOfflineByUserId = (userId: string) => {
-    if (!userId) {
+const sendOfflineKeepalive = () => {
+    const { token, isLoggedIn } = getAuthState();
+    if (!isLoggedIn) {
         return;
     }
 
-    void fetch(`${API_BASE_URL}/user/activity/offline?userId=${encodeURIComponent(userId)}`, {
-        method: 'POST',
-    });
+    sendOfflineWithToken(token, true);
 };
 
 export const SessionPresenceTracker = () => {
@@ -140,6 +141,7 @@ export const SessionPresenceTracker = () => {
         let hasExited = false;
         let wasLoggedIn = getAuthState().isLoggedIn;
         let activeUserId = getAuthState().userId;
+        let activeToken = getAuthState().token;
 
         const stopTimers = () => {
             if (heartbeatTimerId !== null) {
@@ -154,10 +156,12 @@ export const SessionPresenceTracker = () => {
         };
 
         const maintainPresenceState = () => {
-            const { isLoggedIn } = getAuthState();
+            const authState = getAuthState();
+            const { isLoggedIn } = authState;
             touchCurrentTab();
             wasLoggedIn = isLoggedIn;
-            activeUserId = getAuthState().userId;
+            activeUserId = authState.userId;
+            activeToken = authState.token;
 
             if (!isLoggedIn) {
                 clearLeaderLeaseIfCurrent();
@@ -188,7 +192,7 @@ export const SessionPresenceTracker = () => {
 
             hasExited = true;
             if (activeUserId) {
-                sendOfflineByUserId(activeUserId);
+                sendOfflineWithToken(activeToken);
             }
 
             stopTimers();

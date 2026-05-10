@@ -409,11 +409,165 @@ const looksLikeTranscriptIntroSegment = (rawText: string) => {
     return transcriptIntroPhrases.some((phrase) => normalized.includes(phrase));
 };
 
-const getQuestionAnswerCandidates = (question: CreateQuestionDto) => {
-    const directAnswers = splitAnswerCandidates(question.correctAnswer);
-    const correctOptionTexts = (question.options ?? [])
-        .filter((option) => option.isCorrect)
-        .map((option) => normalizeTranscriptMatchText(option.optionText))
+const listeningQuestionNumberWordValues: Record<string, number> = {
+    one: 1,
+    two: 2,
+    three: 3,
+    four: 4,
+    five: 5,
+    six: 6,
+    seven: 7,
+    eight: 8,
+    nine: 9,
+    ten: 10,
+    eleven: 11,
+    twelve: 12,
+    thirteen: 13,
+    fourteen: 14,
+    fifteen: 15,
+    sixteen: 16,
+    seventeen: 17,
+    eighteen: 18,
+    nineteen: 19,
+    twenty: 20,
+    thirty: 30,
+    forty: 40,
+};
+
+const parseListeningQuestionNumberToken = (token: string) => {
+    const normalized = normalizeTranscriptMatchText(token);
+    const numericValue = Number(normalized);
+    if (Number.isFinite(numericValue)) {
+        return numericValue;
+    }
+
+    if (listeningQuestionNumberWordValues[normalized] != null) {
+        return listeningQuestionNumberWordValues[normalized];
+    }
+
+    const compoundMatch = normalized.match(/^(twenty|thirty|forty)\s+(one|two|three|four|five|six|seven|eight|nine)$/);
+    if (!compoundMatch) {
+        return null;
+    }
+
+    return listeningQuestionNumberWordValues[compoundMatch[1]] + listeningQuestionNumberWordValues[compoundMatch[2]];
+};
+
+const listeningQuestionNumberTokenPattern = [
+    '\\d+',
+    'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine',
+    'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen',
+    'twenty(?:\\s+(?:one|two|three|four|five|six|seven|eight|nine))?',
+    'thirty(?:\\s+(?:one|two|three|four|five|six|seven|eight|nine))?',
+    'forty',
+].join('|');
+
+const parseQuestionRangeFromTranscriptText = (value?: string | null) => {
+    const normalized = normalizeTranscriptMatchText(value);
+    if (!normalized) {
+        return null;
+    }
+
+    const match = normalized.match(new RegExp(`\\bquestions?\\s+(${listeningQuestionNumberTokenPattern})\\s*(?:to|-|through)\\s*(${listeningQuestionNumberTokenPattern})\\b`));
+    if (!match) {
+        return null;
+    }
+
+    const startQuestion = parseListeningQuestionNumberToken(match[1]);
+    const endQuestion = parseListeningQuestionNumberToken(match[2]);
+    if (startQuestion == null || endQuestion == null || startQuestion > endQuestion) {
+        return null;
+    }
+
+    return { startQuestion, endQuestion };
+};
+
+const detectTranscriptQuestionScopes = (segments: Array<{ text?: string | null }>) => {
+    const maxSegmentIndex = Math.max(segments.length - 1, 0);
+    const events: Array<{
+        firstSegmentIndex: number;
+        lastSegmentIndex: number;
+        startQuestion: number;
+        endQuestion: number;
+    }> = [];
+
+    segments.forEach((segment, index) => {
+        let eventSegmentIndex = index;
+        let questionRange = parseQuestionRangeFromTranscriptText(segment.text);
+        if (!questionRange && segments[index + 1]) {
+            questionRange = parseQuestionRangeFromTranscriptText(`${segment.text ?? ''} ${segments[index + 1].text ?? ''}`);
+            eventSegmentIndex = index + 1;
+        }
+
+        if (!questionRange) {
+            return;
+        }
+
+        const previousEvent = events[events.length - 1];
+        if (previousEvent
+            && previousEvent.startQuestion === questionRange.startQuestion
+            && previousEvent.endQuestion === questionRange.endQuestion) {
+            events[events.length - 1] = {
+                firstSegmentIndex: Math.min(previousEvent.firstSegmentIndex, eventSegmentIndex),
+                lastSegmentIndex: Math.max(previousEvent.lastSegmentIndex, eventSegmentIndex),
+                startQuestion: questionRange.startQuestion,
+                endQuestion: questionRange.endQuestion,
+            };
+            return;
+        }
+
+        events.push({
+            firstSegmentIndex: eventSegmentIndex,
+            lastSegmentIndex: eventSegmentIndex,
+            startQuestion: questionRange.startQuestion,
+            endQuestion: questionRange.endQuestion,
+        });
+    });
+
+    return events.map((event, index) => {
+        const nextEvent = events[index + 1];
+        const startSegmentIndex = Math.min(event.lastSegmentIndex + 1, maxSegmentIndex);
+        const endSegmentIndex = nextEvent
+            ? Math.min(nextEvent.firstSegmentIndex - 1, maxSegmentIndex)
+            : maxSegmentIndex;
+
+        return {
+            startQuestion: event.startQuestion,
+            endQuestion: event.endQuestion,
+            startSegmentIndex,
+            endSegmentIndex,
+        };
+    });
+};
+
+const findTranscriptQuestionScope = (
+    segments: Array<{ text?: string | null }>,
+    questionNumber?: number | null,
+) => {
+    if (questionNumber == null || segments.length === 0) {
+        return null;
+    }
+
+    return detectTranscriptQuestionScopes(segments)
+        .find((scope) => scope.startQuestion <= questionNumber && questionNumber <= scope.endQuestion) ?? null;
+};
+
+const getQuestionOptionsForAlignment = (
+    group: CreateQuestionGroupDto,
+    question: CreateQuestionDto,
+) => (
+    (question.options?.length ? question.options : group.questions.find((item) => item.options?.length)?.options) ?? []
+);
+
+const getQuestionAnswerCandidates = (group: CreateQuestionGroupDto, question: CreateQuestionDto) => {
+    const options = getQuestionOptionsForAlignment(group, question);
+    const optionLabels = new Set(options.map((_, index) => (
+        normalizeTranscriptMatchText(getOptionLabel(index, group.optionLabelType ?? 'alpha'))
+    )));
+    const directAnswers = splitAnswerCandidates(question.correctAnswer)
+        .filter((candidate) => !optionLabels.has(candidate));
+    const correctOptionTexts = resolveQuestionCorrectOptionTexts(group, question)
+        .map((optionText) => normalizeTranscriptMatchText(optionText))
         .filter((item) => item.length >= 2);
 
     return Array.from(new Set([...directAnswers, ...correctOptionTexts]));
@@ -430,14 +584,15 @@ const resolveQuestionCorrectOptionTexts = (
     group: CreateQuestionGroupDto,
     question: CreateQuestionDto,
 ) => {
-    const directMarkedTexts = (question.options ?? [])
+    const options = getQuestionOptionsForAlignment(group, question);
+    const directMarkedTexts = options
         .filter((option) => option.isCorrect && option.optionText?.trim())
         .map((option) => option.optionText.trim());
 
     const labelType = group.optionLabelType ?? 'alpha';
     const answerTokens = splitAlignmentAnswerTokens(question.correctAnswer);
     const resolvedTexts = answerTokens.flatMap((token) => {
-        const matchingIndex = (question.options ?? []).findIndex((_, index) => (
+        const matchingIndex = options.findIndex((_, index) => (
             getOptionLabel(index, labelType).toLowerCase() === token.toLowerCase()
         ));
 
@@ -445,17 +600,17 @@ const resolveQuestionCorrectOptionTexts = (
             return [];
         }
 
-        const optionText = question.options?.[matchingIndex]?.optionText?.trim();
+        const optionText = options[matchingIndex]?.optionText?.trim();
         return optionText ? [optionText] : [];
     });
 
-    return Array.from(new Set([...directMarkedTexts, ...resolvedTexts]));
+    return Array.from(new Set(resolvedTexts.length > 0 ? resolvedTexts : directMarkedTexts));
 };
 
-const getQuestionEvidenceTokens = (question: CreateQuestionDto) => {
+const getQuestionEvidenceTokens = (group: CreateQuestionGroupDto, question: CreateQuestionDto) => {
     const tokens = new Set<string>();
 
-    getQuestionAnswerCandidates(question).forEach((candidate) => {
+    getQuestionAnswerCandidates(group, question).forEach((candidate) => {
         extractTranscriptTokens(candidate).forEach((token) => {
             tokens.add(token);
         });
@@ -478,10 +633,10 @@ const getQuestionKeywordTokens = (question: CreateQuestionDto) => {
 const collectListeningQuestions = (parts: CreateListeningPartDto[] = []) => (
     parts
         .flatMap((part) => part.questionGroups ?? [])
-        .flatMap((group) => group.questions ?? [])
-        .filter((question) => question.questionNumber != null)
+        .flatMap((group) => (group.questions ?? []).map((question) => ({ group, question })))
+        .filter(({ question }) => question.questionNumber != null)
         .sort((left, right) => (
-            (left.questionNumber ?? Number.MAX_SAFE_INTEGER) - (right.questionNumber ?? Number.MAX_SAFE_INTEGER)
+            (left.question.questionNumber ?? Number.MAX_SAFE_INTEGER) - (right.question.questionNumber ?? Number.MAX_SAFE_INTEGER)
         ))
 );
 
@@ -732,13 +887,13 @@ export const autoMapTranscriptSegmentsToQuestions = (
     const normalizedSegmentTexts = segments.map((segment) => normalizeTranscriptMatchText(segment.text));
     const matchesBySegment = new Map<number, number[]>();
 
-    questions.forEach((question) => {
+    questions.forEach(({ group, question }) => {
         if (question.questionNumber == null) {
             return;
         }
 
-        const answerCandidates = getQuestionAnswerCandidates(question);
-        const evidenceTokens = getQuestionEvidenceTokens(question);
+        const answerCandidates = getQuestionAnswerCandidates(group, question);
+        const evidenceTokens = getQuestionEvidenceTokens(group, question);
         const keywordTokens = getQuestionKeywordTokens(question);
 
         if (answerCandidates.length === 0 && evidenceTokens.length === 0 && keywordTokens.length === 0) {
@@ -749,7 +904,11 @@ export const autoMapTranscriptSegmentsToQuestions = (
             | { startIndex: number; endIndex: number; score: number }
             | null = null;
 
-        for (let startIndex = 0; startIndex < normalizedSegmentTexts.length; startIndex += 1) {
+        const questionScope = findTranscriptQuestionScope(segments, question.questionNumber);
+        const searchStartIndex = questionScope?.startSegmentIndex ?? 0;
+        const searchEndIndex = questionScope?.endSegmentIndex ?? normalizedSegmentTexts.length - 1;
+
+        for (let startIndex = searchStartIndex; startIndex <= searchEndIndex; startIndex += 1) {
             const endIndex = startIndex;
             const windowText = normalizedSegmentTexts[startIndex];
             const score = scoreTranscriptWindow({

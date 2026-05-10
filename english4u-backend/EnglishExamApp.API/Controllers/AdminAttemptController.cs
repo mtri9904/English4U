@@ -1,11 +1,13 @@
 using EnglishExamApp.Application.DTOs.ExamExecution;
 using EnglishExamApp.Application.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace EnglishExamApp.API.Controllers;
 
 [ApiController]
 [Route("api/admin/attempts")]
+[Authorize(Roles = "Admin")]
 public class AdminAttemptController(IExamExecutionService examExecutionService) : ControllerBase
 {
     [HttpGet]

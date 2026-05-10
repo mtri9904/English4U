@@ -8,6 +8,7 @@ import {
 } from '@/shared/lib/listeningTranscript';
 import { extractWritingTaskHiddenDataText, extractWritingTaskImageUrls } from '@/shared/lib/writingTaskAssets';
 import { getOptionLabel } from '@/shared/utils/optionLabel.utils';
+import { buildReadingPassageDisplaySegments, splitReadingParagraphIntoSentences } from './readingPassageText';
 import type {
     PracticeSessionAnswerDto,
     PracticeSessionDto,
@@ -213,6 +214,19 @@ const getAnswerOptions = (group: PracticeSessionQuestionGroupDto, question: Prac
     }));
 };
 
+const getEffectiveObjectiveGroupType = (group: PracticeSessionQuestionGroupDto) => (
+    getEffectiveMcqGroupType({
+        groupType: group.groupType,
+        contentData: group.contentData,
+        questionCount: group.questions.length,
+        hasQuestionContent: group.questions.some((item) => !!item.content?.trim()),
+    }) || group.groupType || ''
+).trim().toUpperCase();
+
+const isChooseNGroup = (group: PracticeSessionQuestionGroupDto) => (
+    getEffectiveObjectiveGroupType(group) === 'MCQ_CHOOSE_N' && group.questions.length > 1
+);
+
 const resolveAnswerText = (
     answer: string | null | undefined,
     options: Array<{ label: string; text: string | null }>,
@@ -245,6 +259,56 @@ const resolveAnswerText = (
                 : matched.label;
         })
         .join(' | ');
+};
+
+const splitRawAnswerTokens = (value?: string | null) => (
+    normalizeText(value)
+        .split('|')
+        .map((token) => token.trim())
+        .filter(Boolean)
+);
+
+const formatAnswerTokensForCopilot = (value?: string | null) => {
+    const tokens = splitRawAnswerTokens(value);
+    return tokens.length > 1 ? tokens.join(', ') : normalizeText(value);
+};
+
+const resolveGroupOrderedAnswerToken = (
+    group: PracticeSessionQuestionGroupDto,
+    question: PracticeSessionQuestionDto,
+    value?: string | null,
+) => {
+    const normalizedValue = normalizeText(value);
+    const answerTokens = splitRawAnswerTokens(normalizedValue);
+    if (answerTokens.length <= 1 || group.questions.length <= 1) {
+        return normalizedValue;
+    }
+
+    const questionIndex = sortQuestions(group.questions).findIndex((item) => item.id === question.id);
+    if (questionIndex < 0 || questionIndex >= answerTokens.length) {
+        return normalizedValue;
+    }
+
+    return answerTokens[questionIndex];
+};
+
+export const resolveQuestionSpecificCorrectAnswer = (
+    group: PracticeSessionQuestionGroupDto,
+    question: PracticeSessionQuestionDto,
+    reviewAnswer?: PracticeSessionAnswerDto,
+) => {
+    const shouldResolveByGroupOrder = isChooseNGroup(group);
+    const reviewedCorrectAnswer = normalizeText(reviewAnswer?.correctAnswer);
+    if (reviewedCorrectAnswer) {
+        return shouldResolveByGroupOrder
+            ? resolveGroupOrderedAnswerToken(group, question, reviewedCorrectAnswer)
+            : reviewedCorrectAnswer;
+    }
+
+    const questionCorrectAnswer = normalizeText(question.correctAnswer);
+    return shouldResolveByGroupOrder
+        ? resolveGroupOrderedAnswerToken(group, question, questionCorrectAnswer)
+        : questionCorrectAnswer;
 };
 
 const buildQuestionText = (group: PracticeSessionQuestionGroupDto, question: PracticeSessionQuestionDto) => {
@@ -584,6 +648,9 @@ export const inferListeningQuestionEvidenceMatch = ({
     const anchorPhrases = buildListeningEvidenceAnchorPhrases(group, question);
     const answerCandidates = buildListeningEvidenceAnswerCandidates(group, question);
     const keywordTokens = buildListeningEvidenceKeywordTokens(group, question);
+    const questionScope = findListeningScopeForQuestion(segments, question.questionNumber);
+    const searchStartIndex = questionScope?.startSegmentIndex ?? 0;
+    const searchEndIndex = questionScope?.endSegmentIndex ?? segments.length - 1;
 
     if (anchorPhrases.length === 0 && answerCandidates.length === 0 && keywordTokens.length === 0) {
         return null;
@@ -593,15 +660,15 @@ export const inferListeningQuestionEvidenceMatch = ({
     const maxWindowSize = groupType.startsWith('MATCHING') || groupType.startsWith('MCQ') ? 4 : 3;
     let bestWindow: { startIndex: number; endIndex: number; score: number } | null = null;
 
-    for (let startIndex = 0; startIndex < normalizedSegmentTexts.length; startIndex += 1) {
+    for (let startIndex = searchStartIndex; startIndex <= searchEndIndex; startIndex += 1) {
         for (
             let endIndex = startIndex;
-            endIndex < Math.min(normalizedSegmentTexts.length, startIndex + maxWindowSize);
+            endIndex <= Math.min(searchEndIndex, startIndex + maxWindowSize - 1);
             endIndex += 1
         ) {
             const windowText = normalizedSegmentTexts.slice(startIndex, endIndex + 1).join(' ');
             const rawText = segments.slice(startIndex, endIndex + 1).map((segment) => segment.text).join(' ');
-            const score = scoreListeningEvidenceWindow({
+            let score = scoreListeningEvidenceWindow({
                 windowText,
                 rawText,
                 anchorPhrases,
@@ -610,7 +677,6 @@ export const inferListeningQuestionEvidenceMatch = ({
                 groupType,
                 windowLength: endIndex - startIndex + 1,
             });
-
             if (score <= 0) {
                 continue;
             }
@@ -672,19 +738,33 @@ const buildQuestionBlock = ({
 }) => {
     const options = getAnswerOptions(group, question);
     const finalUserAnswer = normalizeText(userAnswer ?? reviewAnswer?.answerText) || null;
-    const correctAnswer = normalizeText(reviewAnswer?.correctAnswer ?? question.correctAnswer) || null;
+    const correctAnswer = resolveQuestionSpecificCorrectAnswer(group, question, reviewAnswer) || null;
+    const correctAnswerForDisplay = formatAnswerTokensForCopilot(correctAnswer);
+    const chooseNGroup = isChooseNGroup(group);
+    const questionNumbers = sortQuestions(group.questions)
+        .flatMap((item) => item.questionNumber != null ? [item.questionNumber] : []);
+    const chooseNRange = questionNumbers.length > 0
+        ? `câu ${questionNumbers[0]}-${questionNumbers[questionNumbers.length - 1]}`
+        : 'nhóm câu này';
+    const correctAnswerLabel = 'Đáp án đúng';
+    const userAnswerLabel = chooseNGroup
+        ? 'Học viên nhập ở ô này'
+        : 'Học viên chọn';
     const lines = [
         `Câu ${question.questionNumber ?? 'N/A'}`,
         `Nội dung: ${buildQuestionText(group, question) || 'Không có nội dung riêng.'}`,
-        finalUserAnswer ? `Học viên chọn: ${finalUserAnswer}` : 'Học viên chọn: Chưa trả lời',
-        (() => {
-            const resolved = resolveAnswerText(finalUserAnswer, options);
-            return resolved ? `Diễn giải đáp án học viên: ${resolved}` : '';
-        })(),
-        correctAnswer ? `Đáp án đúng: ${correctAnswer}` : 'Đáp án đúng: Không rõ',
+        chooseNGroup
+            ? `Lưu ý: Câu ${question.questionNumber ?? 'N/A'} là một ô trong ${chooseNRange}; hệ thống gộp checkbox theo thứ tự từ trên xuống rồi đối chiếu với đáp án đúng riêng của ô này.`
+            : '',
+        correctAnswer ? `${correctAnswerLabel}: ${correctAnswerForDisplay}` : `${correctAnswerLabel}: Không rõ`,
         (() => {
             const resolved = resolveAnswerText(correctAnswer, options);
             return resolved ? `Diễn giải đáp án đúng: ${resolved}` : '';
+        })(),
+        finalUserAnswer ? `${userAnswerLabel}: ${finalUserAnswer}` : `${userAnswerLabel}: Chưa trả lời`,
+        (() => {
+            const resolved = resolveAnswerText(finalUserAnswer, options);
+            return resolved ? `Diễn giải đáp án học viên: ${resolved}` : '';
         })(),
         `Kết quả: ${buildAnswerStatus(reviewAnswer)}`,
         options.length > 0
@@ -725,6 +805,41 @@ const buildGroupBlock = ({
     return lines.join('\n\n');
 };
 
+const formatReadingPassageTextForCopilot = (value?: string | null) => {
+    const normalized = normalizeText(value);
+    if (!normalized) {
+        return '';
+    }
+
+    const segments = buildReadingPassageDisplaySegments(value);
+    if (segments.length <= 1 && segments[0]?.paragraphNumber == null) {
+        return normalized;
+    }
+
+    return segments
+        .map((segment) => {
+            if (segment.kind === 'heading') {
+                return `Tiêu đề phụ không tính là đoạn: ${normalizeText(segment.text)}`;
+            }
+
+            if (segment.paragraphNumber == null) {
+                return normalizeText(segment.text);
+            }
+
+            const compactParagraph = normalizeText(segment.text).replace(/\s+/g, ' ').trim();
+            const sentences = splitReadingParagraphIntoSentences(compactParagraph);
+
+            if (sentences.length <= 1) {
+                return `[Đoạn ${segment.paragraphNumber}] ${compactParagraph}`;
+            }
+
+            return sentences
+                .map((sentence, sentenceIndex) => `[Đoạn ${segment.paragraphNumber}, câu ${sentenceIndex + 1}] ${sentence}`)
+                .join('\n');
+        })
+        .join('\n\n');
+};
+
 const buildReadingPassageBlock = ({
     passage,
     answerMap,
@@ -738,7 +853,7 @@ const buildReadingPassageBlock = ({
 
     return [
         heading,
-        normalizeText(passage.paragraphsData) || 'Passage chưa có nội dung.',
+        formatReadingPassageTextForCopilot(passage.paragraphsData) || 'Passage chưa có nội dung.',
         ...sortGroups(passage.questionGroups).map((group) => buildGroupBlock({ group, answerMap, reviewAnswerMap })),
     ].filter(Boolean).join('\n\n');
 };
@@ -870,10 +985,24 @@ const parseQuestionRangeFromTranscriptSegment = (value?: string | null) => {
 };
 
 const detectListeningQuestionScopes = (segments: ListeningTranscriptSegment[]) => {
-    const events: Array<{ segmentIndex: number; startQuestion: number; endQuestion: number }> = [];
+    const maxSegmentIndex = Math.max(segments.length - 1, 0);
+    const events: Array<{
+        firstSegmentIndex: number;
+        lastSegmentIndex: number;
+        startQuestion: number;
+        endQuestion: number;
+    }> = [];
 
     segments.forEach((segment, index) => {
-        const questionRange = parseQuestionRangeFromTranscriptSegment(segment.text);
+        let eventSegmentIndex = index;
+        let questionRange = parseQuestionRangeFromTranscriptSegment(segment.text);
+        if (!questionRange && segments[index + 1]) {
+            questionRange = parseQuestionRangeFromTranscriptSegment(
+                `${segment.text ?? ''} ${segments[index + 1].text ?? ''}`,
+            );
+            eventSegmentIndex = index + 1;
+        }
+
         if (!questionRange) {
             return;
         }
@@ -883,7 +1012,8 @@ const detectListeningQuestionScopes = (segments: ListeningTranscriptSegment[]) =
             && previousEvent.startQuestion === questionRange.startQuestion
             && previousEvent.endQuestion === questionRange.endQuestion) {
             events[events.length - 1] = {
-                segmentIndex: index,
+                firstSegmentIndex: Math.min(previousEvent.firstSegmentIndex, eventSegmentIndex),
+                lastSegmentIndex: Math.max(previousEvent.lastSegmentIndex, eventSegmentIndex),
                 startQuestion: questionRange.startQuestion,
                 endQuestion: questionRange.endQuestion,
             };
@@ -891,7 +1021,8 @@ const detectListeningQuestionScopes = (segments: ListeningTranscriptSegment[]) =
         }
 
         events.push({
-            segmentIndex: index,
+            firstSegmentIndex: eventSegmentIndex,
+            lastSegmentIndex: eventSegmentIndex,
             startQuestion: questionRange.startQuestion,
             endQuestion: questionRange.endQuestion,
         });
@@ -899,13 +1030,16 @@ const detectListeningQuestionScopes = (segments: ListeningTranscriptSegment[]) =
 
     return events.map((event, index) => {
         const nextEvent = events[index + 1];
+        const startSegmentIndex = Math.min(event.lastSegmentIndex + 1, maxSegmentIndex);
+        const endSegmentIndex = nextEvent
+            ? Math.min(nextEvent.firstSegmentIndex - 1, maxSegmentIndex)
+            : maxSegmentIndex;
+
         return {
             startQuestion: event.startQuestion,
             endQuestion: event.endQuestion,
-            startSegmentIndex: Math.min(event.segmentIndex + 1, Math.max(segments.length - 1, 0)),
-            endSegmentIndex: nextEvent
-                ? Math.max(event.segmentIndex + 1, nextEvent.segmentIndex - 1)
-                : Math.max(segments.length - 1, 0),
+            startSegmentIndex,
+            endSegmentIndex,
         };
     });
 };
@@ -933,6 +1067,10 @@ const selectListeningScopeWindowSegments = ({
     questionNumber?: number | null;
     maxSegments: number;
 }) => {
+    if (scope.endSegmentIndex < scope.startSegmentIndex) {
+        return [];
+    }
+
     const scopeSegments = segments.slice(scope.startSegmentIndex, scope.endSegmentIndex + 1);
     if (scopeSegments.length <= maxSegments) {
         return scopeSegments;
@@ -1171,9 +1309,18 @@ const buildListeningTranscriptWindowText = (
     const focusedQuestionForEvidence = focusedQuestion
         ? {
             ...focusedQuestion,
-            correctAnswer: normalizeText(options?.reviewAnswer?.correctAnswer) || focusedQuestion.correctAnswer,
+            correctAnswer: options?.group
+                ? resolveQuestionSpecificCorrectAnswer(options.group, focusedQuestion, options?.reviewAnswer) || focusedQuestion.correctAnswer
+                : normalizeText(options?.reviewAnswer?.correctAnswer) || focusedQuestion.correctAnswer,
         }
         : null;
+
+    const matchedIndexes = transcriptSegments.flatMap((segment, index) => (
+        segment.targetQuestionNumbers.some((candidateQuestionNumber) => targetQuestionNumbers.includes(candidateQuestionNumber))
+            ? [index]
+            : []
+    ));
+
     const inferredEvidenceMatch = options?.group && focusedQuestion
         ? inferListeningQuestionEvidenceMatch({
             segments: transcriptSegments,
@@ -1181,8 +1328,12 @@ const buildListeningTranscriptWindowText = (
             question: focusedQuestionForEvidence ?? focusedQuestion,
         })
         : null;
+    const shouldPreferInferredEvidence = Boolean(
+        inferredEvidenceMatch
+        && inferredEvidenceMatch.segmentIndexes.length > 0,
+    );
 
-    if (inferredEvidenceMatch && inferredEvidenceMatch.segmentIndexes.length > 0) {
+    if (shouldPreferInferredEvidence && inferredEvidenceMatch) {
         const startIndex = Math.max(0, inferredEvidenceMatch.segmentIndexes[0] - surroundingSegments);
         const endIndex = Math.min(
             transcriptSegments.length - 1,
@@ -1201,13 +1352,26 @@ const buildListeningTranscriptWindowText = (
         ].filter(Boolean).join('\n');
     }
 
-    const matchedIndexes = transcriptSegments.flatMap((segment, index) => (
-        segment.targetQuestionNumbers.some((candidateQuestionNumber) => targetQuestionNumbers.includes(candidateQuestionNumber))
-            ? [index]
-            : []
-    ));
-
     if (matchedIndexes.length === 0) {
+        if (inferredEvidenceMatch && inferredEvidenceMatch.segmentIndexes.length > 0) {
+            const startIndex = Math.max(0, inferredEvidenceMatch.segmentIndexes[0] - surroundingSegments);
+            const endIndex = Math.min(
+                transcriptSegments.length - 1,
+                inferredEvidenceMatch.segmentIndexes[inferredEvidenceMatch.segmentIndexes.length - 1] + surroundingSegments,
+            );
+
+            return [
+                `Đoạn bằng chứng chính cho câu ${options?.questionNumber}: ${formatTranscriptRangeLabel(
+                    inferredEvidenceMatch.startTime,
+                    inferredEvidenceMatch.endTime,
+                )}`,
+                targetQuestionNumbers.length > 1
+                    ? `Window transcript đang mở rộng theo ${scopeLabel} để không bỏ sót đáp án rải rác trong cùng một đoạn nghe.`
+                    : '',
+                formatListeningSegmentsWindowForCopilot(transcriptSegments.slice(startIndex, endIndex + 1)),
+            ].filter(Boolean).join('\n');
+        }
+
         const fallbackScope = findListeningScopeForQuestion(transcriptSegments, options?.questionNumber);
         if (shouldPreferScopeFallback && fallbackScope) {
             const fallbackWindowSegments = selectListeningScopeWindowSegments({
@@ -1383,21 +1547,31 @@ export const buildQuestionFocusPayload = ({
     question: PracticeSessionQuestionDto;
     reviewAnswer?: PracticeSessionAnswerDto;
     userAnswer?: string | null;
-}): CopilotFocusPayload => ({
-    label: question.questionNumber != null ? `Câu ${question.questionNumber}` : 'Câu đang chọn',
-    text: buildQuestionBlock({
+}): CopilotFocusPayload => {
+    const label = question.questionNumber != null ? `Câu ${question.questionNumber}` : 'Câu đang chọn';
+    const images = getGroupImagePayloads(
         group,
+        label,
         question,
-        reviewAnswer,
-        userAnswer,
-    }),
-    questionNumber: question.questionNumber,
-    images: getGroupImagePayloads(
-        group,
-        question.questionNumber != null ? `Câu ${question.questionNumber}` : 'Câu đang chọn',
-        question,
-    ),
-});
+    );
+
+    return {
+        label,
+        text: [
+            buildQuestionBlock({
+                group,
+                question,
+                reviewAnswer,
+                userAnswer,
+            }),
+            images.length > 0
+                ? 'Câu này có ảnh/sơ đồ/bảng/map liên quan đã được đính kèm cho AI. Khi giải thích, hãy đối chiếu cả chi tiết trong ảnh với passage/transcript nếu đáp án phụ thuộc vào hình.'
+                : '',
+        ].filter(Boolean).join('\n'),
+        questionNumber: question.questionNumber,
+        images,
+    };
+};
 
 export const buildListeningQuestionFocusPayload = ({
     parts,
@@ -1503,7 +1677,7 @@ export const findReadingQuestionFocusPayload = ({
                     ...baseFocus,
                     text: [
                         passageLabel,
-                        `Bài đọc liên quan:\n${normalizeText(passage.paragraphsData) || 'Passage chưa có nội dung.'}`,
+                        `Bài đọc liên quan:\n${formatReadingPassageTextForCopilot(passage.paragraphsData) || 'Passage chưa có nội dung.'}`,
                         `Câu hỏi cần giải thích:\n${baseFocus.text}`,
                     ].join('\n\n'),
                     images: dedupeImages([
