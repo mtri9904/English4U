@@ -9,6 +9,7 @@ public interface IExamPdfGenerationService
         string fileName,
         Guid uploadedBy,
         string? clientRequestId = null,
+        Guid? uploadId = null,
         CancellationToken cancellationToken = default);
 
     Task<PdfRawExtractionPreviewDto> PreviewPdfExtractionAsync(

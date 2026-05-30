@@ -24,6 +24,42 @@ namespace EnglishExamApp.Infrastructure.Services;
 
 public sealed partial class GemmaPdfExamGenerationService
 {
+    private static readonly string[] KnownIeltsInstructionPatterns = new[]
+    {
+        @"^(?<instruction>Answer\s+the\s+following\s+questions\s+using\s+(?:NO\s+MORE\s+THAN\s+[^.?!]{1,80}|ONE\s+WORD(?:\s+ONLY)?|TWO\s+WORDS(?:\s+ONLY)?|THREE\s+WORDS(?:\s+ONLY)?)\s+from\s+the\s+(?:passage|text)\.?)",
+        @"^(?<instruction>Using\s+(?:NO\s+MORE\s+THAN\s+[^.?!]{1,80}|ONE\s+WORD(?:\s+ONLY)?|TWO\s+WORDS(?:\s+ONLY)?|THREE\s+WORDS(?:\s+ONLY)?)\s+from\s+the\s+(?:passage|text)(?:\s+for\s+each\s+(?:answer|gap))?\s*,?\s*complete\s+the\s+following\.?)",
+        @"^(?<instruction>Choose\s+(?:NO\s+MORE\s+THAN\s+[^.?!]{1,80}|ONE\s+WORD(?:\s+ONLY)?|TWO\s+WORDS(?:\s+ONLY)?|THREE\s+WORDS(?:\s+ONLY)?)\s+from\s+the\s+(?:passage|text)\s+for\s+the\s+answer\.?)",
+        @"^(?<instruction>Complete\s+the\s+(?:timeline\s+)?diagram\s+below\.?\s+Write\s+(?:NO\s+MORE\s+THAN\s+[^.?!]{1,80}|ONE\s+WORD(?:\s+ONLY)?|TWO\s+WORDS(?:\s+ONLY)?|THREE\s+WORDS(?:\s+ONLY)?)\s+from\s+the\s+(?:passage|text)\s+for\s+each\s+(?:answer|gap)\.?)",
+        @"^(?<instruction>Complete\s+the\s+(?:summary|table|notes?|flow-?chart|description)\s+below\.?\s+Choose\s+your\s+answers?\s+from\s+the\s+box\s+below\.?)",
+        @"^(?<instruction>Complete\s+the\s+(?:summary|table|notes?|flow-?chart|description)\.?\s+Choose\s+your\s+answers?\s+from\s+the\s+box\s+below\.?)",
+        @"^(?<instruction>Complete\s+the\s+summary\s+with\s+the\s+list\s+of\s+words\s*,?\s*[A-HI](?:\s*[-â€“]\s*[A-HI])?(?:\s+below)?\.?(?:\s+Write\s+the\s+correct\s+letter\s*,?\s*[A-HI](?:\s*[-â€“]\s*[A-HI])?\s*,?\s+in\s+(?:spaces|boxes)\s+\d{1,2}(?:\s*[-â€“]\s*\d{1,2})?\s+below\.?)?)",
+        @"^(?<instruction>Complete\s+the\s+table\s+below\.?\s+Choose\s+\d+\s+answers?\s+from\s+the\s+box\s+and\s+write\s+the\s+correct\s+letter\s*,?\s*[A-L](?:\s*[-â€“]\s*[A-L])?\s*,?\s+next\s+to\s+questions?\s+\d{1,2}\s*(?:-|â€“|â€”|â€‘|âˆ’|to)\s*\d{1,2}\.?)",
+        @"^(?<instruction>Complete\s+the\s+description\s+below\.?\s+Choose\s+(?:NO\s+MORE\s+THAN\s+[^.?!]{1,80}|ONE\s+WORD(?:\s+ONLY)?|TWO\s+WORDS(?:\s+ONLY)?|THREE\s+WORDS(?:\s+ONLY)?)\s+from\s+the\s+(?:passage|text)(?:\s+for\s+each\s+(?:answer|gap))?\.?)",
+        @"^(?<instruction>Complete\s+the\s+following\s+sentences\s+using\s+(?:NO\s+MORE\s+THAN\s+[^.?!]{1,80}|ONE\s+WORD(?:\s+ONLY)?|TWO\s+WORDS(?:\s+ONLY)?|THREE\s+WORDS(?:\s+ONLY)?)\s+from\s+the\s+(?:passage|text)(?:\s+for\s+each\s+(?:answer|gap))?\.?)",
+        @"^(?<instruction>Complete\s+the\s+following\s+using\s+(?:NO\s+MORE\s+THAN\s+[^.?!]{1,80}|ONE\s+WORD(?:\s+ONLY)?|TWO\s+WORDS(?:\s+ONLY)?|THREE\s+WORDS(?:\s+ONLY)?)\s+from\s+the\s+(?:passage|text)(?:\s+for\s+each\s+(?:answer|gap))?\.?)",
+        @"^(?<instruction>Re-?order\s+the\s+following\s+letters?\s*\([A-H](?:\s*[-â€“]\s*[A-H])?\)\s+to\s+show\s+the\s+sequence\s+of\s+events(?:\s+according\s+to\s+the\s+passage)?\.?)",
+        @"^(?<instruction>Do\s+the\s+following\s+statements?\s+agree\s+with\s+the\s+information\s+given\s+in\s+(?:the\s+(?:text|passage)|Reading\s+Passage\s+\d+)\?\s+For\s+questions?\s+\d{1,2}\s*(?:-|â€“|â€”|â€‘|âˆ’|to)\s*\d{1,2}\s*,?\s*write\s+TRUE.+?FALSE.+?NOT\s+GIVEN.+?)$",
+        @"^(?<instruction>According\s+to\s+the\s+information\s+given\s+in\s+the\s+(?:text|passage)\s*,?\s*(?:choose|circle)\s+the\s+correct\s+answer\s+or\s+answers?\s+from\s+the\s+choices\s+given\.?)",
+        @"^(?<instruction>According\s+to\s+the\s+information\s+given\s+in\s+the\s+(?:text|passage)\s*,?\s*(?:choose|circle)\s+the\s+correct\s+answer\s+from\s+the\s+choices\s+given\.?)",
+        @"^(?<instruction>For\s+each\s+question\s*,?\s*only\s+ONE\s+of\s+the\s+choices?\s+is\s+correct\.?\s+Write\s+the\s+corresponding\s+letter\s+in\s+the\s+appropriate\s+box(?:es)?\s+on\s+your\s+answer\s+sheet\.?)",
+        @"^(?<instruction>(?:Choose|Circle)\s+the\s+correct\s+answer\s+or\s+answers?\s+from\s+the\s+choices\s+given\.?)",
+        @"^(?<instruction>(?:Choose|Circle)\s+the\s+correct\s+answer(?:\s*,?\s*[A-H](?:\s*[-â€“]\s*[A-H])?)?\.?)",
+        @"^(?<instruction>Do\s+the\s+following\s+statements?.+?(?:TRUE.+?FALSE.+?NOT\s+GIVEN|YES.+?NO.+?NOT\s+GIVEN))(?=\s+\d{1,2}\s)",
+        @"^(?<instruction>Look\s+at\s+the\s+following\s+statements?.+?Match\s+each\s+statement\s+to\s+the\s+correct\s+(?:person|people|researcher|researchers|country|countries|category|categories|group|groups|option|options)\s*,?\s*[A-H](?:\s*[-â€“]\s*[A-H])?\.?(?:\s+You\s+may\s+use\s+any\s+letter\s+more\s+than\s+once\.?)?)",
+        @"^(?<instruction>Choose\s+(?:one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+phrase(?:s)?\s+from\s+the\s+list\s+of\s+phrases\s+[A-H](?:\s*[-â€“]\s*[A-H])?\s+below\s+to\s+complete\s+each\s+of\s+the\s+following\s+sentences\.?(?:\s+There\s+are\s+more\s+phrases\s+than\s+questions\s+so\s+you\s+will\s+not\s+use\s+all\s+of\s+them\.?)?)",
+        @"^(?<instruction>Which\s+(?:one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+of\s+the\s+following.+?\?\s*Choose\s+(?:one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+letters?\s+[A-H](?:\s*[-â€“]\s*[A-H])?\.?)",
+        @"^(?<instruction>Complete\s+the\s+(?:table|summary|notes?|flow-?chart)(?:\s+(?:on|about|of)\s+[^.?!]{1,120})?\s+(?:using|with)\s+(?:NO\s+MORE\s+THAN\s+[^.?!]{1,80}|ONE\s+WORD(?:\s+ONLY)?|TWO\s+WORDS(?:\s+ONLY)?|THREE\s+WORDS(?:\s+ONLY)?)\s+from\s+the\s+(?:passage|text)\.?)",
+        @"^(?<instruction>Complete\s+(?:each\s+sentence|each\s+of\s+the\s+following\s+sentences?|the\s+following\s+sentences?)\s+with\s+the\s+correct\s+ending\s*,?\s*[A-H](?:\s*[-â€“]\s*[A-H])?\s*,?\s+below\.?(?:\s+Write\s+the\s+correct\s+letter\s*,?\s*[A-H](?:\s*[-â€“]\s*[A-H])?\s*,?\s+in\s+the\s+spaces?\s+below\.?)?)",
+        @"^(?<instruction>Complete\s+the\s+summary\s+(?:with|using)\s+the\s+list\s+of\s+words\s+[A-HI](?:\s*[-â€“]\s+[A-HI])?\s+below\.?(?:\s+Write\s+the\s+correct\s+letter\s+[A-HI](?:\s*[-â€“]\s*[A-HI])?\s+in\s+(?:spaces|boxes)\s+\d{1,2}(?:\s*[-â€“]\s*\d{1,2})?\s+below\.?)?)",
+        @"^(?<instruction>Choose\s+the\s+correct\s+letter\s*,?\s*[A-H](?:\s*[-â€“]\s*[A-H])\.?)",
+        @"^(?<instruction>Choose\s+the\s+correct\s+letter\s*,?\s*[A-H](?:\s*,\s*[A-H])*(?:\s+or\s+[A-H])?\.?)",
+        @"^(?<instruction>Complete\s+the\s+(?:summary|table|notes?|flow-?chart|sentences?)\s+below\.?(?:\s+Choose\s+[^.?!]+[.?!])?(?:\s+There\s+are\s+more[^.?!]+[.?!])?)",
+        @"^(?<instruction>From\s+the\s+information\s+given\s+in\s+the\s+passage\s*,?\s*classify\s+the\s+following(?:\s*\([^)]+\))?\s+as\s+characteristic\s+of\s*:?)",
+        @"^(?<instruction>Classify\s+the\s+following\s+as.+?)(?=\s+\d{1,2}\s)",
+        @"^(?<instruction>Match\s+ONE\s+of\s+the\s+.+?\s+to\s+each\s+of\s+the\s+statements?.+?below\.?)",
+        @"^(?<instruction>Use\s+the\s+information\s+in\s+the\s+text\s+to\s+match\s+.+?\s+with\s+.+?\b(?:listed\s+below|below)\.?)",
+        @"^(?<instruction>Use\s+the\s+information\s+in\s+the\s+text\s+to\s+match\s+.+?\.)"
+    };
 
     private static string? TryExtractInstructionFromBlockText(string? blockText, int startQuestion)
     {
@@ -60,44 +96,7 @@ public sealed partial class GemmaPdfExamGenerationService
             return null;
         }
 
-        var knownPatterns = new[]
-        {
-            @"^(?<instruction>Answer\s+the\s+following\s+questions\s+using\s+(?:NO\s+MORE\s+THAN\s+[^.?!]{1,80}|ONE\s+WORD(?:\s+ONLY)?|TWO\s+WORDS(?:\s+ONLY)?|THREE\s+WORDS(?:\s+ONLY)?)\s+from\s+the\s+(?:passage|text)\.?)",
-            @"^(?<instruction>Using\s+(?:NO\s+MORE\s+THAN\s+[^.?!]{1,80}|ONE\s+WORD(?:\s+ONLY)?|TWO\s+WORDS(?:\s+ONLY)?|THREE\s+WORDS(?:\s+ONLY)?)\s+from\s+the\s+(?:passage|text)(?:\s+for\s+each\s+(?:answer|gap))?\s*,?\s*complete\s+the\s+following\.?)",
-            @"^(?<instruction>Choose\s+(?:NO\s+MORE\s+THAN\s+[^.?!]{1,80}|ONE\s+WORD(?:\s+ONLY)?|TWO\s+WORDS(?:\s+ONLY)?|THREE\s+WORDS(?:\s+ONLY)?)\s+from\s+the\s+(?:passage|text)\s+for\s+the\s+answer\.?)",
-            @"^(?<instruction>Complete\s+the\s+(?:timeline\s+)?diagram\s+below\.?\s+Write\s+(?:NO\s+MORE\s+THAN\s+[^.?!]{1,80}|ONE\s+WORD(?:\s+ONLY)?|TWO\s+WORDS(?:\s+ONLY)?|THREE\s+WORDS(?:\s+ONLY)?)\s+from\s+the\s+(?:passage|text)\s+for\s+each\s+(?:answer|gap)\.?)",
-            @"^(?<instruction>Complete\s+the\s+(?:summary|table|notes?|flow-?chart|description)\s+below\.?\s+Choose\s+your\s+answers?\s+from\s+the\s+box\s+below\.?)",
-            @"^(?<instruction>Complete\s+the\s+(?:summary|table|notes?|flow-?chart|description)\.?\s+Choose\s+your\s+answers?\s+from\s+the\s+box\s+below\.?)",
-            @"^(?<instruction>Complete\s+the\s+summary\s+with\s+the\s+list\s+of\s+words\s*,?\s*[A-HI](?:\s*[-â€“]\s*[A-HI])?(?:\s+below)?\.?(?:\s+Write\s+the\s+correct\s+letter\s*,?\s*[A-HI](?:\s*[-â€“]\s*[A-HI])?\s*,?\s+in\s+(?:spaces|boxes)\s+\d{1,2}(?:\s*[-â€“]\s*\d{1,2})?\s+below\.?)?)",
-            @"^(?<instruction>Complete\s+the\s+table\s+below\.?\s+Choose\s+\d+\s+answers?\s+from\s+the\s+box\s+and\s+write\s+the\s+correct\s+letter\s*,?\s*[A-L](?:\s*[-â€“]\s*[A-L])?\s*,?\s+next\s+to\s+questions?\s+\d{1,2}\s*(?:-|â€“|â€”|â€‘|âˆ’|to)\s*\d{1,2}\.?)",
-            @"^(?<instruction>Complete\s+the\s+description\s+below\.?\s+Choose\s+(?:NO\s+MORE\s+THAN\s+[^.?!]{1,80}|ONE\s+WORD(?:\s+ONLY)?|TWO\s+WORDS(?:\s+ONLY)?|THREE\s+WORDS(?:\s+ONLY)?)\s+from\s+the\s+(?:passage|text)(?:\s+for\s+each\s+(?:answer|gap))?\.?)",
-            @"^(?<instruction>Complete\s+the\s+following\s+sentences\s+using\s+(?:NO\s+MORE\s+THAN\s+[^.?!]{1,80}|ONE\s+WORD(?:\s+ONLY)?|TWO\s+WORDS(?:\s+ONLY)?|THREE\s+WORDS(?:\s+ONLY)?)\s+from\s+the\s+(?:passage|text)(?:\s+for\s+each\s+(?:answer|gap))?\.?)",
-            @"^(?<instruction>Complete\s+the\s+following\s+using\s+(?:NO\s+MORE\s+THAN\s+[^.?!]{1,80}|ONE\s+WORD(?:\s+ONLY)?|TWO\s+WORDS(?:\s+ONLY)?|THREE\s+WORDS(?:\s+ONLY)?)\s+from\s+the\s+(?:passage|text)(?:\s+for\s+each\s+(?:answer|gap))?\.?)",
-            @"^(?<instruction>Re-?order\s+the\s+following\s+letters?\s*\([A-H](?:\s*[-â€“]\s*[A-H])?\)\s+to\s+show\s+the\s+sequence\s+of\s+events(?:\s+according\s+to\s+the\s+passage)?\.?)",
-            @"^(?<instruction>Do\s+the\s+following\s+statements?\s+agree\s+with\s+the\s+information\s+given\s+in\s+(?:the\s+(?:text|passage)|Reading\s+Passage\s+\d+)\?\s+For\s+questions?\s+\d{1,2}\s*(?:-|â€“|â€”|â€‘|âˆ’|to)\s*\d{1,2}\s*,?\s*write\s+TRUE.+?FALSE.+?NOT\s+GIVEN.+?)$",
-            @"^(?<instruction>According\s+to\s+the\s+information\s+given\s+in\s+the\s+(?:text|passage)\s*,?\s*(?:choose|circle)\s+the\s+correct\s+answer\s+or\s+answers?\s+from\s+the\s+choices\s+given\.?)",
-            @"^(?<instruction>According\s+to\s+the\s+information\s+given\s+in\s+the\s+(?:text|passage)\s*,?\s*(?:choose|circle)\s+the\s+correct\s+answer\s+from\s+the\s+choices\s+given\.?)",
-            @"^(?<instruction>For\s+each\s+question\s*,?\s*only\s+ONE\s+of\s+the\s+choices?\s+is\s+correct\.?\s+Write\s+the\s+corresponding\s+letter\s+in\s+the\s+appropriate\s+box(?:es)?\s+on\s+your\s+answer\s+sheet\.?)",
-            @"^(?<instruction>(?:Choose|Circle)\s+the\s+correct\s+answer\s+or\s+answers?\s+from\s+the\s+choices\s+given\.?)",
-            @"^(?<instruction>(?:Choose|Circle)\s+the\s+correct\s+answer(?:\s*,?\s*[A-H](?:\s*[-â€“]\s*[A-H])?)?\.?)",
-            @"^(?<instruction>Do\s+the\s+following\s+statements?.+?(?:TRUE.+?FALSE.+?NOT\s+GIVEN|YES.+?NO.+?NOT\s+GIVEN))(?=\s+\d{1,2}\s)",
-            @"^(?<instruction>Look\s+at\s+the\s+following\s+statements?.+?Match\s+each\s+statement\s+to\s+the\s+correct\s+(?:person|people|researcher|researchers|country|countries|category|categories|group|groups|option|options)\s*,?\s*[A-H](?:\s*[-â€“]\s*[A-H])?\.?(?:\s+You\s+may\s+use\s+any\s+letter\s+more\s+than\s+once\.?)?)",
-            @"^(?<instruction>Choose\s+(?:one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+phrase(?:s)?\s+from\s+the\s+list\s+of\s+phrases\s+[A-H](?:\s*[-â€“]\s*[A-H])?\s+below\s+to\s+complete\s+each\s+of\s+the\s+following\s+sentences\.?(?:\s+There\s+are\s+more\s+phrases\s+than\s+questions\s+so\s+you\s+will\s+not\s+use\s+all\s+of\s+them\.?)?)",
-            @"^(?<instruction>Which\s+(?:one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+of\s+the\s+following.+?\?\s*Choose\s+(?:one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+letters?\s+[A-H](?:\s*[-â€“]\s*[A-H])?\.?)",
-            @"^(?<instruction>Complete\s+the\s+(?:table|summary|notes?|flow-?chart)(?:\s+(?:on|about|of)\s+[^.?!]{1,120})?\s+(?:using|with)\s+(?:NO\s+MORE\s+THAN\s+[^.?!]{1,80}|ONE\s+WORD(?:\s+ONLY)?|TWO\s+WORDS(?:\s+ONLY)?|THREE\s+WORDS(?:\s+ONLY)?)\s+from\s+the\s+(?:passage|text)\.?)",
-            @"^(?<instruction>Complete\s+(?:each\s+sentence|each\s+of\s+the\s+following\s+sentences?|the\s+following\s+sentences?)\s+with\s+the\s+correct\s+ending\s*,?\s*[A-H](?:\s*[-â€“]\s*[A-H])?\s*,?\s+below\.?(?:\s+Write\s+the\s+correct\s+letter\s*,?\s*[A-H](?:\s*[-â€“]\s*[A-H])?\s*,?\s+in\s+the\s+spaces?\s+below\.?)?)",
-            @"^(?<instruction>Complete\s+the\s+summary\s+(?:with|using)\s+the\s+list\s+of\s+words\s+[A-HI](?:\s*[-â€“]\s*[A-HI])?\s+below\.?(?:\s+Write\s+the\s+correct\s+letter\s+[A-HI](?:\s*[-â€“]\s*[A-HI])?\s+in\s+(?:spaces|boxes)\s+\d{1,2}(?:\s*[-â€“]\s*\d{1,2})?\s+below\.?)?)",
-            @"^(?<instruction>Choose\s+the\s+correct\s+letter\s*,?\s*[A-H](?:\s*[-â€“]\s*[A-H])\.?)",
-            @"^(?<instruction>Choose\s+the\s+correct\s+letter\s*,?\s*[A-H](?:\s*,\s*[A-H])*(?:\s+or\s+[A-H])?\.?)",
-            @"^(?<instruction>Complete\s+the\s+(?:summary|table|notes?|flow-?chart|sentences?)\s+below\.?(?:\s+Choose\s+[^.?!]+[.?!])?(?:\s+There\s+are\s+more[^.?!]+[.?!])?)",
-            @"^(?<instruction>From\s+the\s+information\s+given\s+in\s+the\s+passage\s*,?\s*classify\s+the\s+following(?:\s*\([^)]+\))?\s+as\s+characteristic\s+of\s*:?)",
-            @"^(?<instruction>Classify\s+the\s+following\s+as.+?)(?=\s+\d{1,2}\s)",
-            @"^(?<instruction>Match\s+ONE\s+of\s+the\s+.+?\s+to\s+each\s+of\s+the\s+statements?.+?below\.?)",
-            @"^(?<instruction>Use\s+the\s+information\s+in\s+the\s+text\s+to\s+match\s+.+?\s+with\s+.+?\b(?:listed\s+below|below)\.?)",
-            @"^(?<instruction>Use\s+the\s+information\s+in\s+the\s+text\s+to\s+match\s+.+?\.)"
-        };
-
-        foreach (var pattern in knownPatterns)
+        foreach (var pattern in KnownIeltsInstructionPatterns)
         {
             var match = Regex.Match(normalized, pattern, RegexOptions.IgnoreCase | RegexOptions.Singleline);
             if (match.Success)
@@ -130,10 +129,10 @@ public sealed partial class GemmaPdfExamGenerationService
         var escapedQuestionNumber = Regex.Escape(questionNumber.ToString(CultureInfo.InvariantCulture));
         var patterns = new[]
         {
-            $@"^\s*(?<number>{escapedQuestionNumber})(?!\s*(?:-|â€“|â€”|â€‘|âˆ’|to)\s*\d)(?=\s|[).:\-]|[A-Za-z""'â€œâ€˜(\[])",
-            $@"(?<=[\n\.\?!:;])\s*(?<number>{escapedQuestionNumber})(?!\s*(?:-|â€“|â€”|â€‘|âˆ’|to)\s*\d)(?=\s|[).:\-]|[A-Za-z""'â€œâ€˜(\[])",
-            $@"(?<![A-Za-z0-9])(?<number>{escapedQuestionNumber})(?!\s*(?:-|â€“|â€”|â€‘|âˆ’|to)\s*\d)(?=[A-Za-z""'â€œâ€˜(\[])",
-            $@"(?<![A-Za-z0-9])(?<number>{escapedQuestionNumber})(?!\s*(?:-|â€“|â€”|â€‘|âˆ’|to)\s*\d)(?=\s+[A-Z""'â€œâ€˜(\[])"
+            $@"^\s*(?<number>{escapedQuestionNumber})(?!\s*(?:-|â€“|â€”|â€‘|âˆ’|to)\s*\d)(?=\s|[).:\-\]]|[A-Za-z""'â€œâ€˜(\[])",
+            $@"(?<=[\n\.\?!:;])\s*(?<number>{escapedQuestionNumber})(?!\s*(?:-|â€“|â€”|â€‘|âˆ’|to)\s*\d)(?=\s|[).:\-\]]|[A-Za-z""'â€œâ€˜(\[])",
+            $@"(?<![A-Za-z0-9])(?<number>{escapedQuestionNumber})(?!\s*(?:-|â€“|â€”|â€‘|âˆ’|to)\s*\d)(?=[)\]A-Za-z""'â€œâ€˜(\[])",
+            $@"(?<![A-Za-z0-9])(?<number>{escapedQuestionNumber})(?!\s*(?:-|â€“|â€”|â€‘|âˆ’|to)\s*\d)(?=\s+[)\]A-Z""'â€œâ€˜(\[])"
         };
 
         var bestIndex = int.MaxValue;
@@ -211,7 +210,8 @@ public sealed partial class GemmaPdfExamGenerationService
         }
 
         normalized = StripTrailingInstructionFooterNoise(normalized);
-        return Regex.Replace(normalized, @"\s+", " ").Trim();
+        var cleaned = Regex.Replace(normalized, @"\s+", " ").Trim();
+        return CleanLeadingInstructionNoise(cleaned);
     }
 
     private static string StripTrailingInstructionFooterNoise(string value)
@@ -464,6 +464,13 @@ public sealed partial class GemmaPdfExamGenerationService
         }
 
         var prefixStart = Math.Max(0, questionStartIndex - 500);
+        var prevQuestion = startQuestion - 1;
+        var prevQuestionIndex = FindInstructionQuestionStartIndex(normalized, prevQuestion);
+        if (prevQuestionIndex >= 0 && prevQuestionIndex < questionStartIndex)
+        {
+            prefixStart = Math.Max(prefixStart, prevQuestionIndex + 1);
+        }
+
         var prefix = normalized[prefixStart..questionStartIndex].Trim();
         if (string.IsNullOrWhiteSpace(prefix))
         {

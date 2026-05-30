@@ -106,6 +106,49 @@ public class PracticeController(
         }
     }
 
+    [HttpGet("sessions/{sessionId:guid}/highlights")]
+    public async Task<IResult> GetPracticeSessionHighlights(
+        Guid sessionId,
+        CancellationToken cancellationToken)
+    {
+        if (!currentUser.TryGetUserId(out var userId))
+        {
+            return TypedResults.Unauthorized();
+        }
+
+        try
+        {
+            var highlights = await examExecutionService.GetPracticeSessionHighlightsAsync(userId, sessionId, cancellationToken);
+            return TypedResults.Ok(highlights);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return TypedResults.NotFound(new { message = ex.Message });
+        }
+    }
+
+    [HttpPatch("sessions/{sessionId:guid}/highlights")]
+    public async Task<IResult> UpdatePracticeSessionHighlights(
+        Guid sessionId,
+        [FromBody] UpdatePracticeSessionHighlightsDto dto,
+        CancellationToken cancellationToken)
+    {
+        if (!currentUser.TryGetUserId(out var userId))
+        {
+            return TypedResults.Unauthorized();
+        }
+
+        try
+        {
+            var highlights = await examExecutionService.UpdatePracticeSessionHighlightsAsync(userId, sessionId, dto, cancellationToken);
+            return TypedResults.Ok(highlights);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return TypedResults.BadRequest(new { message = ex.Message });
+        }
+    }
+
     [HttpPost("sessions/{sessionId:guid}/speaking-recordings")]
     [RequestFormLimits(MultipartBodyLengthLimit = 25 * 1024 * 1024)]
     public async Task<IResult> UploadSpeakingRecording(

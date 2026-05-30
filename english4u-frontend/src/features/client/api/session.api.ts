@@ -3,17 +3,20 @@ import { userKeys } from '@/features/admin/api/user.api';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
     PracticeSessionDto,
+    PracticeSessionHighlightDto,
     PracticeSessionListItemDto,
     PracticeSessionResultDto,
     PracticeSessionSpeakingUploadResultDto,
     PracticeSessionStartDto,
     UploadPracticeSpeakingRecordingDto,
     UpdatePracticeSessionAnswersDto,
+    UpdatePracticeSessionHighlightsDto,
 } from '../types/session.types';
 
 export const sessionKeys = {
     all: ['client', 'practice', 'sessions'] as const,
     detail: (sessionId: string) => ['client', 'practice', 'sessions', sessionId] as const,
+    highlights: (sessionId: string) => ['client', 'practice', 'sessions', sessionId, 'highlights'] as const,
 };
 
 type StartExamVariables = string | { examId: string; forceNew?: boolean };
@@ -50,6 +53,26 @@ export const sessionApi = {
         await axiosInstance.patch(`/practice/sessions/${sessionId}/answers`, data, {
             timeout: 60 * 1000,
         });
+    },
+    getHighlights: async (sessionId: string): Promise<PracticeSessionHighlightDto[]> => {
+        const response = await axiosInstance.get<PracticeSessionHighlightDto[]>(`/practice/sessions/${sessionId}/highlights`, {
+            timeout: 60 * 1000,
+        });
+        return response.data;
+    },
+    updateHighlights: async ({
+        sessionId,
+        data,
+    }: {
+        sessionId: string;
+        data: UpdatePracticeSessionHighlightsDto;
+    }): Promise<PracticeSessionHighlightDto[]> => {
+        const response = await axiosInstance.patch<PracticeSessionHighlightDto[]>(
+            `/practice/sessions/${sessionId}/highlights`,
+            data,
+            { timeout: 60 * 1000 },
+        );
+        return response.data;
     },
     uploadSpeakingRecording: async ({
         sessionId,
@@ -116,6 +139,14 @@ export const usePracticeSessionQuery = (sessionId: string) =>
         retry: false,
     });
 
+export const usePracticeSessionHighlightsQuery = (sessionId: string, enabled = true) =>
+    useQuery({
+        queryKey: sessionKeys.highlights(sessionId),
+        queryFn: () => sessionApi.getHighlights(sessionId),
+        enabled: !!sessionId && enabled,
+        retry: false,
+    });
+
 export const useStartPracticeSessionMutation = () => {
     const queryClient = useQueryClient();
 
@@ -138,6 +169,17 @@ export const useUpdatePracticeSessionAnswersMutation = () => {
             if ((variables.data.answers?.length ?? 0) > 0) {
                 queryClient.invalidateQueries({ queryKey: sessionKeys.detail(variables.sessionId) });
             }
+        },
+    });
+};
+
+export const useUpdatePracticeSessionHighlightsMutation = () => {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: sessionApi.updateHighlights,
+        onSuccess: (result, variables) => {
+            queryClient.setQueryData(sessionKeys.highlights(variables.sessionId), result);
         },
     });
 };

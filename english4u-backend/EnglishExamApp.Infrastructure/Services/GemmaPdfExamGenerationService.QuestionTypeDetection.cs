@@ -36,22 +36,50 @@ public sealed partial class GemmaPdfExamGenerationService
 
             foreach (var question in passage.Questions)
             {
-                var questionText = ReadJsonAsText(question.QuestionText) ?? string.Empty;
-                var options = ExtractOptions(question.Options);
-                var answerText = ReadJsonAsText(question.Answer);
-                var detectedType = DetectQuestionType(
-                    questionText,
-                    options,
-                    ReadJsonAsText(question.QuestionType),
-                    answerText);
-                question.QuestionType = JsonSerializer.SerializeToElement(detectedType);
+                var mappedType = TryMapQuestionType(ReadJsonAsText(question.QuestionType));
+                if (!string.IsNullOrWhiteSpace(mappedType))
+                {
+                    question.QuestionType = JsonSerializer.SerializeToElement(ToGeminiQuestionType(mappedType));
+                }
+
+                var currentOptions = ExtractOptions(question.Options);
+                var isMcq = !string.IsNullOrWhiteSpace(mappedType) && IsMcqType(mappedType);
+                if (isMcq && (currentOptions.Count == 0 || currentOptions.All(IsOptionLabelOnly)))
+                {
+                    var questionText = ReadJsonAsText(question.QuestionText) ?? string.Empty;
+                    var matchA = Regex.Match(questionText, @"(?<![A-Za-z0-9])A\s*(?:[).:\-]|O\s+|\s{1,3})");
+                    var matchB = Regex.Match(questionText, @"(?<![A-Za-z0-9])B\s*(?:[).:\-]|O\s+|\s{1,3})");
+                    if (matchA.Success && matchB.Success && matchB.Index > matchA.Index)
+                    {
+                        var optionBlock = questionText[matchA.Index..];
+                        var optionMatches = Regex.Matches(
+                                optionBlock,
+                                @"(?ms)(?<![A-Za-z0-9])(?<label>[A-H])\s*(?:[).:\-]|O\s+|\s{1,3})(?<text>.*?)(?=(?<![A-Za-z0-9])[A-H]\s*(?:[).:\-]|O\s+|\s{1,3})|\z)")
+                            .Cast<Match>()
+                            .Select(match => new
+                            {
+                                Label = match.Groups["label"].Value.ToUpperInvariant(),
+                                Text = NormalizeExtractedSpacing(RemoveSelectionMarkers(match.Groups["text"].Value)).Trim()
+                            })
+                            .Where(item => !string.IsNullOrWhiteSpace(item.Text))
+                            .GroupBy(item => item.Label)
+                            .OrderBy(group => group.Key)
+                            .Select(group => $"{group.Key}. {group.First().Text}")
+                            .ToList();
+
+                        if (optionMatches.Count >= 2)
+                        {
+                            question.Options = JsonSerializer.SerializeToElement(optionMatches);
+                            var cleanedQuestionText = questionText[..matchA.Index].Trim();
+                            question.QuestionText = JsonSerializer.SerializeToElement(cleanedQuestionText);
+                        }
+                    }
+                }
+
                 question.Options = NormalizeOptionArray(question.Options);
             }
-
-            EnforceQuestionTypeAnchors(passage.Questions);
         }
     }
-
     private static void EnforceQuestionTypeAnchors(List<GemmaQuestionPayload> questions)
     {
         if (questions.Count == 0)
@@ -223,6 +251,17 @@ public sealed partial class GemmaPdfExamGenerationService
             return "YesNoNotGiven";
         }
 
+        if (FillInBlankInstructionRegex().IsMatch(questionText) ||
+            LooksLikeCompletionInstruction(questionText))
+        {
+            return "FillInBlanks";
+        }
+
+        if (LooksLikeMcqChoiceQuestion(questionText, options, answerText))
+        {
+            return HasMultipleLetterAnswerTokens(answerText) ? "McqMultiple" : "McqSingle";
+        }
+
         if (TryInferQuestionTypeFromAnswer(answerText, out var inferredTypeFromAnswer))
         {
             return inferredTypeFromAnswer;
@@ -245,7 +284,12 @@ public sealed partial class GemmaPdfExamGenerationService
 
         if (normalizedCurrentType is "MATCHINGINFO" or "MATCHINGINFORMATION")
         {
-            return "MatchingInfo";
+            if (HasExplicitMatchingTaskInstruction(questionText) || !LooksLikeMcqChoiceSet(options))
+            {
+                return "MatchingInfo";
+            }
+
+            return HasMultipleLetterAnswerTokens(answerText) ? "McqMultiple" : "McqSingle";
         }
 
         if (normalizedCurrentType == "MATCHINGHEADINGS")
@@ -276,18 +320,24 @@ public sealed partial class GemmaPdfExamGenerationService
 
         if (normalizedCurrentType == "MATCHINGFEATURES")
         {
+            if (HasExplicitMatchingTaskInstruction(questionText))
+            {
+                return "MatchingFeatures";
+            }
+
+            if (LooksLikeMcqChoiceSet(options))
+            {
+                return HasMultipleLetterAnswerTokens(answerText) ? "McqMultiple" : "McqSingle";
+            }
+
             return "MatchingFeatures";
         }
 
-        if (MatchingInstructionRegex().IsMatch(questionText) ||
+        if (HasExplicitMatchingTaskInstruction(questionText) ||
+            (MatchingInstructionRegex().IsMatch(questionText) && !LooksLikeMcqChoiceSet(options)) ||
             IsLetterLabelOptionSet(options))
         {
             return "MatchingInfo";
-        }
-
-        if (FillInBlankInstructionRegex().IsMatch(questionText))
-        {
-            return "FillInBlanks";
         }
 
         if (options.Count == 0)
@@ -307,6 +357,84 @@ public sealed partial class GemmaPdfExamGenerationService
 
         return ChooseCorrectAnswerOrAnswersRegex().IsMatch(questionText) &&
                !ContainsMcqMultipleInstruction(questionText);
+    }
+
+    private static bool LooksLikeCompletionInstruction(string questionText)
+    {
+        if (string.IsNullOrWhiteSpace(questionText))
+        {
+            return false;
+        }
+
+        return Regex.IsMatch(
+            questionText,
+            @"(?i)\b(complete\s+the|complete\s+each|complete\s+the\s+following|fill\s+in\s+the|no\s+more\s+than|one\s+word(?:\s+only)?|two\s+words(?:\s+only)?|three\s+words(?:\s+only)?|choose\s+(?:no\s+more\s+than|one\s+word|two\s+words|three\s+words)\s+from\s+the\s+(?:passage|text))\b");
+    }
+
+    private static bool LooksLikeMcqChoiceQuestion(
+        string questionText,
+        List<string> options,
+        string? answerText)
+    {
+        if (!LooksLikeMcqChoiceSet(options) && !HasMeaningfulChoiceOptions(options))
+        {
+            return false;
+        }
+
+        if (HasExplicitMcqInstruction(questionText))
+        {
+            return true;
+        }
+
+        return HasSingleLetterAnswer(answerText) &&
+               !HasExplicitMatchingTaskInstruction(questionText);
+    }
+
+    private static bool LooksLikeMcqChoiceSet(List<string> options)
+    {
+        if (options.Count is < 2 or > 5)
+        {
+            return false;
+        }
+
+        var labeledCount = 0;
+        var distinctLabels = new HashSet<char>();
+        foreach (var option in options)
+        {
+            var match = OptionStartsWithLetterLabelRegex().Match(option);
+            if (!match.Success)
+            {
+                continue;
+            }
+
+            var label = char.ToUpperInvariant(match.Groups["label"].Value[0]);
+            if (label is < 'A' or > 'E')
+            {
+                continue;
+            }
+
+            if (!string.IsNullOrWhiteSpace(match.Groups["text"].Value))
+            {
+                labeledCount++;
+                distinctLabels.Add(label);
+            }
+        }
+
+        return labeledCount >= 2 && distinctLabels.Count >= 2;
+    }
+
+    private static bool HasExplicitMatchingTaskInstruction(string questionText)
+    {
+        if (string.IsNullOrWhiteSpace(questionText))
+        {
+            return false;
+        }
+
+        return MatchingInfoInstructionRegex().IsMatch(questionText) ||
+               MatchingHeadingsInstructionRegex().IsMatch(questionText) ||
+               Regex.IsMatch(
+                   questionText,
+                   @"(?i)\b(match|classify)\s+(?:each|the|one|information|statement|feature|person|researcher|paragraph|heading)\b|\bwhich\s+paragraph\b|\buse\s+the\s+information\s+in\s+the\s+text\s+to\s+match\b|\byou\s+may\s+use\s+any\s+letter\s+more\s+than\s+once\b|\blist\s+of\s+(?:headings|people|researchers|phrases|options|features)\b");
     }
 
     private static bool ContainsMcqMultipleInstruction(string questionText)
@@ -437,9 +565,14 @@ public sealed partial class GemmaPdfExamGenerationService
         return distinctLetters.Count >= 5;
     }
 
-    private static JsonElement NormalizeOptionArray(JsonElement optionsElement)
+    private static JsonElement? NormalizeOptionArray(JsonElement? optionsElement)
     {
-        var options = ExtractOptions(optionsElement);
+        if (optionsElement == null)
+        {
+            return null;
+        }
+
+        var options = ExtractOptions(optionsElement.Value);
         if (options.Count == 0)
         {
             return optionsElement;

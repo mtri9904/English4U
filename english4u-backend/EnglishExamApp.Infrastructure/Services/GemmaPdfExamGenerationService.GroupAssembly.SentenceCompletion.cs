@@ -73,6 +73,12 @@ public sealed partial class GemmaPdfExamGenerationService
                     return question;
                 }
 
+                var originalPlaceholderCount = Regex.Matches(question.Content ?? string.Empty, @"\[Q\d+\]|___").Count;
+                if (originalPlaceholderCount >= 2)
+                {
+                    return question;
+                }
+
                 var normalizedCandidate = NormalizeQuestionBody(
                     "SENTENCE_COMPLETION",
                     rawCandidate,
@@ -82,7 +88,8 @@ public sealed partial class GemmaPdfExamGenerationService
                     return question;
                 }
 
-                return question with { Content = normalizedCandidate };
+                var finalCandidate = RestoreOriginalLeadingContext(question.Content, normalizedCandidate, question.QuestionNumber.Value);
+                return question with { Content = finalCandidate };
             })
             .ToList();
     }
@@ -332,6 +339,27 @@ public sealed partial class GemmaPdfExamGenerationService
         {
             if (IsSentenceCompletionBoundaryChar(source[index]))
             {
+                if (source[index] is '.' or '?' or '!')
+                {
+                    return index + 1;
+                }
+
+                var prevLineStart = index - 1;
+                while (prevLineStart >= 0 && source[prevLineStart] != '\n' && source[prevLineStart] != '\r')
+                {
+                    prevLineStart--;
+                }
+                prevLineStart++;
+
+                var prevLineText = source[prevLineStart..index].Trim();
+                var isTimelineLabel = Regex.IsMatch(prevLineText, @"(?i)^\s*(?:\*\*)?(?:\d{3,4}s?|Today|Recently|Currently|Nowadays|Originally|Historically|In\s+\d{3,4}s?)(?:\*\*)?\s*$");
+
+                if (isTimelineLabel)
+                {
+                    index = prevLineStart;
+                    continue;
+                }
+
                 return index + 1;
             }
         }
@@ -379,13 +407,16 @@ public sealed partial class GemmaPdfExamGenerationService
         if (BlankPlaceholderRegex().IsMatch(normalized))
         {
             score += 8;
-            var placeholderIndex = normalized.IndexOf("___", StringComparison.Ordinal);
+            var match = BlankPlaceholderRegex().Match(normalized);
+            var placeholderIndex = match.Index;
+            var placeholderLength = match.Length;
+
             if (placeholderIndex > 0)
             {
                 score += 2;
             }
 
-            if (placeholderIndex >= 0 && placeholderIndex + 3 < normalized.Length)
+            if (placeholderIndex >= 0 && placeholderIndex + placeholderLength < normalized.Length)
             {
                 score += 3;
             }
@@ -417,5 +448,57 @@ public sealed partial class GemmaPdfExamGenerationService
         }
 
         return score;
+    }
+
+    private static string RestoreOriginalLeadingContext(string? originalContent, string? repairedContent, int questionNumber)
+    {
+        if (string.IsNullOrWhiteSpace(originalContent))
+        {
+            return repairedContent ?? string.Empty;
+        }
+        if (string.IsNullOrWhiteSpace(repairedContent))
+        {
+            return string.Empty;
+        }
+        var originalLines = originalContent
+            .Replace("\r\n", "\n")
+            .Replace('\r', '\n')
+            .Split('\n');
+        var placeholderToken = $"[Q{questionNumber}]";
+        int firstPlaceholderLineIdx = -1;
+        for (int i = 0; i < originalLines.Length; i++)
+        {
+            var line = originalLines[i];
+            if (line.Contains(placeholderToken, StringComparison.OrdinalIgnoreCase) ||
+                line.Contains("[Q") ||
+                line.Contains("___"))
+            {
+                firstPlaceholderLineIdx = i;
+                break;
+            }
+        }
+        if (firstPlaceholderLineIdx <= 0)
+        {
+            return repairedContent;
+        }
+        var leadingLines = originalLines.Take(firstPlaceholderLineIdx).ToList();
+        while (leadingLines.Count > 0 && string.IsNullOrWhiteSpace(leadingLines[^1]))
+        {
+            leadingLines.RemoveAt(leadingLines.Count - 1);
+        }
+        if (leadingLines.Count == 0)
+        {
+            return repairedContent;
+        }
+        var leadingText = string.Join("\n", leadingLines).Trim();
+        if (string.IsNullOrWhiteSpace(leadingText))
+        {
+            return repairedContent;
+        }
+        if (repairedContent.Contains(leadingText, StringComparison.OrdinalIgnoreCase))
+        {
+            return repairedContent;
+        }
+        return (leadingText + "\n\n" + repairedContent).Trim();
     }
 }

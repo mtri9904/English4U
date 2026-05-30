@@ -32,6 +32,7 @@ public sealed partial class GemmaPdfExamGenerationService
         string fileName,
         Guid uploadedBy,
         string? clientRequestId = null,
+        Guid? uploadId = null,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(fileName))
@@ -41,7 +42,7 @@ public sealed partial class GemmaPdfExamGenerationService
 
         var documentUpload = new DocumentUpload
         {
-            Id = Guid.NewGuid(),
+            Id = uploadId ?? Guid.NewGuid(),
             UploadedBy = uploadedBy,
             FileName = fileName,
             FileUrl = BuildVirtualPdfUrl(fileName),
@@ -77,20 +78,43 @@ public sealed partial class GemmaPdfExamGenerationService
                 clientRequestId: clientRequestId,
                 cancellationToken: cancellationToken);
 
-            var extraction = await ExtractPdfTextResultAsync(pdfStream, cancellationToken);
+            var pdfBytes = await ReadAllBytesAsync(pdfStream, cancellationToken);
+            if (UseGeminiNativePdfExtraction())
+            {
+                return await GenerateFromNativeGeminiPdfAsync(
+                    pdfBytes,
+                    fileName,
+                    uploadedBy,
+                    clientRequestId,
+                    documentUpload,
+                    currentProgress,
+                    cancellationToken);
+            }
+
+            var extraction = await ExtractPdfTextResultAsync(new MemoryStream(pdfBytes), fileName, cancellationToken);
+            logger.LogInformation(
+                "PDF extraction completed for {FileName} with {ExtractionEngine}. Raw text length: {RawTextLength}.",
+                fileName,
+                extraction.Engine,
+                extraction.RawText.Length);
             var rawText = extraction.RawText;
+            var backupRawText = extraction.BackupRawText ?? string.Empty;
+            var combinedEvidenceText = BuildCombinedEvidenceText(rawText, backupRawText);
             var normalizedRawText = rawText
                 .Replace("\r\n", "\n")
                 .Replace('\r', '\n');
+            var normalizedEvidenceText = combinedEvidenceText
+                .Replace("\r\n", "\n")
+                .Replace('\r', '\n');
 
-            var answerZone = ExtractAnswerZone(normalizedRawText);
+            var answerZone = ExtractAnswerZone(normalizedEvidenceText);
             if (string.IsNullOrWhiteSpace(answerZone))
             {
                 // Một số PDF không có heading "Solution" rõ ràng; fallback sang review zone để tránh answer-zone = 0 chars.
-                answerZone = ExtractReviewAndExplanationsZone(normalizedRawText);
+                answerZone = ExtractReviewAndExplanationsZone(normalizedEvidenceText);
             }
 
-            var answerKeyMap = ExtractAnswerKeyMap(rawText);
+            var answerKeyMap = BuildBestAnswerKeyMap(rawText, backupRawText);
             logger.LogInformation(
                 "Extracted {AnswerCount} answer-key entries from {FileName}.",
                 answerKeyMap.Count,
@@ -130,7 +154,7 @@ public sealed partial class GemmaPdfExamGenerationService
                     cancellationToken: cancellationToken);
 
                 var aiAnswerKeyMap = await TryExtractAnswerKeyWithGemmaAsync(
-                    normalizedRawText,
+                    normalizedEvidenceText,
                     cancellationToken);
 
                 if (aiAnswerKeyMap.Count > 0)
@@ -205,7 +229,12 @@ public sealed partial class GemmaPdfExamGenerationService
                 clientRequestId: clientRequestId,
                 cancellationToken: cancellationToken);
 
-            var passages = SplitPassages(rawText);
+            var passages = ReconcilePassagesWithBackup(
+                    SplitPassages(rawText),
+                    backupRawText,
+                    fileName)
+                .ToList();
+            var evidencePassages = BuildPassageEvidencePools(passages, backupRawText, fileName).ToList();
             logger.LogInformation(
                 "Passage split result for {FileName}: {PassageCount} passage(s). Lengths: {PassageLengths}",
                 fileName,
@@ -236,7 +265,7 @@ public sealed partial class GemmaPdfExamGenerationService
                 status: "processing",
                 progressPercent: currentProgress,
                 stage: "chunk_ready",
-                message: $"Đã nhận diện {passages.Count} passage, bắt đầu gọi Gemma.",
+                message: $"Đã nhận diện {passages.Count} passage, bắt đầu gọi Gemini 3.1 Flash Lite.",
                 totalPassages: passages.Count,
                 clientRequestId: clientRequestId,
                 cancellationToken: cancellationToken);
@@ -343,6 +372,30 @@ public sealed partial class GemmaPdfExamGenerationService
                 }
             }
 
+            var expandedGroupedQuestionCount = ExpandGroupedRangeQuestions(
+                parsedPassages,
+                evidencePassages,
+                answerKeyMap);
+            if (expandedGroupedQuestionCount > 0)
+            {
+                logger.LogInformation(
+                    "Expanded {ExpandedGroupedQuestionCount} grouped choose-N question slot(s) from raw PDF ranges for {FileName}.",
+                    expandedGroupedQuestionCount,
+                    fileName);
+            }
+
+            var repairedRawQuestionCount = RepairQuestionsFromRawEvidence(
+                parsedPassages,
+                evidencePassages,
+                answerKeyMap);
+            if (repairedRawQuestionCount > 0)
+            {
+                logger.LogInformation(
+                    "Repaired {RepairedRawQuestionCount} question(s) from raw PDF evidence before validation for {FileName}.",
+                    repairedRawQuestionCount,
+                    fileName);
+            }
+
             currentProgress = 92;
             await PublishProgressAsync(
                 documentUpload.Id,
@@ -357,7 +410,7 @@ public sealed partial class GemmaPdfExamGenerationService
 
             NormalizeQuestionTypes(parsedPassages);
 
-            if (!string.IsNullOrWhiteSpace(rawText))
+            if (!string.IsNullOrWhiteSpace(combinedEvidenceText))
             {
                 currentProgress = Math.Max(currentProgress, 93);
                 await PublishProgressAsync(
@@ -373,7 +426,7 @@ public sealed partial class GemmaPdfExamGenerationService
 
                 var recoveredOptionCount = await TryRecoverMissingOptionsAsync(
                     parsedPassages,
-                    rawText,
+                    combinedEvidenceText,
                     cancellationToken);
 
                 logger.LogInformation(
@@ -427,6 +480,35 @@ public sealed partial class GemmaPdfExamGenerationService
             // Re-normalize question types after answer reconciliation so MCQ single/multiple can be inferred from final answers.
             NormalizeQuestionTypes(parsedPassages);
 
+            var finalRawRepairCount = RepairQuestionsFromRawEvidence(
+                parsedPassages,
+                evidencePassages,
+                answerKeyMap);
+            if (finalRawRepairCount > 0)
+            {
+                logger.LogInformation(
+                    "Re-applied raw PDF question repair for {FinalRawRepairCount} question(s) immediately before validation for {FileName}.",
+                    finalRawRepairCount,
+                    fileName);
+            }
+
+            currentProgress = Math.Max(currentProgress, 95);
+            await PublishProgressAsync(
+                documentUpload.Id,
+                uploadedBy,
+                status: "processing",
+                progressPercent: currentProgress,
+                stage: "evidence_validate",
+                message: "Đang kiểm chứng câu hỏi và lựa chọn theo text gốc PDF.",
+                totalPassages: parsedPassages.Count,
+                clientRequestId: clientRequestId,
+                cancellationToken: cancellationToken);
+
+            ValidateParsedPassagesAgainstEvidence(
+                parsedPassages,
+                evidencePassages,
+                combinedEvidenceText);
+
             if (!string.IsNullOrWhiteSpace(answerZone))
             {
                 var explanationMap = ExtractExplanationMap(answerZone);
@@ -465,7 +547,7 @@ public sealed partial class GemmaPdfExamGenerationService
                     fileName);
             }
 
-            currentProgress = Math.Max(currentProgress, 95);
+            currentProgress = Math.Max(currentProgress, 96);
             await PublishProgressAsync(
                 documentUpload.Id,
                 uploadedBy,
@@ -481,6 +563,7 @@ public sealed partial class GemmaPdfExamGenerationService
                 passages,
                 extraction.Pages,
                 extraction.PdfBytes,
+                fileName,
                 cancellationToken);
 
             var createExamDto = await BuildCreateExamDtoAsync(
@@ -489,9 +572,10 @@ public sealed partial class GemmaPdfExamGenerationService
                 reviewedQuestionGroupsByPassage,
                 fileName,
                 cancellationToken);
+            ValidateCreateExamDtoQuality(createExamDto);
             var totalQuestions = Convert.ToInt32(createExamDto.TotalPoints ?? 0d);
 
-            currentProgress = 96;
+            currentProgress = 97;
             await PublishProgressAsync(
                 documentUpload.Id,
                 uploadedBy,
@@ -540,6 +624,31 @@ public sealed partial class GemmaPdfExamGenerationService
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to generate exam from uploaded PDF {FileName}", fileName);
+
+            try
+            {
+                var isNativePdfFailed = ex.Data.Contains("IsNativePdfFailed");
+                var shouldSaveDebug = configuration.GetValue<bool?>("GeminiPdfNativeExtraction:SaveDebugArtifacts") ?? true;
+                if (!isNativePdfFailed && shouldSaveDebug)
+                {
+                    var root = ResolveNativePdfDebugOutputDirectory(
+                        configuration["GeminiPdfNativeExtraction:DebugOutputDirectory"]);
+                    var debugDir = Path.Combine(
+                        root,
+                        $"{DateTime.UtcNow:yyyyMMdd-HHmmss}-{SanitizeDebugFileName(Path.GetFileNameWithoutExtension(fileName))}-workflow-failed");
+                    Directory.CreateDirectory(debugDir);
+
+                    var failureFilePath = Path.Combine(debugDir, "00-generation-failure.txt");
+                    var failureContent = $"Workflow Generation failed at: {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC\n" +
+                                         $"Error Message: {ex.Message}\n\n" +
+                                         $"Stack Trace:\n{ex.StackTrace}";
+                    await File.WriteAllTextAsync(failureFilePath, failureContent, CancellationToken.None);
+                }
+            }
+            catch (Exception logEx)
+            {
+                logger.LogWarning(logEx, "Failed to write workflow generation failure log");
+            }
 
             documentUpload.ProcessStatus = "Failed";
             documentUpload.ErrorMessage = ex.Message;

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FC, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type FC, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
 import {
     Alert,
     Button,
@@ -12,6 +12,7 @@ import {
     Tag,
     Typography,
     Checkbox,
+    Image,
 } from 'antd';
 import {
     ArrowLeftOutlined,
@@ -23,13 +24,19 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import ReactMarkdown from 'react-markdown';
 import { getEffectiveMcqGroupType, getQuestionTypeLabel, inferQuestionGroupOptionLabelType, type OptionLabelType } from '@/shared/lib/examDisplay';
-import { getOptionLabel } from '@/shared/utils/optionLabel.utils';
-import { usePracticeSessionQuery, useUpdatePracticeSessionAnswersMutation } from '../api/session.api';
+import { areAllOptionsLabelOnly, getOptionLabel, stripOptionLeadingLabel } from '@/shared/utils/optionLabel.utils';
+import {
+    usePracticeSessionHighlightsQuery,
+    usePracticeSessionQuery,
+    useUpdatePracticeSessionAnswersMutation,
+    useUpdatePracticeSessionHighlightsMutation,
+} from '../api/session.api';
 import { buildReadingPassageDisplaySegments } from '../lib/readingPassageText';
 import { resolveQuestionSpecificCorrectAnswer } from '../lib/reviewCopilotContext';
 import type {
     PracticeSessionDto,
     PracticeSessionAnswerDto,
+    PracticeSessionHighlightColor,
     PracticeSessionListeningPartDto,
     PracticeSessionQuestionDto,
     PracticeSessionQuestionGroupDto,
@@ -84,6 +91,23 @@ type RenderQuestionAction = (params: {
     reviewAnswer?: PracticeSessionAnswerDto;
     compact?: boolean;
 }) => ReactNode;
+type RunnerHighlightColor = PracticeSessionHighlightColor;
+type RunnerHighlight = {
+    id: string;
+    sourceKey: string;
+    startOffset: number;
+    endOffset: number;
+    selectedText: string;
+    color: RunnerHighlightColor;
+    createdAt: string;
+    updatedAt: string;
+};
+type RunnerHighlightPatch = Omit<RunnerHighlight, 'id' | 'createdAt' | 'updatedAt'>;
+type HighlightableProps = {
+    highlights?: RunnerHighlight[];
+    onCreateHighlight?: (highlight: RunnerHighlightPatch) => void;
+    onDeleteHighlight?: (highlightId: string) => void;
+};
 
 const getReviewAnswerState = (questionId: string, reviewAnswerMap?: ObjectiveReviewAnswerMap) => reviewAnswerMap?.[questionId];
 
@@ -291,9 +315,11 @@ const getGroupOptionLabelType = (group: PracticeSessionQuestionGroupDto): Option
 
 const getChoiceLabel = (optionText: string | null | undefined, index: number, optionLabelType: OptionLabelType) => {
     const label = getOptionLabel(index, optionLabelType);
-    const trimmedText = (optionText ?? '').trim();
+    const trimmedText = stripOptionLeadingLabel(optionText, index, optionLabelType);
     return trimmedText ? `${label}. ${trimmedText}` : label;
 };
+
+
 
 const renderSelectableOptionContent = ({
     label,
@@ -432,7 +458,13 @@ const MatchingVisualsOptionBank = ({
     );
 };
 
-const SummaryWordBankTable = ({ options }: { options: PracticeSessionQuestionDto['options'] }) => {
+const SummaryWordBankTable = ({
+    options,
+    optionLabelType = 'alpha',
+}: {
+    options: PracticeSessionQuestionDto['options'];
+    optionLabelType?: OptionLabelType;
+}) => {
     if (options.length === 0) {
         return null;
     }
@@ -459,6 +491,7 @@ const SummaryWordBankTable = ({ options }: { options: PracticeSessionQuestionDto
                         <tr key={rowIndex}>
                             {Array.from({ length: columns }, (_, columnIndex) => {
                                 const option = row[columnIndex];
+                                const globalIndex = rowIndex * columns + columnIndex;
                                 return (
                                     <td
                                         key={columnIndex}
@@ -471,7 +504,12 @@ const SummaryWordBankTable = ({ options }: { options: PracticeSessionQuestionDto
                                             background: option ? '#ffffff' : '#f8fafc',
                                         }}
                                     >
-                                        {option ? option.optionText : null}
+                                        {option ? (
+                                            <>
+                                                <b>{getOptionLabel(globalIndex, optionLabelType)}.</b>{' '}
+                                                {stripOptionLeadingLabel(option.optionText, globalIndex, optionLabelType) || option.optionText}
+                                            </>
+                                        ) : null}
                                     </td>
                                 );
                             })}
@@ -492,6 +530,9 @@ const ClassificationMatchingTable = ({
     readOnly = false,
     reviewAnswerMap,
     renderQuestionAction,
+    highlights,
+    onCreateHighlight,
+    onDeleteHighlight,
 }: {
     group: PracticeSessionQuestionGroupDto;
     answerMap: Record<string, string>;
@@ -499,7 +540,7 @@ const ClassificationMatchingTable = ({
     readOnly?: boolean;
     reviewAnswerMap?: ObjectiveReviewAnswerMap;
     renderQuestionAction?: RenderQuestionAction;
-}) => {
+} & HighlightableProps) => {
     const options = getSharedOptions(group);
     const optionLabelType = getGroupOptionLabelType(group);
 
@@ -604,9 +645,14 @@ const ClassificationMatchingTable = ({
 
                                         {question.content?.trim() ? (
                                             <div style={{ color: '#334155', lineHeight: 1.7 }}>
-                                                <ReactMarkdown components={compactMarkdownComponents}>
-                                                    {formatTemplateText(question.content)}
-                                                </ReactMarkdown>
+                                                <HighlightableMarkdown
+                                                    sourceKey={`question:${question.id}:content`}
+                                                    text={formatTemplateText(question.content)}
+                                                    components={compactMarkdownComponents}
+                                                    highlights={highlights}
+                                                    onCreateHighlight={onCreateHighlight}
+                                                    onDeleteHighlight={onDeleteHighlight}
+                                                />
                                             </div>
                                         ) : (
                                             <Text type="secondary">Chưa có nội dung item.</Text>
@@ -781,6 +827,156 @@ const buildInitialAnswers = (session?: PracticeSessionDto | null) => {
     }, {});
 };
 
+const parseStoredHighlights = (value?: string | null): RunnerHighlight[] => {
+    if (!value) {
+        return [];
+    }
+
+    try {
+        const parsed = JSON.parse(value) as unknown;
+        if (!Array.isArray(parsed)) {
+            return [];
+        }
+
+        return normalizeRunnerHighlights(parsed.flatMap((item) => {
+            if (!item || typeof item !== 'object') {
+                return [];
+            }
+
+            const candidate = item as Partial<RunnerHighlight>;
+            if (
+                typeof candidate.id !== 'string'
+                || typeof candidate.sourceKey !== 'string'
+                || typeof candidate.selectedText !== 'string'
+                || typeof candidate.color !== 'string'
+                || !highlightColorOptions.includes(candidate.color as RunnerHighlightColor)
+                || typeof candidate.startOffset !== 'number'
+                || typeof candidate.endOffset !== 'number'
+                || !Number.isFinite(candidate.startOffset)
+                || !Number.isFinite(candidate.endOffset)
+                || candidate.endOffset <= candidate.startOffset
+            ) {
+                return [];
+            }
+
+            return [{
+                id: candidate.id,
+                sourceKey: candidate.sourceKey,
+                startOffset: Math.max(0, Math.trunc(candidate.startOffset)),
+                endOffset: Math.max(0, Math.trunc(candidate.endOffset)),
+                selectedText: candidate.selectedText,
+                color: candidate.color as RunnerHighlightColor,
+                createdAt: typeof candidate.createdAt === 'string' ? candidate.createdAt : new Date().toISOString(),
+                updatedAt: typeof candidate.updatedAt === 'string' ? candidate.updatedAt : new Date().toISOString(),
+            }];
+        }));
+    } catch {
+        return [];
+    }
+};
+
+const normalizeRunnerHighlights = (highlights: RunnerHighlight[]) => (
+    highlights
+        .filter((highlight) => (
+            highlight.sourceKey.trim()
+            && highlight.selectedText.trim()
+            && highlightColorOptions.includes(highlight.color)
+            && Number.isFinite(highlight.startOffset)
+            && Number.isFinite(highlight.endOffset)
+            && highlight.endOffset > highlight.startOffset
+        ))
+        .map((highlight) => ({
+            ...highlight,
+            sourceKey: highlight.sourceKey.trim(),
+            selectedText: highlight.selectedText.trim(),
+            startOffset: Math.max(0, Math.trunc(highlight.startOffset)),
+            endOffset: Math.max(0, Math.trunc(highlight.endOffset)),
+        }))
+        .sort((left, right) => (
+            left.sourceKey.localeCompare(right.sourceKey)
+            || left.startOffset - right.startOffset
+            || left.endOffset - right.endOffset
+        ))
+);
+
+const mergeSameColorHighlights = (highlights: RunnerHighlight[]) => {
+    const sorted = normalizeRunnerHighlights(highlights);
+    const merged: RunnerHighlight[] = [];
+
+    sorted.forEach((highlight) => {
+        const previous = merged[merged.length - 1];
+        if (
+            previous
+            && previous.sourceKey === highlight.sourceKey
+            && previous.color === highlight.color
+            && previous.endOffset >= highlight.startOffset
+        ) {
+            merged[merged.length - 1] = {
+                ...highlight,
+                startOffset: Math.min(previous.startOffset, highlight.startOffset),
+                endOffset: Math.max(previous.endOffset, highlight.endOffset),
+                selectedText: highlight.selectedText || previous.selectedText,
+                createdAt: previous.createdAt < highlight.createdAt ? previous.createdAt : highlight.createdAt,
+            };
+            return;
+        }
+
+        merged.push(highlight);
+    });
+
+    return merged;
+};
+
+const applyRunnerHighlightPatch = (
+    current: RunnerHighlight[],
+    patch: RunnerHighlight,
+) => {
+    const nextHighlights: RunnerHighlight[] = [];
+
+    current.forEach((existing) => {
+        const overlaps = existing.sourceKey === patch.sourceKey
+            && existing.startOffset < patch.endOffset
+            && existing.endOffset > patch.startOffset;
+        const touchesSameColor = existing.sourceKey === patch.sourceKey
+            && existing.color === patch.color
+            && existing.startOffset <= patch.endOffset
+            && existing.endOffset >= patch.startOffset;
+
+        if (!overlaps && !touchesSameColor) {
+            nextHighlights.push(existing);
+            return;
+        }
+
+        if (existing.color === patch.color) {
+            patch.startOffset = Math.min(patch.startOffset, existing.startOffset);
+            patch.endOffset = Math.max(patch.endOffset, existing.endOffset);
+            patch.createdAt = existing.createdAt < patch.createdAt ? existing.createdAt : patch.createdAt;
+            return;
+        }
+
+        if (existing.startOffset < patch.startOffset) {
+            nextHighlights.push({
+                ...existing,
+                id: `${existing.id}-left-${patch.id}`,
+                endOffset: patch.startOffset,
+                updatedAt: patch.updatedAt,
+            });
+        }
+
+        if (existing.endOffset > patch.endOffset) {
+            nextHighlights.push({
+                ...existing,
+                id: `${existing.id}-right-${patch.id}`,
+                startOffset: patch.endOffset,
+                updatedAt: patch.updatedAt,
+            });
+        }
+    });
+
+    nextHighlights.push(patch);
+    return mergeSameColorHighlights(nextHighlights);
+};
+
 const getQuestionInputType = (group: PracticeSessionQuestionGroupDto) => {
     const groupType = (group.groupType ?? '').toUpperCase();
     const parsedPrompt = parseSharedPromptContent(group.contentData);
@@ -829,6 +1025,276 @@ const compactMarkdownComponents = {
     ...markdownComponents,
     p: ({ children }: any) => <p style={{ margin: 0, color: '#334155', lineHeight: 1.7 }}>{children}</p>,
     li: ({ children }: any) => <li style={{ marginBottom: 4, color: '#334155' }}>{children}</li>,
+};
+
+const HIGHLIGHT_STORAGE_VERSION = 1;
+const highlightColorStyles: Record<RunnerHighlightColor, { background: string; border: string }> = {
+    yellow: { background: 'rgba(250, 204, 21, 0.45)', border: '#facc15' },
+    green: { background: 'rgba(134, 239, 172, 0.45)', border: '#86efac' },
+    blue: { background: 'rgba(147, 197, 253, 0.48)', border: '#93c5fd' },
+    pink: { background: 'rgba(249, 168, 212, 0.48)', border: '#f9a8d4' },
+    purple: { background: 'rgba(196, 181, 253, 0.48)', border: '#c4b5fd' },
+};
+const highlightColorOptions: RunnerHighlightColor[] = ['yellow', 'green', 'blue', 'pink', 'purple'];
+
+const getHighlightStorageKey = (sessionId: string) => `practice-highlights:${sessionId}:v${HIGHLIGHT_STORAGE_VERSION}`;
+
+const createRunnerHighlightId = () => (
+    `hl-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+);
+
+const isTextNode = (node: Node): node is Text => node.nodeType === Node.TEXT_NODE;
+
+const unwrapRenderedHighlights = (root: HTMLElement) => {
+    root.querySelectorAll('span[data-runner-highlight="true"]').forEach((highlightNode) => {
+        const parent = highlightNode.parentNode;
+        if (!parent) {
+            return;
+        }
+
+        parent.replaceChild(document.createTextNode(highlightNode.textContent ?? ''), highlightNode);
+        parent.normalize();
+    });
+};
+
+const collectTextNodes = (root: HTMLElement) => {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const nodes: Text[] = [];
+    let currentNode = walker.nextNode();
+    while (currentNode) {
+        if (isTextNode(currentNode) && currentNode.nodeValue) {
+            nodes.push(currentNode);
+        }
+        currentNode = walker.nextNode();
+    }
+    return nodes;
+};
+
+const applyRenderedHighlights = (root: HTMLElement, highlights: RunnerHighlight[]) => {
+    unwrapRenderedHighlights(root);
+    if (highlights.length === 0) {
+        return;
+    }
+
+    const normalizedHighlights = highlights
+        .filter((highlight) => highlight.endOffset > highlight.startOffset)
+        .sort((left, right) => left.startOffset - right.startOffset || left.endOffset - right.endOffset);
+
+    const textNodes = collectTextNodes(root);
+    let textCursor = 0;
+
+    textNodes.forEach((textNode) => {
+        const text = textNode.nodeValue ?? '';
+        const nodeStart = textCursor;
+        const nodeEnd = nodeStart + text.length;
+        textCursor = nodeEnd;
+
+        const overlappingHighlights = normalizedHighlights.filter((highlight) => (
+            highlight.startOffset < nodeEnd && highlight.endOffset > nodeStart
+        ));
+        if (overlappingHighlights.length === 0) {
+            return;
+        }
+
+        const fragment = document.createDocumentFragment();
+        let localCursor = 0;
+        overlappingHighlights.forEach((highlight) => {
+            const start = Math.max(0, highlight.startOffset - nodeStart);
+            const end = Math.min(text.length, highlight.endOffset - nodeStart);
+            if (start > localCursor) {
+                fragment.appendChild(document.createTextNode(text.slice(localCursor, start)));
+            }
+            if (end > start) {
+                const mark = document.createElement('span');
+                const style = highlightColorStyles[highlight.color];
+                mark.dataset.runnerHighlight = 'true';
+                mark.dataset.highlightId = highlight.id;
+                mark.title = 'Click để xoá highlight';
+                mark.style.background = style.background;
+                mark.style.borderBottom = `2px solid ${style.border}`;
+                mark.style.borderRadius = '3px';
+                mark.style.cursor = 'pointer';
+                mark.appendChild(document.createTextNode(text.slice(start, end)));
+                fragment.appendChild(mark);
+            }
+            localCursor = Math.max(localCursor, end);
+        });
+
+        if (localCursor < text.length) {
+            fragment.appendChild(document.createTextNode(text.slice(localCursor)));
+        }
+
+        textNode.parentNode?.replaceChild(fragment, textNode);
+    });
+};
+
+const getSelectionOffsetsInsideRoot = (root: HTMLElement) => {
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
+        return null;
+    }
+
+    const range = selection.getRangeAt(0);
+    if (!root.contains(range.commonAncestorContainer)) {
+        return null;
+    }
+
+    const selectedText = range.toString();
+    if (!selectedText.trim()) {
+        return null;
+    }
+
+    const preSelectionRange = document.createRange();
+    preSelectionRange.selectNodeContents(root);
+    preSelectionRange.setEnd(range.startContainer, range.startOffset);
+
+    const startOffset = preSelectionRange.toString().length;
+    const endOffset = startOffset + selectedText.length;
+    return {
+        startOffset,
+        endOffset,
+        selectedText,
+        rect: range.getBoundingClientRect(),
+    };
+};
+
+const HighlightableMarkdown = ({
+    sourceKey,
+    text,
+    components = markdownComponents,
+    highlights = [],
+    onCreateHighlight,
+    onDeleteHighlight,
+}: {
+    sourceKey: string;
+    text: string;
+    components?: typeof markdownComponents;
+} & HighlightableProps) => {
+    const rootRef = useRef<HTMLDivElement | null>(null);
+    const [selectionMenu, setSelectionMenu] = useState<{
+        startOffset: number;
+        endOffset: number;
+        selectedText: string;
+        left: number;
+        top: number;
+    } | null>(null);
+    const sourceHighlights = useMemo(
+        () => highlights.filter((highlight) => highlight.sourceKey === sourceKey),
+        [highlights, sourceKey],
+    );
+
+    useEffect(() => {
+        const root = rootRef.current;
+        if (!root) {
+            return;
+        }
+
+        applyRenderedHighlights(root, sourceHighlights);
+        return () => {
+            unwrapRenderedHighlights(root);
+        };
+    }, [sourceHighlights, text]);
+
+    const handleMouseUp = () => {
+        if (!onCreateHighlight) {
+            return;
+        }
+
+        window.setTimeout(() => {
+            const root = rootRef.current;
+            if (!root) {
+                return;
+            }
+
+            const selection = getSelectionOffsetsInsideRoot(root);
+            if (!selection) {
+                setSelectionMenu(null);
+                return;
+            }
+
+            setSelectionMenu({
+                startOffset: selection.startOffset,
+                endOffset: selection.endOffset,
+                selectedText: selection.selectedText,
+                left: selection.rect.left + (selection.rect.width / 2),
+                top: Math.max(12, selection.rect.top - 44),
+            });
+        }, 0);
+    };
+
+    const createHighlight = (color: RunnerHighlightColor) => {
+        if (!selectionMenu || !onCreateHighlight) {
+            return;
+        }
+
+        onCreateHighlight({
+            sourceKey,
+            startOffset: selectionMenu.startOffset,
+            endOffset: selectionMenu.endOffset,
+            selectedText: selectionMenu.selectedText,
+            color,
+        });
+        setSelectionMenu(null);
+        window.getSelection()?.removeAllRanges();
+    };
+
+    const handleClick = (event: ReactMouseEvent<HTMLDivElement>) => {
+        const target = event.target instanceof HTMLElement
+            ? event.target.closest('span[data-runner-highlight="true"]')
+            : null;
+        const highlightId = target instanceof HTMLElement ? target.dataset.highlightId : null;
+        if (highlightId && onDeleteHighlight) {
+            onDeleteHighlight(highlightId);
+            setSelectionMenu(null);
+        }
+    };
+
+    return (
+        <>
+            <div ref={rootRef} onMouseUp={handleMouseUp} onClick={handleClick}>
+                <ReactMarkdown components={components}>
+                    {text}
+                </ReactMarkdown>
+            </div>
+            {selectionMenu ? createPortal(
+                <div
+                    style={{
+                        position: 'fixed',
+                        left: selectionMenu.left,
+                        top: selectionMenu.top,
+                        transform: 'translateX(-50%)',
+                        zIndex: 2000,
+                        display: 'flex',
+                        gap: 6,
+                        padding: '7px 9px',
+                        borderRadius: 999,
+                        border: '1px solid #cbd5e1',
+                        background: '#ffffff',
+                        boxShadow: '0 12px 30px rgba(15, 23, 42, 0.18)',
+                    }}
+                    onMouseDown={(event) => event.preventDefault()}
+                >
+                    {highlightColorOptions.map((color) => (
+                        <button
+                            key={color}
+                            type="button"
+                            aria-label={`Highlight ${color}`}
+                            onClick={() => createHighlight(color)}
+                            style={{
+                                width: 22,
+                                height: 22,
+                                borderRadius: 999,
+                                border: `2px solid ${highlightColorStyles[color].border}`,
+                                background: highlightColorStyles[color].background,
+                                cursor: 'pointer',
+                            }}
+                        />
+                    ))}
+                </div>,
+                document.body,
+            ) : null}
+        </>
+    );
 };
 
 const hasTemplateQuestionTokens = (value?: string | null) => /\[Q\d+\]/.test(value ?? '');
@@ -1108,6 +1574,9 @@ const QuestionBlock = ({
     readOnly = false,
     reviewAnswerMap,
     renderQuestionAction,
+    highlights,
+    onCreateHighlight,
+    onDeleteHighlight,
 }: {
     group: PracticeSessionQuestionGroupDto;
     question: PracticeSessionQuestionDto;
@@ -1116,7 +1585,7 @@ const QuestionBlock = ({
     readOnly?: boolean;
     reviewAnswerMap?: ObjectiveReviewAnswerMap;
     renderQuestionAction?: RenderQuestionAction;
-}) => {
+} & HighlightableProps) => {
     const reviewAnswer = getReviewAnswerState(question.id, reviewAnswerMap);
     const correctAnswer = formatReviewCorrectAnswer(group, question, reviewAnswer);
     const rendersInlineAnswer = hasTemplateQuestionTokens(question.content)
@@ -1166,9 +1635,14 @@ const QuestionBlock = ({
                                 reviewAnswerMap={reviewAnswerMap}
                             />
                         ) : (
-                            <ReactMarkdown components={compactMarkdownComponents}>
-                                {formatTemplateText(question.content)}
-                            </ReactMarkdown>
+                            <HighlightableMarkdown
+                                sourceKey={`question:${question.id}:content`}
+                                text={formatTemplateText(question.content)}
+                                components={compactMarkdownComponents}
+                                highlights={highlights}
+                                onCreateHighlight={onCreateHighlight}
+                                onDeleteHighlight={onDeleteHighlight}
+                            />
                         )}
                     </div>
                 ) : null}
@@ -1208,6 +1682,9 @@ const GroupBlock = ({
     readOnly = false,
     reviewAnswerMap,
     renderQuestionAction,
+    highlights,
+    onCreateHighlight,
+    onDeleteHighlight,
 }: {
     group: PracticeSessionQuestionGroupDto;
     skillType: string;
@@ -1216,7 +1693,7 @@ const GroupBlock = ({
     readOnly?: boolean;
     reviewAnswerMap?: ObjectiveReviewAnswerMap;
     renderQuestionAction?: RenderQuestionAction;
-}) => {
+} & HighlightableProps) => {
     const parsedPrompt = parseSharedPromptContent(group.contentData);
     const flowchartAssets = parseFlowchartAssets(group.assetsData);
     const sharedOptions = getSharedOptions(group);
@@ -1230,7 +1707,25 @@ const GroupBlock = ({
     const tableContent = isTableLayout ? parseTableContent(group.contentData) : { title: '', rows: [] as string[][] };
     const rendersInlineTemplateAnswers = hasTemplateQuestionTokens(group.contentData)
         && INLINE_TEMPLATE_INPUT_TYPES.has(inputType);
-    const shouldShowPrompt = !!parsedPrompt.prompt && inputType !== 'shared-select' ? true : !!parsedPrompt.prompt;
+    const isDiagramType = (group.groupType ?? '').toUpperCase() === 'FLOWCHART_COMPLETION' || (group.groupType ?? '').toUpperCase() === 'MAP_LABELLING';
+    const hasGroupVisualImage = !!flowchartAssets.imageUrl;
+    const isMeaningfulPrompt = (promptText?: string | null) => {
+        if (!promptText) return false;
+        const words = promptText
+            .toLowerCase()
+            .replace(/\[q\d+\]/gi, '')
+            .replace(/[^a-z\s]/gi, ' ')
+            .split(/\s+/)
+            .map((w) => w.trim())
+            .filter((w) => w.length >= 2);
+        const stopWords = new Set(['example', 'question', 'questions', 'q']);
+        const meaningfulWords = words.filter((w) => !stopWords.has(w));
+        return meaningfulWords.length >= 2;
+    };
+    const baseShouldShowPrompt = !!parsedPrompt.prompt && inputType !== 'shared-select' ? true : !!parsedPrompt.prompt;
+    const shouldShowPrompt = baseShouldShowPrompt && (
+        !(isDiagramType && hasGroupVisualImage) || isMeaningfulPrompt(parsedPrompt.prompt)
+    );
     const effectiveGroupType = getEffectiveMcqGroupType({
         groupType: group.groupType,
         contentData: group.contentData,
@@ -1239,9 +1734,9 @@ const GroupBlock = ({
     });
     const shouldShowSharedOptionsBox = (inputType === 'shared-select' || (group.groupType ?? '').toUpperCase() === 'SUMMARY_COMPLETION')
         && sharedOptions.length > 0
-        && (group.groupType ?? '').toUpperCase() !== 'MATCHING_HEADINGS'
         && !isClassificationMatching
-        && !isMapLabelling;
+        && !isMapLabelling
+        && !areAllOptionsLabelOnly(sharedOptions);
     const shouldShowQuestionActionList = readOnly
         && !!renderQuestionAction
         && (rendersInlineTemplateAnswers || effectiveGroupType === 'MCQ_CHOOSE_N');
@@ -1266,7 +1761,16 @@ const GroupBlock = ({
                     <Alert
                         type="info"
                         showIcon
-                        message={<ReactMarkdown components={markdownComponents}>{formatTemplateText(group.instruction)}</ReactMarkdown>}
+                        message={(
+                            <HighlightableMarkdown
+                                sourceKey={`group:${group.id}:instruction`}
+                                text={formatTemplateText(group.instruction)}
+                                components={markdownComponents}
+                                highlights={highlights}
+                                onCreateHighlight={onCreateHighlight}
+                                onDeleteHighlight={onDeleteHighlight}
+                            />
+                        )}
                     />
                 ) : null}
                 <TruthValueDefinitionTable groupType={group.groupType} />
@@ -1283,9 +1787,14 @@ const GroupBlock = ({
                     >
                         {tableContent.title ? (
                             <div style={{ marginBottom: 12, color: '#0f172a' }}>
-                                <ReactMarkdown components={compactMarkdownComponents}>
-                                    {formatTemplateText(tableContent.title)}
-                                </ReactMarkdown>
+                                <HighlightableMarkdown
+                                    sourceKey={`group:${group.id}:table-title`}
+                                    text={formatTemplateText(tableContent.title)}
+                                    components={compactMarkdownComponents}
+                                    highlights={highlights}
+                                    onCreateHighlight={onCreateHighlight}
+                                    onDeleteHighlight={onDeleteHighlight}
+                                />
                             </div>
                         ) : null}
                         <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 420 }}>
@@ -1312,9 +1821,14 @@ const GroupBlock = ({
                                                         reviewAnswerMap={reviewAnswerMap}
                                                     />
                                                 ) : (
-                                                    <ReactMarkdown components={compactMarkdownComponents}>
-                                                        {formatTemplateText(cell)}
-                                                    </ReactMarkdown>
+                                                    <HighlightableMarkdown
+                                                        sourceKey={`group:${group.id}:table:${rowIndex}:${cellIndex}`}
+                                                        text={formatTemplateText(cell)}
+                                                        components={compactMarkdownComponents}
+                                                        highlights={highlights}
+                                                        onCreateHighlight={onCreateHighlight}
+                                                        onDeleteHighlight={onDeleteHighlight}
+                                                    />
                                                 )}
                                             </td>
                                         ))}
@@ -1342,9 +1856,14 @@ const GroupBlock = ({
                                 reviewAnswerMap={reviewAnswerMap}
                             />
                         ) : (
-                            <ReactMarkdown components={markdownComponents}>
-                                {formatTemplateText(parsedPrompt.prompt)}
-                            </ReactMarkdown>
+                            <HighlightableMarkdown
+                                sourceKey={`group:${group.id}:prompt`}
+                                text={formatTemplateText(parsedPrompt.prompt)}
+                                components={markdownComponents}
+                                highlights={highlights}
+                                onCreateHighlight={onCreateHighlight}
+                                onDeleteHighlight={onDeleteHighlight}
+                            />
                         )}
                     </div>
                 ) : null}
@@ -1356,19 +1875,31 @@ const GroupBlock = ({
                             borderRadius: 14,
                             padding: 12,
                             background: '#fff',
+                            textAlign: 'center',
                         }}
                     >
-                        <img
+                        <Image
                             src={flowchartAssets.imageUrl}
                             alt="Group visual"
-                            style={{ width: '100%', borderRadius: 12, objectFit: 'contain', maxHeight: 420 }}
+                            style={{
+                                maxHeight: 320,
+                                maxWidth: '100%',
+                                objectFit: 'contain',
+                                borderRadius: 12,
+                                display: 'block',
+                                margin: '0 auto',
+                                cursor: 'zoom-in',
+                            }}
+                            preview={{
+                                mask: <span style={{ fontSize: '12px' }}>Click để phóng to</span>,
+                            }}
                         />
                     </div>
                 ) : null}
 
                 {shouldShowSharedOptionsBox ? (
                     isSummaryCompletion ? (
-                        <SummaryWordBankTable options={sharedOptions} />
+                        <SummaryWordBankTable options={sharedOptions} optionLabelType={optionLabelType} />
                     ) : isMatchingVisuals ? (
                         <MatchingVisualsOptionBank options={sharedOptions} optionLabelType={optionLabelType} />
                     ) : (
@@ -1384,8 +1915,8 @@ const GroupBlock = ({
                             <Space direction="vertical" size={8} style={{ width: '100%' }}>
                                 {sharedOptions.map((option, index) => (
                                     <div key={option.id} style={{ color: '#1e293b' }}>
-                                        {option.optionText?.trim() ? (
-                                            <><b>{getOptionLabel(index, optionLabelType)}.</b> {option.optionText}</>
+                                        {stripOptionLeadingLabel(option.optionText, index, optionLabelType) ? (
+                                            <><b>{getOptionLabel(index, optionLabelType)}.</b> {stripOptionLeadingLabel(option.optionText, index, optionLabelType)}</>
                                         ) : (
                                             <b>{getOptionLabel(index, optionLabelType)}</b>
                                         )}
@@ -1404,6 +1935,9 @@ const GroupBlock = ({
                         readOnly={readOnly}
                         reviewAnswerMap={reviewAnswerMap}
                         renderQuestionAction={renderQuestionAction}
+                        highlights={highlights}
+                        onCreateHighlight={onCreateHighlight}
+                        onDeleteHighlight={onDeleteHighlight}
                     />
                 ) : !rendersInlineTemplateAnswers && effectiveGroupType === 'MCQ_MULTIPLE' ? (() => {
                     const sharedQuestionOptions = getSharedOptions(group);
@@ -1447,9 +1981,14 @@ const GroupBlock = ({
 
                                             {question.content ? (
                                                 <div style={{ color: '#334155', lineHeight: 1.7 }}>
-                                                    <ReactMarkdown components={compactMarkdownComponents}>
-                                                        {formatTemplateText(question.content)}
-                                                    </ReactMarkdown>
+                                                    <HighlightableMarkdown
+                                                        sourceKey={`question:${question.id}:content`}
+                                                        text={formatTemplateText(question.content)}
+                                                        components={compactMarkdownComponents}
+                                                        highlights={highlights}
+                                                        onCreateHighlight={onCreateHighlight}
+                                                        onDeleteHighlight={onDeleteHighlight}
+                                                    />
                                                 </div>
                                             ) : null}
 
@@ -1564,6 +2103,9 @@ const GroupBlock = ({
                                 readOnly={readOnly}
                                 reviewAnswerMap={reviewAnswerMap}
                                 renderQuestionAction={renderQuestionAction}
+                                highlights={highlights}
+                                onCreateHighlight={onCreateHighlight}
+                                onDeleteHighlight={onDeleteHighlight}
                             />
                         ))}
                     </Space>
@@ -1657,6 +2199,9 @@ export const ReadingBody = ({
     readOnly = false,
     reviewAnswerMap,
     renderQuestionAction,
+    highlights,
+    onCreateHighlight,
+    onDeleteHighlight,
 }: {
     passages: PracticeSessionReadingPassageDto[];
     activePassageIndex: number;
@@ -1665,7 +2210,7 @@ export const ReadingBody = ({
     readOnly?: boolean;
     reviewAnswerMap?: ObjectiveReviewAnswerMap;
     renderQuestionAction?: RenderQuestionAction;
-}) => {
+} & HighlightableProps) => {
     const passage = passages[activePassageIndex];
     const passageAssetImages = parseAssetImageUrls(passage?.assetsData);
 
@@ -1711,10 +2256,21 @@ export const ReadingBody = ({
                                             background: '#fff',
                                         }}
                                     >
-                                        <img
+                                        <Image
                                             src={imageUrl}
                                             alt={`Passage visual ${index + 1}`}
-                                            style={{ width: '100%', borderRadius: 12, objectFit: 'contain', maxHeight: 420 }}
+                                            style={{
+                                                maxWidth: '100%',
+                                                maxHeight: 320,
+                                                objectFit: 'contain',
+                                                borderRadius: 12,
+                                                display: 'block',
+                                                margin: '0 auto',
+                                                cursor: 'zoom-in',
+                                            }}
+                                            preview={{
+                                                mask: <span style={{ fontSize: '12px' }}>Click để phóng to</span>,
+                                            }}
                                         />
                                     </div>
                                 ))}
@@ -1754,17 +2310,27 @@ export const ReadingBody = ({
                                                         color: segment.kind === 'heading' ? '#0f172a' : undefined,
                                                     }}
                                                 >
-                                                    <ReactMarkdown components={markdownComponents}>
-                                                        {formatTemplateText(segment.text)}
-                                                    </ReactMarkdown>
+                                                    <HighlightableMarkdown
+                                                        sourceKey={`reading:passage:${passage.id}:segment:${segmentIndex}`}
+                                                        text={formatTemplateText(segment.text)}
+                                                        components={markdownComponents}
+                                                        highlights={highlights}
+                                                        onCreateHighlight={onCreateHighlight}
+                                                        onDeleteHighlight={onDeleteHighlight}
+                                                    />
                                                 </div>
                                             </div>
                                         ))}
                                     </Space>
                                 ) : (
-                                    <ReactMarkdown components={markdownComponents}>
-                                        {formatTemplateText(passage.paragraphsData)}
-                                    </ReactMarkdown>
+                                    <HighlightableMarkdown
+                                        sourceKey={`reading:passage:${passage.id}:full`}
+                                        text={formatTemplateText(passage.paragraphsData)}
+                                        components={markdownComponents}
+                                        highlights={highlights}
+                                        onCreateHighlight={onCreateHighlight}
+                                        onDeleteHighlight={onDeleteHighlight}
+                                    />
                                 )}
                             </div>
                         ) : (
@@ -1790,6 +2356,9 @@ export const ReadingBody = ({
                                     readOnly={readOnly}
                                     reviewAnswerMap={reviewAnswerMap}
                                     renderQuestionAction={renderQuestionAction}
+                                    highlights={highlights}
+                                    onCreateHighlight={onCreateHighlight}
+                                    onDeleteHighlight={onDeleteHighlight}
                                 />
                         ))}
                     </Space>
@@ -1807,6 +2376,9 @@ export const ListeningBody = ({
     readOnly = false,
     reviewAnswerMap,
     renderQuestionAction,
+    highlights,
+    onCreateHighlight,
+    onDeleteHighlight,
 }: {
     parts: PracticeSessionListeningPartDto[];
     activePartIndex: number;
@@ -1815,7 +2387,7 @@ export const ListeningBody = ({
     readOnly?: boolean;
     reviewAnswerMap?: ObjectiveReviewAnswerMap;
     renderQuestionAction?: RenderQuestionAction;
-}) => {
+} & HighlightableProps) => {
     const part = parts[activePartIndex];
 
     if (!part) {
@@ -1860,9 +2432,14 @@ export const ListeningBody = ({
                             background: '#f8fbff',
                         }}
                     >
-                        <ReactMarkdown components={compactMarkdownComponents}>
-                            {formatTemplateText(part.contextDescription)}
-                        </ReactMarkdown>
+                        <HighlightableMarkdown
+                            sourceKey={`listening:part:${part.id}:context`}
+                            text={formatTemplateText(part.contextDescription)}
+                            components={compactMarkdownComponents}
+                            highlights={highlights}
+                            onCreateHighlight={onCreateHighlight}
+                            onDeleteHighlight={onDeleteHighlight}
+                        />
                     </div>
                 ) : null}
 
@@ -1877,6 +2454,9 @@ export const ListeningBody = ({
                             readOnly={readOnly}
                             reviewAnswerMap={reviewAnswerMap}
                             renderQuestionAction={renderQuestionAction}
+                            highlights={highlights}
+                            onCreateHighlight={onCreateHighlight}
+                            onDeleteHighlight={onDeleteHighlight}
                         />
                     ))}
                 </Space>
@@ -1890,7 +2470,12 @@ const ObjectiveRunnerPage = ({ expectedSkill }: { expectedSkill: 'READING' | 'LI
     const location = useLocation();
     const { sessionId = '' } = useParams();
     const { data: session, isLoading, isError } = usePracticeSessionQuery(sessionId);
+    const { data: serverHighlights } = usePracticeSessionHighlightsQuery(
+        sessionId,
+        !!sessionId && session?.status === 'InProgress',
+    );
     const updateAnswersMutation = useUpdatePracticeSessionAnswersMutation();
+    const updateHighlightsMutation = useUpdatePracticeSessionHighlightsMutation();
 
     const [answerMap, setAnswerMap] = useState<Record<string, string>>({});
     const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
@@ -1902,6 +2487,7 @@ const ObjectiveRunnerPage = ({ expectedSkill }: { expectedSkill: 'READING' | 'LI
     const [audioDuration, setAudioDuration] = useState(0);
     const [mockCountdownSeconds, setMockCountdownSeconds] = useState<number | null>(null);
     const [practiceAudioPlaying, setPracticeAudioPlaying] = useState(false);
+    const [highlights, setHighlights] = useState<RunnerHighlight[]>([]);
     const dirtyAnswersRef = useRef<Record<string, string>>({});
     const timerValueRef = useRef<number | null>(null);
     const lastPersistedTimeRef = useRef<number | null>(null);
@@ -1910,6 +2496,8 @@ const ObjectiveRunnerPage = ({ expectedSkill }: { expectedSkill: 'READING' | 'LI
     const lastStoredAudioSecondRef = useRef<number>(-1);
     const audioResumeAppliedRef = useRef(false);
     const mockReplayGuardRef = useRef(false);
+    const skipNextHighlightPersistRef = useRef(false);
+    const serverHighlightsHydratedRef = useRef<string | null>(null);
 
     useEffect(() => {
         if (!session) {
@@ -1917,6 +2505,9 @@ const ObjectiveRunnerPage = ({ expectedSkill }: { expectedSkill: 'READING' | 'LI
         }
 
         setAnswerMap(buildInitialAnswers(session));
+        skipNextHighlightPersistRef.current = true;
+        serverHighlightsHydratedRef.current = null;
+        setHighlights(parseStoredHighlights(window.localStorage.getItem(getHighlightStorageKey(session.sessionId))));
         setTimeRemaining(session.timeRemaining ?? null);
         timerValueRef.current = session.timeRemaining ?? null;
         lastPersistedTimeRef.current = session.timeRemaining ?? null;
@@ -1930,6 +2521,42 @@ const ObjectiveRunnerPage = ({ expectedSkill }: { expectedSkill: 'READING' | 'LI
             lastStoredAudioSecondRef.current = -1;
         }
     }, [expectedSkill, session?.sessionId]);
+
+    useEffect(() => {
+        if (!session?.sessionId) {
+            return;
+        }
+
+        if (skipNextHighlightPersistRef.current) {
+            skipNextHighlightPersistRef.current = false;
+            return;
+        }
+
+        window.localStorage.setItem(getHighlightStorageKey(session.sessionId), JSON.stringify(highlights));
+    }, [highlights, session?.sessionId]);
+
+    useEffect(() => {
+        if (!session?.sessionId || !serverHighlights || serverHighlightsHydratedRef.current === session.sessionId) {
+            return;
+        }
+
+        serverHighlightsHydratedRef.current = session.sessionId;
+        const localHighlights = parseStoredHighlights(window.localStorage.getItem(getHighlightStorageKey(session.sessionId)));
+        const normalizedServerHighlights = normalizeRunnerHighlights(serverHighlights);
+        const nextHighlights = normalizedServerHighlights.length > 0
+            ? normalizedServerHighlights
+            : localHighlights;
+
+        skipNextHighlightPersistRef.current = true;
+        setHighlights(nextHighlights);
+
+        if (normalizedServerHighlights.length === 0 && localHighlights.length > 0 && session.status === 'InProgress') {
+            updateHighlightsMutation.mutate({
+                sessionId: session.sessionId,
+                data: { highlights: localHighlights },
+            });
+        }
+    }, [serverHighlights, session?.sessionId, session?.status]);
 
     useEffect(() => {
         setHeaderSlot(document.getElementById('client-page-header-slot'));
@@ -2068,6 +2695,42 @@ const ObjectiveRunnerPage = ({ expectedSkill }: { expectedSkill: 'READING' | 'LI
         setAnswerMap((current) => ({ ...current, [questionId]: nextValue }));
         dirtyAnswersRef.current = { ...dirtyAnswersRef.current, [questionId]: nextValue };
         setAutosaveLabel('Chưa lưu');
+    };
+
+    const handleCreateHighlight = (highlight: RunnerHighlightPatch) => {
+        const now = new Date().toISOString();
+        setHighlights((current) => {
+            const nextHighlights = applyRunnerHighlightPatch(current, {
+                ...highlight,
+                id: createRunnerHighlightId(),
+                createdAt: now,
+                updatedAt: now,
+            });
+
+            if (session?.sessionId && session.status === 'InProgress') {
+                updateHighlightsMutation.mutate({
+                    sessionId: session.sessionId,
+                    data: { highlights: nextHighlights },
+                });
+            }
+
+            return nextHighlights;
+        });
+    };
+
+    const handleDeleteHighlight = (highlightId: string) => {
+        setHighlights((current) => {
+            const nextHighlights = current.filter((highlight) => highlight.id !== highlightId);
+
+            if (session?.sessionId && session.status === 'InProgress') {
+                updateHighlightsMutation.mutate({
+                    sessionId: session.sessionId,
+                    data: { highlights: nextHighlights },
+                });
+            }
+
+            return nextHighlights;
+        });
     };
 
     const handleNavigationItemChange = (index: number) => {
@@ -2631,6 +3294,9 @@ const ObjectiveRunnerPage = ({ expectedSkill }: { expectedSkill: 'READING' | 'LI
                     activePassageIndex={activeItemIndex}
                     answerMap={answerMap}
                     onAnswerChange={handleAnswerChange}
+                    highlights={highlights}
+                    onCreateHighlight={handleCreateHighlight}
+                    onDeleteHighlight={handleDeleteHighlight}
                 />
             ) : (
                 <ListeningBody
@@ -2638,6 +3304,9 @@ const ObjectiveRunnerPage = ({ expectedSkill }: { expectedSkill: 'READING' | 'LI
                     activePartIndex={activeItemIndex}
                     answerMap={answerMap}
                     onAnswerChange={handleAnswerChange}
+                    highlights={highlights}
+                    onCreateHighlight={handleCreateHighlight}
+                    onDeleteHighlight={handleDeleteHighlight}
                 />
             )}
 

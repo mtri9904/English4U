@@ -200,9 +200,10 @@ C:\Users\Hande\OneDrive\Documents\English4skills\english4u-backend\EnglishExamAp
 C:\Users\Hande\OneDrive\Documents\English4skills\english4u-backend\EnglishExamApp.API\bin\Debug\net9.0\runtimes\win-x86\native\pdfium.dll
 C:\Users\Hande\OneDrive\Documents\English4skills\english4u-backend\EnglishExamApp.API\bin\Debug\net9.0\EnglishExamApp.API.staticwebassets.runtime.json
 C:\Users\Hande\OneDrive\Documents\DoAnTotNghiep\English4skills\english4u-backend\EnglishExamApp.API\bin\Debug\net9.0\appsettings.Development.json
+C:\Users\Hande\OneDrive\Documents\DoAnTotNghiep\English4skills\english4u-backend\EnglishExamApp.API\bin\Debug\net9.0\appsettings.example.json
 C:\Users\Hande\OneDrive\Documents\DoAnTotNghiep\English4skills\english4u-backend\EnglishExamApp.API\bin\Debug\net9.0\appsettings.json
-C:\Users\Hande\OneDrive\Documents\DoAnTotNghiep\English4skills\english4u-backend\EnglishExamApp.API\bin\Debug\net9.0\EnglishExamApp.API.staticwebassets.endpoints.json
 C:\Users\Hande\OneDrive\Documents\DoAnTotNghiep\English4skills\english4u-backend\EnglishExamApp.API\bin\Debug\net9.0\EnglishExamApp.API.staticwebassets.runtime.json
+C:\Users\Hande\OneDrive\Documents\DoAnTotNghiep\English4skills\english4u-backend\EnglishExamApp.API\bin\Debug\net9.0\EnglishExamApp.API.staticwebassets.endpoints.json
 C:\Users\Hande\OneDrive\Documents\DoAnTotNghiep\English4skills\english4u-backend\EnglishExamApp.API\bin\Debug\net9.0\EnglishExamApp.API.exe
 C:\Users\Hande\OneDrive\Documents\DoAnTotNghiep\English4skills\english4u-backend\EnglishExamApp.API\bin\Debug\net9.0\EnglishExamApp.API.deps.json
 C:\Users\Hande\OneDrive\Documents\DoAnTotNghiep\English4skills\english4u-backend\EnglishExamApp.API\bin\Debug\net9.0\EnglishExamApp.API.runtimeconfig.json
@@ -400,4 +401,3 @@ C:\Users\Hande\OneDrive\Documents\DoAnTotNghiep\English4skills\english4u-backend
 C:\Users\Hande\OneDrive\Documents\DoAnTotNghiep\English4skills\english4u-backend\EnglishExamApp.API\obj\Debug\net9.0\EnglishExamApp.API.pdb
 C:\Users\Hande\OneDrive\Documents\DoAnTotNghiep\English4skills\english4u-backend\EnglishExamApp.API\obj\Debug\net9.0\EnglishExamApp.API.genruntimeconfig.cache
 C:\Users\Hande\OneDrive\Documents\DoAnTotNghiep\English4skills\english4u-backend\EnglishExamApp.API\obj\Debug\net9.0\ref\EnglishExamApp.API.dll
-C:\Users\Hande\OneDrive\Documents\DoAnTotNghiep\English4skills\english4u-backend\EnglishExamApp.API\bin\Debug\net9.0\appsettings.example.json

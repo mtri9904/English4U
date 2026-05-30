@@ -1,3 +1,4 @@
+using System.Data.Common;
 using System.IdentityModel.Tokens.Jwt;
 using EnglishExamApp.API.Authentication;
 using EnglishExamApp.API.Payments;
@@ -7,13 +8,25 @@ using EnglishExamApp.Application.Services;
 using EnglishExamApp.Infrastructure.Data;
 using EnglishExamApp.Infrastructure.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
+if (builder.Environment.IsDevelopment())
+{
+    builder.Logging.ClearProviders();
+    builder.Logging.AddConsole();
+    builder.Logging.AddDebug();
+}
+
 var jwtKey = RequireConfiguration(builder.Configuration, "Jwt:Key");
 var defaultConnectionString = RequireConnectionString(builder.Configuration, "DefaultConnection");
+if (builder.Environment.IsDevelopment())
+{
+    defaultConnectionString = AddDevelopmentSqlServerDefaults(defaultConnectionString);
+}
 
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
@@ -73,8 +86,23 @@ builder.Services.AddHttpClient<IGemmaCompletionClient, GemmaCompletionClient>(cl
 {
     var baseUrl = builder.Configuration["GemmaExamGeneration:BaseUrl"] ?? "https://generativelanguage.googleapis.com/v1beta/openai/";
     client.BaseAddress = new Uri(baseUrl);
-    client.Timeout = TimeSpan.FromMinutes(3);
+    var timeoutMinutes = builder.Configuration.GetValue<double?>("GemmaExamGeneration:TimeoutMinutes") ?? 10d;
+    client.Timeout = TimeSpan.FromMinutes(Math.Clamp(timeoutMinutes, 1d, 60d));
 });
+
+builder.Services.AddHttpClient<IGeminiPdfNativeExtractionClient, GeminiPdfNativeExtractionClient>(client =>
+{
+    var baseUrl = builder.Configuration["GeminiPdfNativeExtraction:BaseUrl"] ??
+                  builder.Configuration["GeminiScoring:BaseUrl"] ??
+                  "https://generativelanguage.googleapis.com";
+    client.BaseAddress = new Uri($"{baseUrl.TrimEnd('/')}/");
+    var timeoutMinutes = builder.Configuration.GetValue<double?>("GeminiPdfNativeExtraction:TimeoutMinutes") ??
+                         builder.Configuration.GetValue<double?>("GemmaExamGeneration:TimeoutMinutes") ??
+                         10d;
+    client.Timeout = TimeSpan.FromMinutes(Math.Clamp(timeoutMinutes, 1d, 60d));
+});
+
+builder.Services.AddScoped<IPdfTextExtractionService, LocalPdfTextExtractionService>();
 builder.Services.AddScoped<IExamPdfGenerationService, GemmaPdfExamGenerationService>();
 
 builder.Services.AddHttpClient<IReadingCopilotService, GeminiReadingCopilotService>(client =>
@@ -208,4 +236,21 @@ static string RequireConnectionString(IConfiguration configuration, string name)
 
     throw new InvalidOperationException(
         $"Missing required connection string '{name}'. Set it with environment variable 'ConnectionStrings__{name}' or user-secrets key 'ConnectionStrings:{name}'.");
+}
+
+static string AddDevelopmentSqlServerDefaults(string connectionString)
+{
+    var configuredValues = new DbConnectionStringBuilder
+    {
+        ConnectionString = connectionString
+    };
+    if (configuredValues.ContainsKey("Encrypt"))
+    {
+        return connectionString;
+    }
+
+    var connectionStringBuilder = new SqlConnectionStringBuilder(connectionString);
+    connectionStringBuilder["Encrypt"] = "False";
+
+    return connectionStringBuilder.ConnectionString;
 }

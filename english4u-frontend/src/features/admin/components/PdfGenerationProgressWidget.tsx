@@ -214,7 +214,7 @@ export const PdfGenerationProgressWidget = () => {
             scheduleNextPoll(2000);
         };
 
-        void pollProgress();
+        scheduleNextPoll(uploadId ? 0 : 750);
 
         return () => {
             disposed = true;

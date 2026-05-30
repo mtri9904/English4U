@@ -1,5 +1,5 @@
 import { useMemo, useRef, type MutableRefObject } from 'react';
-import { Button, Empty, Input, InputNumber, Radio, Select, Tag, Upload } from 'antd';
+import { Button, Empty, Input, InputNumber, Radio, Select, Tag, Upload, Image } from 'antd';
 import { BoldOutlined, CloseOutlined, PictureOutlined } from '@ant-design/icons';
 import { TiptapQxEditor, type TiptapQxEditorRef } from '../../components/TiptapQxEditor';
 import type { CreateQuestionGroupDto, CreateQuestionOptionDto } from '../../types/exam.types';
@@ -571,10 +571,13 @@ export const FlowchartCompletionEditor = ({
 
                 {assets.imageUrl ? (
                     <div style={{ marginTop: '12px', textAlign: 'center' }}>
-                        <img
+                        <Image
                             src={assets.imageUrl}
                             alt="Flowchart"
-                            style={{ maxWidth: '100%', maxHeight: 360, objectFit: 'contain', borderRadius: '12px', border: '1px solid #dbeafe' }}
+                            style={{ maxWidth: '100%', maxHeight: 320, objectFit: 'contain', borderRadius: '12px', border: '1px solid #dbeafe', cursor: 'zoom-in' }}
+                            preview={{
+                                mask: <span style={{ fontSize: '12px' }}>Click để phóng to</span>,
+                            }}
                         />
                     </div>
                 ) : (

@@ -128,7 +128,7 @@ internal static partial class ReadingQuestionGroupOutlineParser
         }
 
         var startQuestion = ParseOcrQuestionNumber(match.Groups["start"].Value);
-        if (startQuestion is < 1 or > 40)
+        if (startQuestion is < 1 or > 45)
         {
             return false;
         }
@@ -156,7 +156,7 @@ internal static partial class ReadingQuestionGroupOutlineParser
         }
 
         var questionNumber = ParseOcrQuestionNumber(match.Groups["number"].Value);
-        if (questionNumber is < 1 or > 40)
+        if (questionNumber is < 1 or > 45)
         {
             return false;
         }
@@ -186,7 +186,7 @@ internal static partial class ReadingQuestionGroupOutlineParser
                 continue;
             }
 
-            if (candidate >= startQuestion && candidate <= 40)
+            if (candidate >= startQuestion && candidate <= 45)
             {
                 endQuestion = candidate;
                 return true;
@@ -419,7 +419,7 @@ internal static partial class ReadingQuestionGroupOutlineParser
         foreach (Match match in QuestionContentStartRegex().Matches(text))
         {
             var number = ParseOcrQuestionNumber(match.Groups["number"].Value);
-            if (number is < 1 or > 40 || number == currentQuestionNumber)
+            if (number is < 1 or > 45 || number == currentQuestionNumber)
             {
                 continue;
             }
@@ -1197,16 +1197,16 @@ internal static partial class ReadingQuestionGroupOutlineParser
     [GeneratedRegex(@"(?im)^\s*review\s+and\s+explanations?\b.*$")]
     private static partial Regex ReviewSectionHeadingRegex();
 
-    [GeneratedRegex(@"(?im)^\s*(?:you\s+should\s+spend\s+about\s+\d+\s+minutes?\s+on\s+)?questions?\s*[0-9OoIl\|]{1,2}\s*(?:-|–|—|‑|−|to)\s*[0-9OoIl\|]{1,3}\s*,?\s*which\s+are\s+based\s+on\s*(?:this\s+passage|reading\s+passage\s*[0-9OoIl\|]{1,2}\s+below)\.?\s*$")]
+    [GeneratedRegex(@"(?im)^\s*(?:you\s+should\s+spend\s+about\s+\d+\s+minutes?\s+on\s+)?questions?\s*(?-i:[0-9OoIl\|]){1,2}\s*(?:-|–|—|‑|−|to)\s*(?-i:[0-9OoIl\|]){1,3}\s*,?\s*which\s+are\s+based\s+on\s*(?:this\s+passage|reading\s+passage\s*(?-i:[0-9OoIl\|]){1,2}\s+below)\.?\s*$")]
     private static partial Regex PassageQuestionIntroLineRegex();
 
-    [GeneratedRegex(@"(?i)\b(?:you\s+should\s+spend\s+about\s+\d+\s+minutes?|which\s+are\s+based\s+on\s*(?:this\s+passage|(?:this\s+)?reading\s+passage)|based\s+on\s*(?:this\s+passage|(?:this\s+)?reading\s+passage)|reading\s+passage\s*[0-9OoIl\|]{1,2}\s+below)\b")]
+    [GeneratedRegex(@"(?i)\b(?:you\s+should\s+spend\s+about\s+\d+\s+minutes?|which\s+are\s+based\s+on\s*(?:this\s+passage|(?:this\s+)?reading\s+passage)|based\s+on\s*(?:this\s+passage|(?:this\s+)?reading\s+passage)|reading\s+passage\s*(?-i:[0-9OoIl\|]){1,2}\s+below)\b")]
     private static partial Regex GlobalQuestionRangeHeaderRegex();
 
-    [GeneratedRegex(@"(?i)(?:(?<=^)|(?<=[^A-Za-z])|(?<=[a-z]))Questions?\s*(?<start>[0-9OoIl\|]{1,2})\s*(?:-|–|—|‑|−|to)\s*(?<end>[0-9OoIl\|]{1,3})(?=\b|[A-Za-z])")]
+    [GeneratedRegex(@"(?i)(?:(?<=^)|(?<=[^A-Za-z])|(?<=[a-z]))Questions?\s*(?<start>(?-i:[0-9OoIl\|]){1,2})\s*(?:-|–|—|‑|−|to)\s*(?<end>(?-i:[0-9OoIl\|]){1,3})(?=\b|[A-Za-z])")]
     private static partial Regex LooseQuestionRangeBoundaryRegex();
 
-    [GeneratedRegex(@"(?i)\bQuestion\s*(?<number>[0-9OoIl\|]{1,3})(?=\b|[A-Za-z])")]
+    [GeneratedRegex(@"(?i)\bQuestion\s*(?<number>(?-i:[0-9OoIl\|]){1,3})(?=\b|[A-Za-z])")]
     private static partial Regex SingleQuestionBoundaryRegex();
 
     [GeneratedRegex(@"(?ix)

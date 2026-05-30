@@ -243,6 +243,10 @@ namespace EnglishExamApp.Infrastructure.Migrations
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("examId");
 
+                    b.Property<string>("HighlightsData")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("highlightsData");
+
                     b.Property<DateTime>("StartedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("datetime2")

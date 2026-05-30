@@ -78,10 +78,13 @@ public sealed partial class GemmaPdfExamGenerationService
 
     private static string ResolveGroupInstruction(string mappedQuestionType, string? sharedInstruction)
     {
-        if (!string.IsNullOrWhiteSpace(sharedInstruction) &&
-            mappedQuestionType is not "MCQ_SINGLE")
+        if (!string.IsNullOrWhiteSpace(sharedInstruction))
         {
-            return sharedInstruction.Trim();
+            var cleaned = Regex.Replace(sharedInstruction, @"\[Table Headers:\s*.*?\]", string.Empty, RegexOptions.IgnoreCase).Trim();
+            if (!string.IsNullOrWhiteSpace(cleaned))
+            {
+                return cleaned;
+            }
         }
 
         return BuildInstruction(mappedQuestionType);
@@ -90,20 +93,12 @@ public sealed partial class GemmaPdfExamGenerationService
     private static string? BuildGroupContentData(
         string mappedQuestionType,
         string? sharedInstruction,
-        List<CreateQuestionDto> questions)
+        List<CreateQuestionDto> questions,
+        QuestionGroupBuilder builder)
     {
-        if (string.Equals(mappedQuestionType, "MCQ_MULTIPLE", StringComparison.Ordinal) &&
-            questions.Count > 1)
-        {
-            for (var index = 0; index < questions.Count; index++)
-            {
-                questions[index] = questions[index] with { Content = string.Empty };
-            }
 
-            return BuildListeningMultiSelectContentData(string.Empty);
-        }
 
-        if (!string.Equals(mappedQuestionType, "SENTENCE_COMPLETION", StringComparison.Ordinal))
+        if (!IsCompletionTemplateType(mappedQuestionType, questions))
         {
             return null;
         }
@@ -117,6 +112,7 @@ public sealed partial class GemmaPdfExamGenerationService
             .OrderBy(question => question.QuestionNumber ?? int.MaxValue)
             .Select(BuildSentenceCompletionTemplateLine)
             .Where(line => !string.IsNullOrWhiteSpace(line))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
         if (templateLines.Count == 0)
@@ -129,8 +125,100 @@ public sealed partial class GemmaPdfExamGenerationService
             questions[index] = questions[index] with { Content = null };
         }
 
-        return string.Join("\n", templateLines);
+        if (string.Equals(mappedQuestionType, "TABLE_COMPLETION", StringComparison.Ordinal) &&
+            templateLines.Any(line => line.Contains('|')))
+        {
+            string[]? tableHeaders = null;
+            if (!string.IsNullOrWhiteSpace(sharedInstruction))
+            {
+                var match = Regex.Match(sharedInstruction, @"\[Table Headers:\s*(?<headers>.*?)\]", RegexOptions.IgnoreCase);
+                if (match.Success)
+                {
+                    tableHeaders = match.Groups["headers"].Value.Split('|').Select(h => h.Trim()).ToArray();
+                }
+            }
+
+            var rowsList = new List<string[]>();
+            var maxCols = 0;
+            foreach (var line in templateLines)
+            {
+                var cells = line.Split('|').Select(c =>
+                {
+                    var trimmed = c.Trim();
+                    return string.Equals(trimmed, "[EMPTY]", StringComparison.OrdinalIgnoreCase) ? string.Empty : trimmed;
+                }).ToArray();
+                rowsList.Add(cells);
+                if (cells.Length > maxCols)
+                {
+                    maxCols = cells.Length;
+                }
+            }
+
+            if (maxCols > 0)
+            {
+                var normalizedRows = new List<string[]>();
+                if (tableHeaders != null && tableHeaders.Length > 0)
+                {
+                    if (tableHeaders.Length == maxCols - 1 &&
+                        rowsList.Any(row => row.Length == maxCols && !LooksLikeQuestionPlaceholderOnly(row[0])))
+                    {
+                        tableHeaders = [string.Empty, .. tableHeaders];
+                    }
+
+                    var headerRow = new string[maxCols];
+                    for (int i = 0; i < maxCols; i++)
+                    {
+                        var cellVal = i < tableHeaders.Length ? tableHeaders[i] : string.Empty;
+                        headerRow[i] = string.IsNullOrWhiteSpace(cellVal) ? string.Empty : $"**{cellVal}**";
+                    }
+                    normalizedRows.Add(headerRow);
+                }
+
+                foreach (var row in rowsList)
+                {
+                    if (row.Length < maxCols)
+                    {
+                        var newRow = new string[maxCols];
+                        Array.Copy(row, newRow, row.Length);
+                        for (int k = row.Length; k < maxCols; k++)
+                        {
+                            newRow[k] = string.Empty;
+                        }
+                        normalizedRows.Add(newRow);
+                    }
+                    else
+                    {
+                        normalizedRows.Add(row);
+                    }
+                }
+
+                var tablePayload = new
+                {
+                    layout = "table",
+                    title = string.Empty,
+                    rows = normalizedRows
+                };
+
+                return JsonSerializer.Serialize(tablePayload, JsonOptions);
+            }
+        }
+
+        var finalContent = string.Join("\n", templateLines);
+        if (string.Equals(mappedQuestionType, "FLOWCHART_COMPLETION", StringComparison.Ordinal) ||
+            string.Equals(mappedQuestionType, "MAP_LABELLING", StringComparison.Ordinal))
+        {
+            if (!IsMeaningfulFlowchartTemplate(finalContent))
+            {
+                return null;
+            }
+        }
+
+        return finalContent;
     }
+
+    private static bool LooksLikeQuestionPlaceholderOnly(string? value) =>
+        !string.IsNullOrWhiteSpace(value) &&
+        Regex.IsMatch(value.Trim(), @"^\[Q\s*\d{1,2}\]$", RegexOptions.IgnoreCase);
 
     private static string BuildListeningMultiSelectContentData(string prompt)
     {
@@ -193,6 +281,16 @@ public sealed partial class GemmaPdfExamGenerationService
             cleaned = LeadingQuestionNumberRegex().Replace(cleaned, string.Empty, 1);
         }
 
+        if (!IsCompletionTemplateType(mappedQuestionType) && questionNumber.HasValue)
+        {
+            cleaned = Regex.Replace(
+                cleaned,
+                $@"\s*\[Q\s*{questionNumber.Value}\]\s*",
+                " ",
+                RegexOptions.IgnoreCase);
+            cleaned = Regex.Replace(cleaned, @"\s{2,}", " ").Trim();
+        }
+
         return cleaned.Trim();
     }
 
@@ -218,5 +316,28 @@ public sealed partial class GemmaPdfExamGenerationService
         return normalizedTokens.Count == 0
             ? rawAnswer.Trim()
             : string.Join("|", normalizedTokens);
+    }
+
+    private static bool IsMeaningfulFlowchartTemplate(string? template)
+    {
+        if (string.IsNullOrWhiteSpace(template))
+        {
+            return false;
+        }
+
+        var cleaned = Regex.Replace(template, @"\[Q\d+\]", string.Empty, RegexOptions.IgnoreCase);
+        cleaned = Regex.Replace(cleaned, @"[^a-zA-Z]", " ").ToLowerInvariant();
+        
+        var words = cleaned.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(w => w.Length >= 2)
+            .ToList();
+
+        var stopWords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "example", "question", "questions", "q"
+        };
+
+        var meaningfulWords = words.Where(w => !stopWords.Contains(w)).ToList();
+        return meaningfulWords.Count >= 2;
     }
 }

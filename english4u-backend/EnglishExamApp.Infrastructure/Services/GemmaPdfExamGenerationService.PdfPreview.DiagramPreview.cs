@@ -25,36 +25,47 @@ namespace EnglishExamApp.Infrastructure.Services;
 public sealed partial class GemmaPdfExamGenerationService
 {
 
-    private static List<PdfRawQuestionInstructionPreviewDto> AttachDiagramPreviewImages(
+    private async Task<List<PdfRawQuestionInstructionPreviewDto>> AttachDiagramPreviewImagesAsync(
         IReadOnlyList<PdfRawQuestionInstructionPreviewDto> questionGroups,
         IReadOnlyList<PdfExtractedPage> pages,
-        byte[] pdfBytes)
+        byte[] pdfBytes,
+        string fileName,
+        CancellationToken cancellationToken)
     {
         if (questionGroups.Count == 0 || pages.Count == 0)
         {
             return questionGroups.ToList();
         }
 
-        return questionGroups
-            .Select(group => AttachGroupVisualPreview(group, pages, pdfBytes))
-            .ToList();
+        var result = new List<PdfRawQuestionInstructionPreviewDto>(questionGroups.Count);
+        foreach (var group in questionGroups)
+        {
+            result.Add(await AttachGroupVisualPreviewAsync(group, pages, pdfBytes, fileName, cancellationToken));
+        }
+
+        return result;
     }
 
-    private static PdfRawQuestionInstructionPreviewDto AttachGroupVisualPreview(
+    private async Task<PdfRawQuestionInstructionPreviewDto> AttachGroupVisualPreviewAsync(
         PdfRawQuestionInstructionPreviewDto group,
         IReadOnlyList<PdfExtractedPage> pages,
-        byte[] pdfBytes)
+        byte[] pdfBytes,
+        string fileName,
+        CancellationToken cancellationToken)
     {
         if (string.Equals(group.GroupType, "MAP_LABELLING", StringComparison.Ordinal) ||
             string.Equals(group.GroupType, "FLOWCHART_COMPLETION", StringComparison.Ordinal))
         {
-            return AttachDiagramPreviewImage(group, pages, pdfBytes);
+            return await AttachDiagramPreviewImageAsync(group, pages, pdfBytes, fileName, cancellationToken);
         }
 
         return ShouldAttachMatchingVisualPreview(group)
             ? AttachMatchingVisualPreviewImages(group, pages)
             : group;
     }
+
+    private bool UseGeminiDiagramCropAssist() =>
+        configuration.GetValue<bool?>("GeminiPdfNativeExtraction:DiagramCropAssistEnabled") ?? true;
 
     private static bool ShouldAttachMatchingVisualPreview(PdfRawQuestionInstructionPreviewDto group)
     {
@@ -69,19 +80,393 @@ public sealed partial class GemmaPdfExamGenerationService
             @"(?i)\b(drawings?|diagrams?|figures?|maps?|plans?|pictures?|photos?|images?|illustrations?|projections?)\b");
     }
 
-    private static PdfRawQuestionInstructionPreviewDto AttachDiagramPreviewImage(
+    private async Task<PdfRawQuestionInstructionPreviewDto?> TryAttachGeminiAssistedDiagramPreviewAsync(
+        PdfRawQuestionInstructionPreviewDto group,
+        IReadOnlyList<(PdfExtractedPage Page, DiagramPreviewCropBounds CropBounds, int Score)> candidates,
+        byte[] pdfBytes,
+        string fileName,
+        CancellationToken cancellationToken)
+    {
+        if (!UseGeminiDiagramCropAssist() ||
+            candidates.Count == 0 ||
+            pdfBytes.Length == 0 ||
+            !OperatingSystem.IsWindows())
+        {
+            return null;
+        }
+
+        try
+        {
+            var prompt = BuildGeminiDiagramCropPrompt(group, candidates);
+            var rawJson = await geminiPdfNativeExtractionClient.ExtractExamJsonAsync(
+                pdfBytes,
+                fileName,
+                prompt,
+                cancellationToken);
+            SaveCropAssistDebugLog(group, prompt, rawJson);
+            var response = DeserializeGeminiDiagramCropResponse(rawJson);
+            if (response?.PageNumber is null || response.CropBox is null)
+            {
+                SaveCropAssistDebugLog(group, prompt, rawJson, "Deserialized response PageNumber or CropBox is null");
+                return null;
+            }
+
+            var page = candidates
+                .Select(candidate => candidate.Page)
+                .FirstOrDefault(candidate => candidate.PageNumber == response.PageNumber.Value);
+            if (page is null)
+            {
+                SaveCropAssistDebugLog(group, prompt, rawJson, $"Page number {response.PageNumber.Value} is not in candidates list");
+                return null;
+            }
+
+            var cropBounds = BuildGeminiDiagramCropBounds(response.CropBox);
+            if (cropBounds is null)
+            {
+                SaveCropAssistDebugLog(group, prompt, rawJson, "BuildGeminiDiagramCropBounds returned null (too small)");
+                return null;
+            }
+
+            var renderedPreviewDataUrl = TryRenderDiagramPreviewDataUrl(
+                pdfBytes,
+                page.PageNumber,
+                cropBounds);
+            if (string.IsNullOrWhiteSpace(renderedPreviewDataUrl))
+            {
+                return null;
+            }
+
+            var confidenceText = response.Confidence.HasValue
+                ? $" confidence {response.Confidence.Value:0.##}"
+                : string.Empty;
+            var reasonText = string.IsNullOrWhiteSpace(response.Reason)
+                ? string.Empty
+                : $" {response.Reason.Trim()}";
+            var note = $"Gemini-assisted crop rendered from page {page.PageNumber}.{confidenceText}{reasonText}".Trim();
+
+            return group with
+            {
+                VisualPreviewItems =
+                [
+                    new PdfRawVisualPreviewItemDto(
+                        ImageDataUrl: renderedPreviewDataUrl,
+                        PageNumber: page.PageNumber,
+                        CropBox: BuildVisualCropBox(cropBounds))
+                ],
+                VisualPreviewNote = note,
+                DiagramPreviewImageDataUrl = renderedPreviewDataUrl,
+                DiagramPreviewPageNumber = page.PageNumber,
+                DiagramPreviewNote = note
+            };
+        }
+        catch (Exception ex)
+        {
+            logger.LogInformation(
+                ex,
+                "Gemini diagram crop assist failed for questions {StartQuestion}-{EndQuestion}; falling back to deterministic crop.",
+                group.StartQuestion,
+                group.EndQuestion);
+
+            try
+            {
+                var prompt = BuildGeminiDiagramCropPrompt(group, candidates);
+                SaveCropAssistDebugLog(group, prompt, string.Empty, ex.ToString());
+            }
+            catch { }
+
+            return null;
+        }
+    }
+
+    private async Task<PdfRawQuestionInstructionPreviewDto?> TryAttachGeminiAssistedDiagramPreviewAsync(
+        PdfRawQuestionInstructionPreviewDto group,
+        byte[] pdfBytes,
+        string fileName,
+        CancellationToken cancellationToken)
+    {
+        if (!UseGeminiDiagramCropAssist() ||
+            pdfBytes.Length == 0 ||
+            !OperatingSystem.IsWindows())
+        {
+            return null;
+        }
+
+        try
+        {
+            var prompt = BuildGeminiDiagramCropPrompt(group);
+            var rawJson = await geminiPdfNativeExtractionClient.ExtractExamJsonAsync(
+                pdfBytes,
+                fileName,
+                prompt,
+                cancellationToken);
+            SaveCropAssistDebugLog(group, prompt, rawJson);
+            var response = DeserializeGeminiDiagramCropResponse(rawJson);
+            if (response?.PageNumber is null || response.CropBox is null)
+            {
+                SaveCropAssistDebugLog(group, prompt, rawJson, "Deserialized full-PDF response PageNumber or CropBox is null");
+                return null;
+            }
+
+            var cropBounds = BuildGeminiDiagramCropBounds(response.CropBox);
+            if (cropBounds is null)
+            {
+                SaveCropAssistDebugLog(group, prompt, rawJson, "BuildGeminiDiagramCropBounds full-PDF returned null (too small)");
+                return null;
+            }
+
+            var renderedPreviewDataUrl = TryRenderDiagramPreviewDataUrl(
+                pdfBytes,
+                response.PageNumber.Value,
+                cropBounds);
+            if (string.IsNullOrWhiteSpace(renderedPreviewDataUrl))
+            {
+                return null;
+            }
+
+            var confidenceText = response.Confidence.HasValue
+                ? $" confidence {response.Confidence.Value:0.##}"
+                : string.Empty;
+            var reasonText = string.IsNullOrWhiteSpace(response.Reason)
+                ? string.Empty
+                : $" {response.Reason.Trim()}";
+            var note = $"Gemini-assisted full-PDF crop rendered from page {response.PageNumber.Value}.{confidenceText}{reasonText}".Trim();
+
+            return group with
+            {
+                VisualPreviewItems =
+                [
+                    new PdfRawVisualPreviewItemDto(
+                        ImageDataUrl: renderedPreviewDataUrl,
+                        PageNumber: response.PageNumber.Value,
+                        CropBox: BuildVisualCropBox(cropBounds))
+                ],
+                VisualPreviewNote = note,
+                DiagramPreviewImageDataUrl = renderedPreviewDataUrl,
+                DiagramPreviewPageNumber = response.PageNumber.Value,
+                DiagramPreviewNote = note
+            };
+        }
+        catch (Exception ex)
+        {
+            logger.LogInformation(
+                ex,
+                "Gemini full-PDF diagram crop assist failed for questions {StartQuestion}-{EndQuestion}.",
+                group.StartQuestion,
+                group.EndQuestion);
+
+            try
+            {
+                var prompt = BuildGeminiDiagramCropPrompt(group);
+                SaveCropAssistDebugLog(group, prompt, string.Empty, ex.ToString());
+            }
+            catch { }
+
+            return null;
+        }
+    }
+
+    private static string BuildGeminiDiagramCropPrompt(
+        PdfRawQuestionInstructionPreviewDto group,
+        IReadOnlyList<(PdfExtractedPage Page, DiagramPreviewCropBounds CropBounds, int Score)> candidates)
+    {
+        var candidatePages = string.Join(
+            ", ",
+            candidates
+                .Select(candidate => candidate.Page.PageNumber)
+                .Distinct()
+                .OrderBy(pageNumber => pageNumber));
+        var snippets = string.Join(
+            "\n\n",
+            candidates
+                .Select(candidate =>
+                {
+                    var textPreview = BuildDiagramCropTextPreview(candidate.Page.RawText, 1800);
+                    return $"PAGE {candidate.Page.PageNumber} TEXT PREVIEW:\n{textPreview}";
+                }));
+
+        return
+        $$"""
+        You are locating the visual asset needed by an IELTS Reading question group in the attached PDF.
+
+        Target group:
+        - question range: {{group.StartQuestion}}-{{group.EndQuestion}}
+        - group type: {{group.GroupType}}
+        - instruction: {{group.Instruction}}
+        - question preview: {{group.QuestionPreview}}
+
+        Candidate page(s): {{candidatePages}}
+
+        {{snippets}}
+
+        Return ONLY valid JSON, no markdown.
+
+        Find the tight rectangle around the actual diagram/flowchart/map/image that students must look at to answer questions {{group.StartQuestion}}-{{group.EndQuestion}}.
+        
+        CRITICAL RULES FOR FLOWCHART/DIAGRAM CROP:
+        1. Coordinate normalization:
+           - The crop_box coordinates (x, y, width, height) MUST be normalized float ratios relative to the full page width and height (strictly between 0.0 and 1.0).
+           - Do NOT use absolute pixel coordinates (like 110, 75, 780, 520). You must convert them to ratios! (e.g. x = 0.05, y = 0.48).
+        2. Flowchart vs Option list:
+           - If the page contains a list of options (e.g., options A-F like "A Timber and petro-chemical industries threatened...") at the top, and a flowchart/diagram structure with placeholders (like "[27] ....", "[28] ....") at the bottom, you MUST prioritize cropping the flowchart structure at the bottom.
+           - The flowchart typically starts at Y >= 0.45. Ensure your 'y' starts at around 0.45 to 0.50, and 'height' captures the rest of the flowchart down to the bottom (Y close to 0.95).
+           - Do NOT include the A-F option table/list in your crop box. It is plain text and already rendered as text questions.
+        3. Margins:
+           - Include enough margin so no boxes/arrows/labels/placeholders are cut off.
+        4. Exclude answer sheet / other questions:
+           - Do NOT include any answer sheets, answer inputs, dropdown lists, or check-boxes (e.g. where students input answers for questions like 27-31) in your crop box.
+           - Do NOT include title text or instructions for the NEXT question group (e.g. "Questions 32-33").
+           - Make the bottom boundary of the crop box tight to the lowest element of the flowchart/diagram itself.
+        5. Exclude numbered list of questions:
+           - If a numbered list of questions (e.g. "1 Z-axis motor", "2 hot end of extruder", etc.) is printed underneath the diagram/flowchart, you MUST exclude that text list from the crop box. The crop box bottom boundary MUST stop right below the diagram/flowchart image itself, leaving the text list below uncropped.
+
+        JSON schema:
+        {
+          "page_number": 1,
+          "crop_box": { "x": 0.05, "y": 0.52, "width": 0.90, "height": 0.43 },
+          "confidence": 0.0,
+          "reason": "short reason explaining why this crop box strictly contains the flowchart structure and excludes the option lists and answer dropdowns"
+        }
+        """;
+    }
+
+    private static string BuildGeminiDiagramCropPrompt(PdfRawQuestionInstructionPreviewDto group) =>
+        $$"""
+        You are locating the visual asset needed by an IELTS Reading question group in the attached PDF.
+
+        Target group:
+        - question range: {{group.StartQuestion}}-{{group.EndQuestion}}
+        - group type: {{group.GroupType}}
+        - instruction: {{group.Instruction}}
+        - question preview: {{group.QuestionPreview}}
+
+        Return ONLY valid JSON, no markdown.
+
+        Find the tight rectangle around the actual diagram/flowchart/map/image that students must look at to answer questions {{group.StartQuestion}}-{{group.EndQuestion}}.
+        
+        CRITICAL RULES FOR FLOWCHART/DIAGRAM CROP:
+        1. Coordinate normalization:
+           - The crop_box coordinates (x, y, width, height) MUST be normalized float ratios relative to the full page width and height (strictly between 0.0 and 1.0).
+           - Do NOT use absolute pixel coordinates (like 110, 75, 780, 520). You must convert them to ratios! (e.g. x = 0.05, y = 0.48).
+        2. Flowchart vs Option list:
+           - If the page contains a list of options (e.g., options A-F like "A Timber and petro-chemical industries threatened...") at the top, and a flowchart/diagram structure with placeholders (like "[27] ....", "[28] ....") at the bottom, you MUST prioritize cropping the flowchart structure at the bottom.
+           - The flowchart typically starts at Y >= 0.45. Ensure your 'y' starts at around 0.45 to 0.50, and 'height' captures the rest of the flowchart down to the bottom (Y close to 0.95).
+           - Do NOT include the A-F option table/list in your crop box. It is plain text and already rendered as text questions.
+        3. Margins:
+           - Include enough margin so no boxes/arrows/labels/placeholders are cut off.
+        4. Exclude answer sheet / other questions:
+           - Do NOT include any answer sheets, answer inputs, dropdown lists, or check-boxes (e.g. where students input answers for questions like 27-31) in your crop box.
+           - Do NOT include title text or instructions for the NEXT question group (e.g. "Questions 32-33").
+           - Make the bottom boundary of the crop box tight to the lowest element of the flowchart/diagram itself.
+        5. Exclude numbered list of questions:
+           - If a numbered list of questions (e.g. "1 Z-axis motor", "2 hot end of extruder", etc.) is printed underneath the diagram/flowchart, you MUST exclude that text list from the crop box. The crop box bottom boundary MUST stop right below the diagram/flowchart image itself, leaving the text list below uncropped.
+
+        JSON schema:
+        {
+          "page_number": 1,
+          "crop_box": { "x": 0.05, "y": 0.52, "width": 0.90, "height": 0.43 },
+          "confidence": 0.0,
+          "reason": "short reason explaining why this crop box strictly contains the flowchart structure and excludes the option lists and answer dropdowns"
+        }
+        """;
+
+    private static string BuildDiagramCropTextPreview(string rawText, int maxLength)
+    {
+        if (string.IsNullOrWhiteSpace(rawText))
+        {
+            return "[empty]";
+        }
+
+        var normalized = Regex.Replace(rawText, @"\s+", " ").Trim();
+        return normalized.Length <= maxLength
+            ? normalized
+            : normalized[..maxLength] + "...";
+    }
+
+    private static GeminiDiagramCropResponse? DeserializeGeminiDiagramCropResponse(string json)
+    {
+        var normalized = NormalizeJson(json);
+        var start = normalized.IndexOf('{');
+        var end = normalized.LastIndexOf('}');
+        if (start < 0 || end <= start)
+        {
+            return null;
+        }
+
+        normalized = normalized[start..(end + 1)];
+        return JsonSerializer.Deserialize<GeminiDiagramCropResponse>(normalized, JsonOptions);
+    }
+
+    private static DiagramPreviewCropBounds? BuildGeminiDiagramCropBounds(GeminiDiagramCropBox cropBox)
+    {
+        var left = Math.Clamp(cropBox.X, 0d, 0.98d);
+        var top = Math.Clamp(cropBox.Y, 0d, 0.98d);
+        var right = Math.Clamp(cropBox.X + cropBox.Width, left + 0.02d, 1d);
+        var bottom = Math.Clamp(cropBox.Y + cropBox.Height, top + 0.02d, 1d);
+
+        var marginX = Math.Max(0.005d, (right - left) * 0.02d);
+        var marginY = Math.Max(0.006d, (bottom - top) * 0.02d);
+        left = Math.Clamp(left - marginX, 0d, 0.98d);
+        right = Math.Clamp(right + marginX, left + 0.02d, 1d);
+        top = Math.Clamp(top - marginY, 0d, 0.98d);
+        bottom = Math.Clamp(bottom + marginY, top + 0.02d, 1d);
+
+        if (right - left < 0.08d || bottom - top < 0.06d)
+        {
+            return null;
+        }
+
+        return new DiagramPreviewCropBounds(
+            TopRatio: top,
+            BottomRatio: bottom,
+            HasExplicitBottomBoundary: true,
+            HasExplicitInstructionBoundary: true,
+            LeftRatio: left,
+            RightRatio: right);
+     }
+
+    private static PdfVisualCropBoxDto BuildVisualCropBox(DiagramPreviewCropBounds cropBounds) =>
+        new(
+            X: Math.Round(cropBounds.LeftRatio, 4),
+            Y: Math.Round(cropBounds.TopRatio, 4),
+            Width: Math.Round(cropBounds.RightRatio - cropBounds.LeftRatio, 4),
+            Height: Math.Round(cropBounds.BottomRatio - cropBounds.TopRatio, 4));
+
+    private async Task<PdfRawQuestionInstructionPreviewDto> AttachDiagramPreviewImageAsync(
         PdfRawQuestionInstructionPreviewDto group,
         IReadOnlyList<PdfExtractedPage> pages,
-        byte[] pdfBytes)
+        byte[] pdfBytes,
+        string fileName,
+        CancellationToken cancellationToken)
     {
         var candidates = FindDiagramPreviewCandidates(group, pages);
         if (candidates.Count == 0)
         {
+            var geminiAssistedPreviewWithoutCandidates = await TryAttachGeminiAssistedDiagramPreviewAsync(
+                group,
+                pdfBytes,
+                fileName,
+                cancellationToken);
+            if (geminiAssistedPreviewWithoutCandidates is not null)
+            {
+                return geminiAssistedPreviewWithoutCandidates;
+            }
+
             return group with
             {
                 VisualPreviewNote = "Preview unavailable: could not confidently locate the source PDF page for this diagram.",
                 DiagramPreviewNote = "Preview unavailable: could not confidently locate the source PDF page for this diagram."
             };
+        }
+
+        var geminiAssistedPreview = await TryAttachGeminiAssistedDiagramPreviewAsync(
+            group,
+            candidates,
+            pdfBytes,
+            fileName,
+            cancellationToken);
+        if (geminiAssistedPreview is not null)
+        {
+            return geminiAssistedPreview;
         }
 
         foreach (var candidate in candidates)
@@ -95,7 +480,8 @@ public sealed partial class GemmaPdfExamGenerationService
                     [
                         new PdfRawVisualPreviewItemDto(
                             ImageDataUrl: renderedPreviewDataUrl,
-                            PageNumber: candidate.Page.PageNumber)
+                            PageNumber: candidate.Page.PageNumber,
+                            CropBox: BuildVisualCropBox(candidate.CropBounds))
                     ],
                     VisualPreviewNote = $"Preview rendered from page {candidate.Page.PageNumber}.",
                     DiagramPreviewImageDataUrl = renderedPreviewDataUrl,
@@ -131,6 +517,16 @@ public sealed partial class GemmaPdfExamGenerationService
                     ? $"Best-effort preview from the largest extractable image on page {candidate.Page.PageNumber}."
                     : $"Preview extracted from page {candidate.Page.PageNumber}."
             };
+        }
+
+        var geminiAssistedPreviewAfterCandidateFailure = await TryAttachGeminiAssistedDiagramPreviewAsync(
+            group,
+            pdfBytes,
+            fileName,
+            cancellationToken);
+        if (geminiAssistedPreviewAfterCandidateFailure is not null)
+        {
+            return geminiAssistedPreviewAfterCandidateFailure;
         }
 
         var firstCandidatePage = candidates[0].Page.PageNumber;
@@ -332,5 +728,33 @@ public sealed partial class GemmaPdfExamGenerationService
             .Select(word => word.Text.Trim())
             .Where(text => Regex.IsMatch(text, @"^\d{1,2}$"))
             .ToHashSet(StringComparer.Ordinal);
+    }
+
+    private static void SaveCropAssistDebugLog(
+        PdfRawQuestionInstructionPreviewDto group,
+        string prompt,
+        string rawJson,
+        string? error = null)
+    {
+        var debugDir = ActiveDebugDirectory.Value;
+        if (string.IsNullOrWhiteSpace(debugDir))
+        {
+            return;
+        }
+
+        try
+        {
+            var payload = new
+            {
+                startQuestion = group.StartQuestion,
+                endQuestion = group.EndQuestion,
+                prompt = prompt,
+                rawJson = rawJson,
+                error = error
+            };
+            var path = Path.Combine(debugDir, $"crop-assist-q{group.StartQuestion}-{group.EndQuestion}.json");
+            File.WriteAllText(path, JsonSerializer.Serialize(payload, JsonOptions));
+        }
+        catch { }
     }
 }

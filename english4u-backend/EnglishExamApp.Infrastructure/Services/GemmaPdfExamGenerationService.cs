@@ -24,6 +24,8 @@ namespace EnglishExamApp.Infrastructure.Services;
 
 public sealed partial class GemmaPdfExamGenerationService(
     IGemmaCompletionClient gemmaCompletionClient,
+    IGeminiPdfNativeExtractionClient geminiPdfNativeExtractionClient,
+    IPdfTextExtractionService pdfTextExtractionService,
     IApplicationDbContext context,
     IExamService examService,
     IPdfGenerationProgressTracker pdfGenerationProgressTracker,
@@ -31,20 +33,21 @@ public sealed partial class GemmaPdfExamGenerationService(
     IConfiguration configuration,
     ILogger<GemmaPdfExamGenerationService> logger) : IExamPdfGenerationService
 {
+    private static readonly System.Threading.AsyncLocal<string?> ActiveDebugDirectory = new();
+
     private const int MaxJsonParseRetries = 2;
+    private const int MaxGemmaApiTransientRetries = 5;
     private const int DefaultDelayBetweenPassageCallsMs = 6000;
     private const int RawReviewMaxApiRetries = 0;
     private const int MaxPassageInputCharacters = 12000;
-    private const int MaxSegmentInputCharacters = 9000;
-    private const int MaxSegmentSharedPassageContextCharacters = 5000;
+    private const int MaxSegmentInputCharacters = 6500;
+    private const int MaxSegmentSharedPassageContextCharacters = 3500;
     private const int SegmentDelayBetweenCallsMs = 1500;
     private const int RawReviewDelayBetweenAiCallsMs = 900;
     private const int MaxFallbackAnswerKeyCharacters = 14000;
     private const int MaxAiAnswerKeySourceCharacters = 26000;
     private const int MaxFallbackOptionSourceCharacters = 18000;
     private const int MinimumVerifiedAnswersToEnableStrictClearing = 20;
-    private const int MaxRawReviewDiagramPreviewBytes = 6 * 1024 * 1024;
-    private const int MinDiagramPreviewImageSamples = 80;
     private const int MaxVisualPreviewPagesPerGroup = 2;
     private const int MaxVisualPreviewImagesPerPage = 2;
     private const int MaxDedicatedMatchingVisualSearchPages = 3;

@@ -37,7 +37,7 @@ public sealed partial class GemmaPdfExamGenerationService
 
         for (var i = 0; i < parsedPassages.Count; i++)
         {
-            var rawPassageText = i < rawPassages.Count ? rawPassages[i] : string.Empty;
+            var rawPassageText = i < rawPassages.Count ? TrimToQuestionStatementZone(rawPassages[i]) : string.Empty;
             var rawQuestionGroupOutlines = ExtractQuestionGroupOutlines(rawPassageText);
             var reviewedQuestionGroups =
                 reviewedQuestionGroupsByPassage is not null &&

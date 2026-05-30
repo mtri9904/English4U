@@ -921,7 +921,7 @@ const setListeningMcqOptionInputMode = (
                     const usesLegacySharedMultiSelectLayout =
                         group.groupType === QUESTION_TYPES.MCQ_CHOOSE_N
                         || (group.groupType === QUESTION_TYPES.MCQ_MULTIPLE && hasMultiSelectLayout(group.contentData));
-                    const showOptionsBox = (isMatchingType && !isMatchingHeadingsType) || isSummaryType;
+                    const showOptionsBox = isMatchingType || isSummaryType;
                     const matchingHeadingOptionCount = Math.max(1, group.questions[0]?.options?.length || 4);
                     const matchingHeadingAnswerOptions = Array.from({ length: matchingHeadingOptionCount }, (_, index) => {
                         const label = getOptionLabel(index, group.optionLabelType || 'alpha');

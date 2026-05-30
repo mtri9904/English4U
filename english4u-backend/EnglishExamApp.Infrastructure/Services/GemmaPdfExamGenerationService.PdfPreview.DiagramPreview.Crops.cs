@@ -49,7 +49,20 @@ public sealed partial class GemmaPdfExamGenerationService
         var cropTop = Math.Max(0d, Math.Min(page.PageHeight - 1, headerBottom.Value + Math.Max(16d, page.PageHeight * 0.018d)));
         var answerListTop = FindDiagramAnswerListTop(group, page, lines, cropTop);
         var hasExplicitInstructionBoundary = HasExplicitDiagramInstructionBoundary(lines, page);
+
+        double? nextGroupHeaderTop = null;
+        var nextGroupNumber = group.EndQuestion + 1;
+        var nextGroupRegex = new Regex($@"(?i)questions?\s*{nextGroupNumber}\b");
+        var nextGroupLine = lines
+            .Where(line => line.TopFromPageTop >= cropTop)
+            .FirstOrDefault(line => nextGroupRegex.IsMatch(line.Text));
+        if (nextGroupLine is not null)
+        {
+            nextGroupHeaderTop = nextGroupLine.TopFromPageTop - Math.Max(8d, page.PageHeight * 0.012d);
+        }
+
         var cropBottom = answerListTop
+            ?? nextGroupHeaderTop
             ?? Math.Min(page.PageHeight, cropTop + page.PageHeight * 0.58d);
 
         cropBottom = Math.Min(page.PageHeight, cropBottom);
@@ -66,7 +79,7 @@ public sealed partial class GemmaPdfExamGenerationService
         return new DiagramPreviewCropBounds(
             TopRatio: Math.Clamp(cropTop / page.PageHeight, 0d, 0.98d),
             BottomRatio: Math.Clamp(cropBottom / page.PageHeight, 0.02d, 1d),
-            HasExplicitBottomBoundary: answerListTop is not null,
+            HasExplicitBottomBoundary: answerListTop is not null || nextGroupHeaderTop is not null,
             HasExplicitInstructionBoundary: hasExplicitInstructionBoundary);
     }
 
@@ -233,7 +246,7 @@ public sealed partial class GemmaPdfExamGenerationService
         IReadOnlyList<PdfExtractedWordLine> lines)
     {
         var rangeRegex = new Regex(
-            $@"(?i)\bquestions?\s*{group.StartQuestion}\s*[-–]\s*{group.EndQuestion}\b",
+            $@"(?i)\bquestions?\s*{group.StartQuestion}\s*(?:-|–|—|â€“|â€”|to|\s+)\s*{group.EndQuestion}(?!\d)",
             RegexOptions.Compiled);
 
         var instructionTokens = BuildComparableSearchTokens(group.Instruction)
@@ -288,7 +301,7 @@ public sealed partial class GemmaPdfExamGenerationService
 
         var explicitAnswerInstructionBottom = lines
             .Skip(anchorIndex)
-            .Take(20)
+            .Take(4)
             .Where(line => line.TopFromPageTop <= page.PageHeight * 0.82d)
             .Where(line =>
                 line.NormalizedText.Contains("WRITE", StringComparison.Ordinal) ||
@@ -340,7 +353,7 @@ public sealed partial class GemmaPdfExamGenerationService
 
         var instructionBottom = lines
             .Skip(anchorIndex)
-            .Take(20)
+            .Take(4)
             .Where(line => line.TopFromPageTop <= page.PageHeight * 0.82d)
             .Where(line => strongTokens.Any(token => line.NormalizedText.Contains(token, StringComparison.Ordinal)))
             .Select(line => (double?)line.BottomFromPageTop)

@@ -86,10 +86,10 @@ GEMINI_SPEAKING_TTS_MODEL_CANDIDATES = unique_model_candidates(
 )
 GEMINI_SPEAKING_TTS_VOICE = os.getenv("GEMINI_SPEAKING_TTS_VOICE", "Iapetus").strip() or "Iapetus"
 
-GEMINI_SPEAKING_SCORING_MODEL = os.getenv("GEMINI_SPEAKING_SCORING_MODEL", "gemma-3-27b-it").strip()
+GEMINI_SPEAKING_SCORING_MODEL = os.getenv("GEMINI_SPEAKING_SCORING_MODEL", "gemini-2.5-flash-lite").strip()
 GEMINI_SPEAKING_SCORING_FALLBACK_MODELS = parse_env_list(
     "GEMINI_SPEAKING_SCORING_FALLBACK_MODELS",
-    "gemma-3-12b-it,gemma-3-4b-it,gemma-3-1b-it",
+    "gemini-2.5-flash",
 )
 GEMINI_SPEAKING_SCORING_MODEL_CANDIDATES = unique_model_candidates(
     GEMINI_SPEAKING_SCORING_MODEL,

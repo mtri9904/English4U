@@ -1,8 +1,8 @@
-import { Spin, Tag, Collapse, Empty, Button, FloatButton } from 'antd';
+import { Spin, Tag, Collapse, Empty, Button, FloatButton, Image } from 'antd';
 import { motion } from 'framer-motion';
 import { useParams, useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
-import { getOptionLabel } from '@/shared/utils/optionLabel.utils';
+import { areAllOptionsLabelOnly, getOptionLabel, stripOptionLeadingLabel } from '@/shared/utils/optionLabel.utils';
 import { formatTranscriptRangeLabel, parseListeningTranscriptEnvelope } from '@/shared/lib/listeningTranscript';
 import { useExamDetailQuery } from '../api/exam.api';
 import { BookOutlined, QuestionCircleOutlined, ArrowLeftOutlined, SoundOutlined, VerticalAlignTopOutlined } from '@ant-design/icons';
@@ -114,10 +114,20 @@ const formatCorrectAnswerForDisplay = (answer: string) =>
         .filter((item) => item.length > 0)
         .join(' / ');
 
+const stripDisplayedOptionLeadingLabel = (optionText: string | null | undefined, optionLabel: string) => {
+    const text = (optionText ?? '').trim();
+    if (!text) {
+        return '';
+    }
+
+    const escapedLabel = optionLabel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return text.replace(new RegExp(`^${escapedLabel}\\s*(?:[.)\\:-]\\s*|\\s+)`, 'i'), '').trim();
+};
+
 const renderStandardOptionContent = (option: QuestionOptionDto, optionLabel: string) => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
         <span>
-            {optionLabel}. {renderFormattedText(option.optionText || '')}
+            {optionLabel}. {renderFormattedText(stripDisplayedOptionLeadingLabel(option.optionText, optionLabel))}
         </span>
         {option.imageUrl ? (
             <img
@@ -150,6 +160,23 @@ const normalizeMarkdownDisplayText = (text: string) =>
 const getSharedGroupOptions = (group: QuestionGroupDto) =>
     group.questions.find((question) => (question.options?.length ?? 0) > 0)?.options ?? [];
 
+const hasSequentialAlphaOptionBank = (options: QuestionOptionDto[]) => {
+    if (options.length < 2) {
+        return false;
+    }
+
+    let labelledCount = 0;
+    for (let index = 0; index < options.length; index += 1) {
+        const expectedLabel = String.fromCharCode(65 + index);
+        const text = options[index]?.optionText?.trim() ?? '';
+        if (new RegExp(`^${expectedLabel}\\s*(?:[.)\\:-]\\s*|\\s+)\\S`, 'i').test(text)) {
+            labelledCount += 1;
+        }
+    }
+
+    return labelledCount >= Math.min(options.length, 4);
+};
+
 const inferOptionLabelType = (group: QuestionGroupDto): 'alpha' | 'roman' => {
     if (group.optionLabelType === 'roman') {
         return 'roman';
@@ -163,12 +190,15 @@ const inferOptionLabelType = (group: QuestionGroupDto): 'alpha' | 'roman' => {
     ].join(' ');
 
     if (/\b(?:appropriate|correct)\s+numbers?\b/i.test(combinedInstruction) ||
-        /\bi\s*[-–]\s*(?:v|vi|vii|viii|ix|x)\b/i.test(combinedInstruction))
-    {
+        /\bi\s*[-–]\s*(?:v|vi|vii|viii|ix|x)\b/i.test(combinedInstruction)) {
         return 'roman';
     }
 
     const firstOptions = getSharedGroupOptions(group);
+    if (hasSequentialAlphaOptionBank(firstOptions)) {
+        return 'alpha';
+    }
+
     if (firstOptions.some((option) => /^((?:ix|iv|v?i{1,3}|x))\s*[).:\-]/i.test(option.optionText || ''))) {
         return 'roman';
     }
@@ -468,17 +498,66 @@ const normalizeBlockMarkdownText = (text: string) =>
         .replace(/(?<!\n)\n(?!\n)/g, '  \n')
         .trim();
 
+const repairOutOfOrderStructuredParagraphLabels = (text: string) => {
+    if (!text.trim()) {
+        return text;
+    }
+
+    const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+    const rebuilt: string[] = [];
+    let highestAcceptedLabel: string | null = null;
+    let pendingTextPrefix: string | null = null;
+
+    lines.forEach((rawLine) => {
+        const line = rawLine.trim();
+        const labelMatch = line.match(/^\*\*([A-H])\.\*\*$/i);
+        if (labelMatch) {
+            const label = labelMatch[1].toUpperCase();
+            if (!highestAcceptedLabel || label > highestAcceptedLabel) {
+                highestAcceptedLabel = label;
+                pendingTextPrefix = null;
+                rebuilt.push(line);
+                return;
+            }
+
+            pendingTextPrefix = label;
+            while (rebuilt.length > 0 && !rebuilt[rebuilt.length - 1].trim()) {
+                rebuilt.pop();
+            }
+            return;
+        }
+
+        if (pendingTextPrefix) {
+            if (!line) {
+                return;
+            }
+
+            const repairedLine = `${pendingTextPrefix} ${line}`.trim();
+            pendingTextPrefix = null;
+            if (rebuilt.length > 0 && rebuilt[rebuilt.length - 1].trim()) {
+                rebuilt[rebuilt.length - 1] = `${rebuilt[rebuilt.length - 1].trimEnd()} ${repairedLine}`;
+            } else {
+                rebuilt.push(repairedLine);
+            }
+            return;
+        }
+
+        rebuilt.push(rawLine);
+    });
+
+    return rebuilt.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+};
+
 const markdownComponents = {
     p: ({ ...props }) => <p style={{ margin: '0 0 0.75rem' }} {...props} />,
     strong: ({ ...props }) => <strong style={{ fontWeight: 800, color: '#0f172a' }} {...props} />,
     em: ({ ...props }) => <em style={{ fontStyle: 'italic', fontWeight: 600, color: '#1f2937' }} {...props} />,
     ul: ({ ...props }) => <ul style={{ margin: '0 0 0.75rem', paddingLeft: '1.25rem' }} {...props} />,
     ol: ({ ...props }) => <ol style={{ margin: '0 0 0.75rem', paddingLeft: '1.25rem' }} {...props} />,
-    li: ({ ...props }) => <li style={{ marginBottom: '0.25rem' } } {...props} />,
+    li: ({ ...props }) => <li style={{ marginBottom: '0.25rem' }} {...props} />,
 };
 
-const normalizeMarkdownText = (text: string) =>
-{
+const normalizeMarkdownText = (text: string) => {
     const unescaped = normalizeMarkdownDisplayText(text);
 
     const repairedAbbreviations = unescaped.replace(/(?<=\b[A-Z])\.\s*\n\s*(?=[A-Z]\.)/g, '.');
@@ -580,7 +659,9 @@ const normalizeMarkdownText = (text: string) =>
         normalizedLines.push(line);
     }
 
-    return normalizedLines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+    return repairOutOfOrderStructuredParagraphLabels(
+        normalizedLines.join('\n').replace(/\n{3,}/g, '\n\n').trim(),
+    );
 };
 
 const shouldForceReadingParagraphLabels = (questionGroups: QuestionGroupDto[]) =>
@@ -610,7 +691,10 @@ const normalizeReadingPassageMarkdown = (text: string, questionGroups: QuestionG
     }
 
     return paragraphBlocks
-        .map((block, index) => `**${getOptionLabel(index, 'alpha')}.**\n\n${block}`)
+        .map((block, index) => {
+            const cleanBlock = block.replace(/^\s*(?:\*\*)?[A-H]\.?(?:\*\*)?\s*/i, '');
+            return `**${getOptionLabel(index, 'alpha')}.**\n\n${cleanBlock}`;
+        })
         .join('\n\n');
 };
 
@@ -782,6 +866,25 @@ const renderGroupContent = (group: QuestionGroupDto, hideParsedText = false) => 
         return group.assetsData;
     })();
 
+    const isDiagramType = group.groupType === 'MAP_LABELLING' || isFlowchartLikeType(group.groupType);
+    const hasGroupVisualImage = !!assetImageUrl;
+    const isMeaningfulPrompt = (promptText?: string | null) => {
+        if (!promptText) return false;
+        const words = promptText
+            .toLowerCase()
+            .replace(/\[q\d+\]/gi, '')
+            .replace(/[^a-z\s]/gi, ' ')
+            .split(/\s+/)
+            .map((w) => w.trim())
+            .filter((w) => w.length >= 2);
+        const stopWords = new Set(['example', 'question', 'questions', 'q']);
+        const meaningfulWords = words.filter((w) => !stopWords.has(w));
+        return meaningfulWords.length >= 2;
+    };
+    const effectiveHideParsedText = hideParsedText || (
+        isDiagramType && hasGroupVisualImage && !isMeaningfulPrompt(parsedContentText)
+    );
+
     if (TABLE_TYPES.has(group.groupType || '')) {
         try {
             const parsedData = JSON.parse(group.contentData || '[]');
@@ -830,21 +933,47 @@ const renderGroupContent = (group: QuestionGroupDto, hideParsedText = false) => 
                     <div style={{ display: 'grid', gap: '12px', marginBottom: '12px' }}>
                         {assetImageUrl.map((url, index) => (
                             <div key={`${url}-${index}`} style={{ textAlign: 'center' }}>
-                                <img
+                                <Image
                                     src={url}
                                     alt={`Question Asset ${index + 1}`}
-                                    style={{ maxWidth: '100%', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                                    style={{
+                                        maxHeight: '320px',
+                                        maxWidth: '100%',
+                                        objectFit: 'contain',
+                                        borderRadius: '12px',
+                                        border: '1px solid #e2e8f0',
+                                        boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+                                        cursor: 'zoom-in',
+                                    }}
+                                    preview={{
+                                        mask: <span style={{ fontSize: '12px' }}>Click để phóng to</span>,
+                                    }}
                                 />
                             </div>
                         ))}
                     </div>
                 ) : (
                     <div style={{ marginBottom: '12px', textAlign: 'center' }}>
-                        <img src={assetImageUrl} alt="Question Asset" style={{ maxWidth: '100%', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                        <Image
+                            src={assetImageUrl}
+                            alt="Question Asset"
+                            style={{
+                                maxHeight: '620px',
+                                maxWidth: '100%',
+                                objectFit: 'contain',
+                                borderRadius: '12px',
+                                border: '1px solid #e2e8f0',
+                                boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+                                cursor: 'zoom-in',
+                            }}
+                            preview={{
+                                mask: <span style={{ fontSize: '12px' }}>Click để phóng to</span>,
+                            }}
+                        />
                     </div>
                 )
             ) : null}
-            {parsedContentText && !hideParsedText && (
+            {parsedContentText && !effectiveHideParsedText && (
                 <div style={{ background: '#fff', border: '1px solid #e2e8f0', padding: '16px', borderRadius: '12px', fontSize: '0.9375rem', lineHeight: 1.6 }}>
                     <ReactMarkdown components={markdownComponents}>
                         {normalizeBlockMarkdownText(parsedContentText)}
@@ -950,6 +1079,7 @@ const ChooseNStatementsView = ({ group }: { group: QuestionGroupDto }) => {
 
 const SummaryWordBankTable = ({ group }: { group: QuestionGroupDto }) => {
     const options = getSharedGroupOptions(group);
+    const optionLabelType = inferOptionLabelType(group);
     if (options.length === 0) {
         return null;
     }
@@ -971,6 +1101,7 @@ const SummaryWordBankTable = ({ group }: { group: QuestionGroupDto }) => {
                             <tr key={rowIndex}>
                                 {Array.from({ length: columns }, (_, columnIndex) => {
                                     const option = row[columnIndex];
+                                    const globalIndex = rowIndex * columns + columnIndex;
                                     return (
                                         <td
                                             key={columnIndex}
@@ -984,7 +1115,14 @@ const SummaryWordBankTable = ({ group }: { group: QuestionGroupDto }) => {
                                                 background: option ? '#ffffff' : '#f8fafc',
                                             }}
                                         >
-                                            {option ? renderFormattedText(option.optionText || '') : null}
+                                            {option ? (
+                                                <>
+                                                    <b>{getOptionLabel(globalIndex, optionLabelType)}.</b>{' '}
+                                                    {renderFormattedText(
+                                                        stripOptionLeadingLabel(option.optionText, globalIndex, optionLabelType) || option.optionText || ''
+                                                    )}
+                                                </>
+                                            ) : null}
                                         </td>
                                     );
                                 })}
@@ -1121,7 +1259,7 @@ const QuestionGroupBlock = ({ group, gIdx, skillType }: { group: QuestionGroupDt
             {usesLegacySharedMultiSelectLayout && <ChooseNStatementsView group={displayGroup} />}
             {isClassificationMatching && <ClassificationMatchingPreview group={displayGroup} />}
             {isSummaryCompletion && <SummaryWordBankTable group={displayGroup} />}
-            {(((MATCHING_TYPES.has(displayGroup.groupType || '') && displayGroup.groupType !== 'MATCHING_HEADINGS') || isFlowchartLikeType(displayGroup.groupType)) && !isMapLabelling && !isClassificationMatching) && getSharedGroupOptions(group).length > 0 && (
+            {((MATCHING_TYPES.has(displayGroup.groupType || '') || isFlowchartLikeType(displayGroup.groupType)) && !isMapLabelling && !isClassificationMatching) && getSharedGroupOptions(group).length > 0 && !areAllOptionsLabelOnly(getSharedGroupOptions(group)) && (
                 <div style={{ background: '#fff', padding: '12px', border: '2px solid #0ea5e9', borderRadius: '12px', marginBottom: '15px' }}>
                     <div style={{ fontWeight: 700, color: '#0369a1', marginBottom: '8px', fontSize: '0.875rem', textTransform: 'uppercase' }}>
                         {isFlowchartLikeType(displayGroup.groupType) ? 'Answer Bank' : 'Danh sách lựa chọn (Options):'}
@@ -1288,17 +1426,18 @@ const renderSectionBody = (section: SectionDetailDto) => {
             const writingAssets = parseWritingTaskAssetsData(t.assetsData);
 
             return (
-            <div key={tIdx} style={{ background: '#fffbeb', borderRadius: '12px', padding: '16px', marginBottom: '12px', border: '1px solid #fde68a' }}>
-                <h4 style={{ fontWeight: 700, color: SKILL_COLORS.Writing, margin: '0 0 8px' }}>Task {t.taskNumber ?? tIdx + 1}</h4>
-                <div style={{ whiteSpace: 'pre-wrap', color: '#475569', fontSize: '0.9375rem', lineHeight: 1.6, marginBottom: '8px' }}>
-                    {renderFormattedText(t.promptText)}
+                <div key={tIdx} style={{ background: '#fffbeb', borderRadius: '12px', padding: '16px', marginBottom: '12px', border: '1px solid #fde68a' }}>
+                    <h4 style={{ fontWeight: 700, color: SKILL_COLORS.Writing, margin: '0 0 8px' }}>Task {t.taskNumber ?? tIdx + 1}</h4>
+                    <div style={{ whiteSpace: 'pre-wrap', color: '#475569', fontSize: '0.9375rem', lineHeight: 1.6, marginBottom: '8px' }}>
+                        {renderFormattedText(t.promptText)}
+                    </div>
+                    <span style={{ fontSize: '0.8125rem', color: '#92400e' }}>Tối thiểu {t.minWords} từ</span>
+                    {writingAssets.primaryImageUrl && (
+                        <img src={writingAssets.primaryImageUrl} alt="Writing asset" style={{ maxWidth: '100%', marginTop: '10px', borderRadius: '8px' }} />
+                    )}
                 </div>
-                <span style={{ fontSize: '0.8125rem', color: '#92400e' }}>Tối thiểu {t.minWords} từ</span>
-                {writingAssets.primaryImageUrl && (
-                    <img src={writingAssets.primaryImageUrl} alt="Writing asset" style={{ maxWidth: '100%', marginTop: '10px', borderRadius: '8px' }} />
-                )}
-            </div>
-        )});
+            )
+        });
     }
 
     if (skill === 'Speaking' || skill === 'SPEAKING') {

@@ -188,8 +188,9 @@ public sealed partial class GemmaPdfExamGenerationService
         }
 
         if (mappedQuestionType is "MATCHING_HEADINGS" &&
-            (line.Contains("paragraph", StringComparison.OrdinalIgnoreCase) ||
-             line.Contains("heading", StringComparison.OrdinalIgnoreCase)))
+            !Regex.IsMatch(line.Trim(), @"(?i)^paragraph\s+[A-Z]$") &&
+            (line.Contains("heading", StringComparison.OrdinalIgnoreCase) ||
+             MatchingHeadingsInstructionRegex().IsMatch(line)))
         {
             return true;
         }
@@ -231,8 +232,9 @@ public sealed partial class GemmaPdfExamGenerationService
             return true;
         }
 
-        if (mappedQuestionType == "SENTENCE_COMPLETION" &&
+        if (IsCompletionTemplateType(mappedQuestionType) &&
             (line.Contains("complete the following", StringComparison.OrdinalIgnoreCase) ||
+             line.Contains("complete the summary", StringComparison.OrdinalIgnoreCase) ||
              line.Contains("no more than", StringComparison.OrdinalIgnoreCase)))
         {
             return true;
@@ -292,6 +294,12 @@ public sealed partial class GemmaPdfExamGenerationService
         if (string.IsNullOrWhiteSpace(questionContent) || string.IsNullOrWhiteSpace(sharedInstruction))
         {
             return questionContent?.Trim();
+        }
+
+        if (mappedQuestionType is "MATCHING_HEADINGS" &&
+            Regex.IsMatch(sharedInstruction.Trim(), @"(?i)^paragraph\s+[A-Z]$"))
+        {
+            return RemoveLeadingQuestionRangeHeading(questionContent)?.Trim();
         }
 
         var withoutRangeHeading = RemoveLeadingQuestionRangeHeading(questionContent)?.Trim();

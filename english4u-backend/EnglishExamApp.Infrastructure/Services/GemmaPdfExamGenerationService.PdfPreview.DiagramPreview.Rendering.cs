@@ -62,22 +62,7 @@ public sealed partial class GemmaPdfExamGenerationService
             }
 
             using var croppedBitmap = bitmap.Clone(cropRectangle, PixelFormat.Format32bppArgb);
-            var tightenedRectangle = cropBounds.HasExplicitBottomBoundary
-                ? null
-                : DetectPrimaryDiagramRectangle(croppedBitmap);
-            using var preliminaryBitmap = tightenedRectangle is null
-                ? (Bitmap)croppedBitmap.Clone()
-                : croppedBitmap.Clone(tightenedRectangle.Value, PixelFormat.Format32bppArgb);
-            var topNoiseTrimmedRectangle = DetectLeadingTopNoiseTrimRectangle(preliminaryBitmap);
-            using var intermediateBitmap = topNoiseTrimmedRectangle is null
-                ? (Bitmap)preliminaryBitmap.Clone()
-                : preliminaryBitmap.Clone(topNoiseTrimmedRectangle.Value, PixelFormat.Format32bppArgb);
-            var finalTopTrimmedRectangle = DetectTopWhitespaceTrimRectangle(intermediateBitmap);
-            using var finalBitmap = finalTopTrimmedRectangle is null
-                ? (Bitmap)intermediateBitmap.Clone()
-                : intermediateBitmap.Clone(finalTopTrimmedRectangle.Value, PixelFormat.Format32bppArgb);
-
-            return ConvertBitmapToDataUrl(finalBitmap);
+            return ConvertBitmapToDataUrl(croppedBitmap);
         }
         catch
         {
@@ -108,9 +93,13 @@ public sealed partial class GemmaPdfExamGenerationService
 
     private static Rectangle BuildDiagramCropRectangle(int width, int height, DiagramPreviewCropBounds cropBounds)
     {
+        var leftRatio = Math.Clamp(cropBounds.LeftRatio, 0d, 0.98d);
+        var rightRatio = Math.Clamp(cropBounds.RightRatio, leftRatio + 0.02d, 1d);
+        var left = Math.Clamp((int)Math.Floor(width * leftRatio), 0, Math.Max(0, width - 1));
+        var right = Math.Clamp((int)Math.Ceiling(width * rightRatio), left + 1, width);
         var top = Math.Clamp((int)Math.Floor(height * cropBounds.TopRatio), 0, Math.Max(0, height - 1));
         var bottom = Math.Clamp((int)Math.Ceiling(height * cropBounds.BottomRatio), top + 1, height);
-        return new Rectangle(0, top, width, Math.Max(1, bottom - top));
+        return new Rectangle(left, top, Math.Max(1, right - left), Math.Max(1, bottom - top));
     }
 
     [SupportedOSPlatform("windows")]

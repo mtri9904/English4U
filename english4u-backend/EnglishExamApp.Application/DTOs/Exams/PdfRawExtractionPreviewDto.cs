@@ -34,7 +34,14 @@ public sealed record PdfRawQuestionInstructionPreviewDto(
 public sealed record PdfRawVisualPreviewItemDto(
     string ImageDataUrl,
     int PageNumber,
-    string? Note = null);
+    string? Note = null,
+    PdfVisualCropBoxDto? CropBox = null);
+
+public sealed record PdfVisualCropBoxDto(
+    double X,
+    double Y,
+    double Width,
+    double Height);
 
 public sealed record PdfRawPassagePreviewDto(
     int PassageNumber,

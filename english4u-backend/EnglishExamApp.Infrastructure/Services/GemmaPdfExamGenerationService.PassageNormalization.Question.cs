@@ -36,11 +36,11 @@ public sealed partial class GemmaPdfExamGenerationService
             .Replace("\r\n", "\n")
             .Replace('\r', '\n')
             .Trim();
-        if (mappedQuestionType != "SENTENCE_COMPLETION")
+        if (!IsCompletionTemplateType(mappedQuestionType, normalized, questionNumber))
         {
             normalized = NormalizeExtractedSpacing(normalized);
             normalized = RemoveSelectionMarkers(normalized);
-            return normalized;
+            return SanitizeQuestionContentForStorage(normalized, questionNumber);
         }
 
         normalized = NormalizeExtractedSpacing(normalized);
@@ -48,28 +48,29 @@ public sealed partial class GemmaPdfExamGenerationService
         normalized = ReplaceTrailingGapNumberWithPlaceholder(normalized, questionNumber);
         if (BlankPlaceholderRegex().IsMatch(normalized))
         {
-            return NormalizeSentenceCompletionSpacing(normalized);
+            return SanitizeQuestionContentForStorage(NormalizeSentenceCompletionSpacing(normalized), questionNumber);
         }
 
         var withGapPlaceholder = MissingBlankGapRegex().Replace(normalized, " ___ ");
         if (BlankPlaceholderRegex().IsMatch(withGapPlaceholder))
         {
-            return NormalizeSentenceCompletionSpacing(withGapPlaceholder);
+            return SanitizeQuestionContentForStorage(NormalizeSentenceCompletionSpacing(withGapPlaceholder), questionNumber);
         }
 
         normalized = ReplaceInlineGapNumberWithPlaceholder(normalized, questionNumber);
         if (BlankPlaceholderRegex().IsMatch(normalized))
         {
-            return NormalizeSentenceCompletionSpacing(normalized);
+            return SanitizeQuestionContentForStorage(NormalizeSentenceCompletionSpacing(normalized), questionNumber);
         }
 
         if (SentenceEndingPunctuationRegex().IsMatch(normalized))
         {
-            return NormalizeSentenceCompletionSpacing(
-                SentenceEndingPunctuationRegex().Replace(normalized, " ___$1", 1));
+            return SanitizeQuestionContentForStorage(
+                NormalizeSentenceCompletionSpacing(SentenceEndingPunctuationRegex().Replace(normalized, " ___$1", 1)),
+                questionNumber);
         }
 
-        return NormalizeSentenceCompletionSpacing(normalized + " ___");
+        return SanitizeQuestionContentForStorage(NormalizeSentenceCompletionSpacing(normalized + " ___"), questionNumber);
     }
 
     private static string ReplaceTrailingGapNumberWithPlaceholder(string content, int? questionNumber)

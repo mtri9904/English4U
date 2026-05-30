@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Button, Empty, Input, InputNumber, Select, Upload } from 'antd';
+import { Button, Empty, Image, Input, InputNumber, Select, Upload } from 'antd';
 import { CloseOutlined, MinusCircleOutlined, PictureOutlined, PlusOutlined } from '@ant-design/icons';
 import type { CreateQuestionGroupDto, CreateQuestionOptionDto } from '../../types/exam.types';
 import { emptyOption, emptyQuestion } from './examEditor.helpers';
@@ -261,10 +261,21 @@ export const MapLabellingEditor = ({
                 </div>
                 <div style={{ border: '1px dashed #bfdbfe', borderRadius: '10px', padding: '10px', minHeight: '180px', overflow: 'auto', background: '#fff' }}>
                     {mapAssets.imageUrl ? (
-                        <img
+                        <Image
                             src={mapAssets.imageUrl}
                             alt="Map preview"
-                            style={{ width: `${previewWidth}px`, maxWidth: 'none', display: 'block', margin: '0 auto', borderRadius: '8px' }}
+                            style={{
+                                width: `${previewWidth}px`,
+                                maxHeight: '320px',
+                                objectFit: 'contain',
+                                display: 'block',
+                                margin: '0 auto',
+                                borderRadius: '8px',
+                                cursor: 'zoom-in',
+                            }}
+                            preview={{
+                                mask: <span style={{ fontSize: '12px' }}>Click để phóng to</span>,
+                            }}
                         />
                     ) : (
                         <Empty

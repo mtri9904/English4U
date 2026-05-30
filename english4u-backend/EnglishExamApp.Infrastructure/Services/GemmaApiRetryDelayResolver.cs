@@ -6,7 +6,7 @@ namespace EnglishExamApp.Infrastructure.Services;
 internal static partial class GemmaApiRetryDelayResolver
 {
     private const int RateLimitFallbackDelayMs = 5000;
-    private const int TransientErrorFallbackDelayMs = 3000;
+    private const int TransientErrorFallbackDelayMs = 5000;
 
     public static bool TryResolve(Exception exception, out TimeSpan retryDelay, out string reason)
     {
@@ -22,7 +22,7 @@ internal static partial class GemmaApiRetryDelayResolver
         if (message.Contains("status 429", StringComparison.OrdinalIgnoreCase) ||
             message.Contains("\"status\": \"RESOURCE_EXHAUSTED\"", StringComparison.OrdinalIgnoreCase))
         {
-            reason = "Vượt quota token/phút của Gemma";
+            reason = "Vượt quota token/phút của Gemini";
             retryDelay = TryExtractRetryDelayFromMessage(message, out var parsedDelay)
                 ? parsedDelay
                 : TimeSpan.FromMilliseconds(RateLimitFallbackDelayMs);
@@ -31,9 +31,13 @@ internal static partial class GemmaApiRetryDelayResolver
 
         if (message.Contains("status 500", StringComparison.OrdinalIgnoreCase) ||
             message.Contains("status 502", StringComparison.OrdinalIgnoreCase) ||
-            message.Contains("status 503", StringComparison.OrdinalIgnoreCase))
+            message.Contains("status 503", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("status 504", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("\"status\": \"INTERNAL\"", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("\"status\": \"UNAVAILABLE\"", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("\"status\": \"DEADLINE_EXCEEDED\"", StringComparison.OrdinalIgnoreCase))
         {
-            reason = "Lỗi tạm thời từ Gemma API";
+            reason = "Lỗi tạm thời từ Gemini API";
             retryDelay = TimeSpan.FromMilliseconds(TransientErrorFallbackDelayMs);
             return true;
         }

@@ -16,7 +16,7 @@ export const normalizeReadingPassageText = (value?: string | null) => (
 );
 
 const hasStructuredParagraphLabels = (value: string) => (
-    /^\s*(?:\[?đoạn\s+\d+\]?|paragraph\s+\d+|[A-H]\.)/im.test(value)
+    /^\s*(?:\[?đoạn\s+\d+\]?|paragraph\s+\d+|(?:\*\*)?[A-H]\.(?:\*\*)?)/im.test(value)
 );
 
 const looksLikeReadingSubheading = (block: string) => {
@@ -65,10 +65,11 @@ export const buildReadingPassageDisplaySegments = (value?: string | null): Readi
         }
 
         paragraphNumber += 1;
+        const cleanBlock = block.replace(/^\s*(?:\*\*)?[A-H]\.?(?:\*\*)?\s*/i, '');
         return {
             kind: 'paragraph',
             paragraphNumber,
-            text: block,
+            text: cleanBlock,
         };
     });
 };

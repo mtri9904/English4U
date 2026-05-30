@@ -165,7 +165,8 @@ public sealed partial class GemmaPdfExamGenerationService
             ImageUrl: previewItem.ImageDataUrl,
             AnswerMode: answerMode,
             PageNumber: pageNumber,
-            Note: note));
+            Note: note,
+            CropBox: previewItem.CropBox));
     }
 
     private static string BuildMapLabellingAssetsData(
@@ -178,7 +179,8 @@ public sealed partial class GemmaPdfExamGenerationService
             Width: 720,
             Zoom: 100,
             PageNumber: pageNumber,
-            Note: note));
+            Note: note,
+            CropBox: previewItem.CropBox));
 
     private static string BuildMatchingVisualAssetsData(
         IReadOnlyList<PdfRawVisualPreviewItemDto> previewItems,
@@ -198,7 +200,8 @@ public sealed partial class GemmaPdfExamGenerationService
 
     private static (List<CreateQuestionDto> Questions, string? AssetsData) NormalizeFlowchartQuestionSet(
         List<CreateQuestionDto> questions,
-        string? rawBlockText)
+        string? rawBlockText,
+        string mappedQuestionType)
     {
         if (questions.Count == 0)
         {
@@ -235,7 +238,7 @@ public sealed partial class GemmaPdfExamGenerationService
         foreach (var question in questions)
         {
             var normalizedAnswer = NormalizeFlowchartSharedOptionAnswer(question.CorrectAnswer, sharedOptionTexts);
-            var normalizedOptions = BuildOptions(sharedOptionTexts, "FLOWCHART_COMPLETION", normalizedAnswer);
+            var normalizedOptions = BuildOptions(sharedOptionTexts, mappedQuestionType, normalizedAnswer);
 
             normalizedQuestions.Add(question with
             {
@@ -247,10 +250,22 @@ public sealed partial class GemmaPdfExamGenerationService
             });
         }
 
-        var assetsData = JsonSerializer.Serialize(new FlowchartGroupAssetsData(
-            Layout: "flowchart_completion_image",
-            ImageUrl: string.Empty,
-            AnswerMode: "shared_option_bank"));
+        string assetsData;
+        if (string.Equals(mappedQuestionType, "MAP_LABELLING", StringComparison.OrdinalIgnoreCase))
+        {
+            assetsData = JsonSerializer.Serialize(new MapLabellingGroupAssetsData(
+                Layout: "map_labelling",
+                ImageUrl: string.Empty,
+                Width: 720,
+                Zoom: 100));
+        }
+        else
+        {
+            assetsData = JsonSerializer.Serialize(new FlowchartGroupAssetsData(
+                Layout: "flowchart_completion_image",
+                ImageUrl: string.Empty,
+                AnswerMode: "shared_option_bank"));
+        }
 
         return (normalizedQuestions, assetsData);
     }

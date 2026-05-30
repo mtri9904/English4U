@@ -297,6 +297,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             entity.Property(e => e.StartedAt).HasColumnName("startedAt").HasDefaultValueSql("GETDATE()");
             entity.Property(e => e.EndedAt).HasColumnName("endedAt");
             entity.Property(e => e.TimeRemaining).HasColumnName("timeRemaining");
+            entity.Property(e => e.HighlightsData).HasColumnName("highlightsData");
             entity.HasOne(e => e.User).WithMany(u => u.ExamSessions).HasForeignKey(e => e.UserId).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne(e => e.Exam).WithMany(ex => ex.ExamSessions).HasForeignKey(e => e.ExamId).OnDelete(DeleteBehavior.Cascade);
         });

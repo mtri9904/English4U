@@ -631,8 +631,8 @@
   "projectFileDependencyGroups": {
     "net9.0": [
       "EnglishExamApp.Domain >= 1.0.0",
-      "Microsoft.EntityFrameworkCore >= 9.*",
-      "Microsoft.EntityFrameworkCore.Relational >= 9.*"
+      "Microsoft.EntityFrameworkCore >= 9.0.15",
+      "Microsoft.EntityFrameworkCore.Relational >= 9.0.15"
     ]
   },
   "packageFolders": {
@@ -686,11 +686,11 @@
         "dependencies": {
           "Microsoft.EntityFrameworkCore": {
             "target": "Package",
-            "version": "[9.*, )"
+            "version": "[9.0.15, )"
           },
           "Microsoft.EntityFrameworkCore.Relational": {
             "target": "Package",
-            "version": "[9.*, )"
+            "version": "[9.0.15, )"
           }
         },
         "imports": [

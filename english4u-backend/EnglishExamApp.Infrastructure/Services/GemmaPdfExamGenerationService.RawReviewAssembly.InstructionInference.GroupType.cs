@@ -176,7 +176,7 @@ public sealed partial class GemmaPdfExamGenerationService
             @"(?i)\bfor\s+each\s+question\s*,?\s*only\s+one\s+of\s+the\s+choices?\s+is\s+correct\b");
         var hasMcqSingleInstruction = Regex.IsMatch(
             string.IsNullOrWhiteSpace(instructionScope) ? combined : instructionScope,
-            @"(?i)\bchoose\s+the\s+correct\s+letter\b|\bchoose\s+the\s+correct\s+answer\b|\bcircle\s+the\s+correct\s+answer\b|\bfor\s+each\s+question\s*,?\s*only\s+one\s+of\s+the\s+choices?\s+is\s+correct\b");
+            @"(?i)\bchoose\s+the\s+correct\s+letter\b|\bchoose\s+the\s+correct\s+answer(?!\s+or\s+answers?)\b|\bcircle\s+the\s+correct\s+answer\b|\bfor\s+each\s+question\s*,?\s*only\s+one\s+of\s+the\s+choices?\s+is\s+correct\b");
         var hasGenericChooseLettersInstruction =
             Regex.IsMatch(
                 string.IsNullOrWhiteSpace(instructionScope) ? combined : instructionScope,
@@ -306,7 +306,7 @@ public sealed partial class GemmaPdfExamGenerationService
 
         if (hasGenericDiagramCompletionInstruction)
         {
-            return ("FLOWCHART_COMPLETION", "Detected from instruction: complete the diagram below, without timeline markers.");
+            return ("MAP_LABELLING", "Detected from instruction: complete the diagram below, without timeline markers.");
         }
 
         if (Regex.IsMatch(combined, @"(?i)\bflow[\s-]?chart\b"))
@@ -335,9 +335,12 @@ public sealed partial class GemmaPdfExamGenerationService
                 return ("MCQ_MULTIPLE", "Detected from shared multi-select instruction with answer boxes and no explicit per-question stems.");
             }
 
-            return hasMultipleQuestionsInGroup
-                ? ("MCQ_CHOOSE_N", "Detected from multi-question instruction/question wording: each question may have multiple correct answers.")
-                : ("MCQ_MULTIPLE", "Detected from single-question instruction/question wording: multiple correct answers.");
+            if (hasMultipleQuestionsInGroup && !hasExplicitPerQuestionPrompts)
+            {
+                return ("MCQ_CHOOSE_N", "Detected from multi-question instruction/question wording: each question may have multiple correct answers.");
+            }
+
+            return ("MCQ_MULTIPLE", "Detected from instruction/question wording: multiple correct answers per question.");
         }
 
         if (hasMultipleQuestionsInGroup && hasMcqSingleInstruction && hasSharedOptionList && totalDistinctOptionLabels >= 5)
@@ -377,6 +380,9 @@ public sealed partial class GemmaPdfExamGenerationService
         {
             "MULTIPLECHOICE" or "MULTIPLE_CHOICE" or "MCQ" or "MCQ_SINGLE_CHOICE" => "MCQ_SINGLE",
             "MULTIPLECHOICE_MULTIPLE" or "MULTIPLE_CHOICE_MULTIPLE" or "MCQ_MULTI" => "MCQ_MULTIPLE",
+            "FILLINBLANKS" or "FILL_IN_BLANKS" or "FILLINBLANK" or "FILL_IN_BLANK" or "SENTENCECOMPLETION" => "SENTENCE_COMPLETION",
+            "SUMMARYCOMPLETION" => "SUMMARY_COMPLETION",
+            "TABLECOMPLETION" => "TABLE_COMPLETION",
             "MATCHING_INFORMATION" => "MATCHING_INFO",
             "MATCHING_ENDINGS" or "SENTENCE_ENDINGS" or "MATCHING_SENTENCE_ENDINGS" => "MATCHING_FEATURES",
             "MATCHING_CLASSIFICATION" or "CLASSIFICATION" => "MATCHING_FEATURES",

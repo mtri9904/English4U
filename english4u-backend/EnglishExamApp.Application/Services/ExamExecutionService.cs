@@ -511,6 +511,45 @@ public sealed partial class ExamExecutionService(
         await context.SaveChangesAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyList<PracticeSessionHighlightDto>> GetPracticeSessionHighlightsAsync(
+        Guid userId,
+        Guid sessionId,
+        CancellationToken cancellationToken = default)
+    {
+        var session = await context.ExamSessions
+            .AsNoTracking()
+            .Where(item => item.Id == sessionId && item.UserId == userId)
+            .Select(item => new { item.HighlightsData })
+            .FirstOrDefaultAsync(cancellationToken)
+            ?? throw new InvalidOperationException("Session not found.");
+
+        return NormalizePracticeSessionHighlights(ParsePracticeSessionHighlights(session.HighlightsData));
+    }
+
+    public async Task<IReadOnlyList<PracticeSessionHighlightDto>> UpdatePracticeSessionHighlightsAsync(
+        Guid userId,
+        Guid sessionId,
+        UpdatePracticeSessionHighlightsDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        var session = await context.ExamSessions
+            .FirstOrDefaultAsync(item => item.Id == sessionId && item.UserId == userId, cancellationToken)
+            ?? throw new InvalidOperationException("Session not found.");
+
+        if (NormalizeSessionStatus(session.Status) != "InProgress")
+        {
+            throw new InvalidOperationException("Session is no longer accepting highlights.");
+        }
+
+        var highlights = NormalizePracticeSessionHighlights(dto.Highlights);
+        session.HighlightsData = highlights.Count > 0
+            ? JsonSerializer.Serialize(highlights, SpeakingEvidenceJsonOptions)
+            : null;
+
+        await context.SaveChangesAsync(cancellationToken);
+        return highlights;
+    }
+
     public async Task<PracticeSessionSpeakingUploadResultDto> UploadSpeakingRecordingAsync(
         Guid userId,
         Guid sessionId,

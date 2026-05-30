@@ -184,7 +184,7 @@ public sealed partial class GemmaPdfExamGenerationService
         IReadOnlyList<PdfExtractedPage> pages)
     {
         var rangeRegex = new Regex(
-            $@"(?i)\bquestions?\s*{group.StartQuestion}\s*[-–]\s*{group.EndQuestion}\b",
+            $@"(?i)questions?\s*{group.StartQuestion}\s*(?:-|–|—|â€“|â€”|to|\s+)\s*{group.EndQuestion}(?!\d)",
             RegexOptions.Compiled);
 
         var exactRangePage = pages
@@ -293,7 +293,7 @@ public sealed partial class GemmaPdfExamGenerationService
         IReadOnlyList<PdfExtractedPage> pages)
     {
         var rangeRegex = new Regex(
-            $@"(?i)\bquestions?\s*{group.StartQuestion}\s*[-–]\s*{group.EndQuestion}\b",
+            $@"(?i)\bquestions?\s*{group.StartQuestion}\s*(?:-|–|—|â€“|â€”|to|\s+)\s*{group.EndQuestion}\b",
             RegexOptions.Compiled);
 
         var exactRangePage = pages

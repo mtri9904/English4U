@@ -32,6 +32,15 @@ public sealed partial class ExamExecutionService
         "th|sh|ch|ph|wh|ee|ea|oo|ou|ow|[aeiouy]+|[bcdfghjklmnpqrstvwxyz]+",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
+    private static readonly HashSet<string> PracticeSessionHighlightColors = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "yellow",
+        "green",
+        "blue",
+        "pink",
+        "purple"
+    };
+
     private sealed record SessionHeader(
         Guid SessionId,
         Guid UserId,
@@ -53,6 +62,66 @@ public sealed partial class ExamExecutionService
         double Points,
         string? GroupType,
         string SkillType);
+
+    private static IReadOnlyList<PracticeSessionHighlightDto> ParsePracticeSessionHighlights(string? highlightsData)
+    {
+        if (string.IsNullOrWhiteSpace(highlightsData))
+        {
+            return [];
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<IReadOnlyList<PracticeSessionHighlightDto>>(
+                highlightsData,
+                SpeakingEvidenceJsonOptions) ?? [];
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+    }
+
+    private static List<PracticeSessionHighlightDto> NormalizePracticeSessionHighlights(
+        IEnumerable<PracticeSessionHighlightDto>? highlights)
+    {
+        var now = DateTime.UtcNow;
+        var seenIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        return (highlights ?? [])
+            .Select(highlight =>
+            {
+                var id = string.IsNullOrWhiteSpace(highlight.Id)
+                    ? Guid.NewGuid().ToString("N")
+                    : highlight.Id.Trim();
+                var sourceKey = (highlight.SourceKey ?? string.Empty).Trim();
+                var selectedText = (highlight.SelectedText ?? string.Empty).Trim();
+                var color = (highlight.Color ?? string.Empty).Trim().ToLowerInvariant();
+                var startOffset = Math.Max(0, highlight.StartOffset);
+                var endOffset = Math.Max(0, highlight.EndOffset);
+
+                return new PracticeSessionHighlightDto(
+                    id.Length > 80 ? id[..80] : id,
+                    sourceKey.Length > 240 ? sourceKey[..240] : sourceKey,
+                    startOffset,
+                    endOffset,
+                    selectedText.Length > 1000 ? selectedText[..1000] : selectedText,
+                    color,
+                    highlight.CreatedAt == default ? now : highlight.CreatedAt,
+                    highlight.UpdatedAt == default ? now : highlight.UpdatedAt);
+            })
+            .Where(highlight =>
+                highlight.SourceKey.Length > 0
+                && highlight.SelectedText.Length > 0
+                && PracticeSessionHighlightColors.Contains(highlight.Color)
+                && highlight.EndOffset > highlight.StartOffset
+                && seenIds.Add(highlight.Id))
+            .OrderBy(highlight => highlight.SourceKey, StringComparer.Ordinal)
+            .ThenBy(highlight => highlight.StartOffset)
+            .ThenBy(highlight => highlight.EndOffset)
+            .Take(500)
+            .ToList();
+    }
 
     private sealed record ExamScoringProfile(
         string? ExamType,

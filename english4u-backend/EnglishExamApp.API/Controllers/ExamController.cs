@@ -222,12 +222,30 @@ public class ExamController(
 
         try
         {
+            var uploadId = Guid.NewGuid();
+            if (!string.IsNullOrWhiteSpace(clientRequestId))
+            {
+                pdfGenerationProgressTracker.Upsert(new PdfGenerationProgressStatusDto(
+                    UploadId: uploadId,
+                    UploadedBy: createdBy,
+                    Status: "processing",
+                    ProgressPercent: 1,
+                    Stage: "uploading",
+                    Message: "Dang upload file va khoi tao tien trinh.",
+                    PassageNumber: null,
+                    TotalPassages: null,
+                    ExamId: null,
+                    ClientRequestId: clientRequestId.Trim(),
+                    UpdatedAtUtc: DateTime.UtcNow));
+            }
+
             await using var stream = file.OpenReadStream();
             var result = await examPdfGenerationService.GenerateFromPdfAsync(
                 stream,
                 file.FileName,
                 createdBy,
                 clientRequestId,
+                uploadId,
                 cancellationToken);
 
             await PublishExamChangedAsync(cancellationToken);

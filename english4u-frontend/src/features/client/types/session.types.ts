@@ -13,6 +13,23 @@ export interface UpdatePracticeSessionAnswersDto {
     answers: PracticeSessionAnswerInputDto[];
 }
 
+export type PracticeSessionHighlightColor = 'yellow' | 'green' | 'blue' | 'pink' | 'purple';
+
+export interface PracticeSessionHighlightDto {
+    id: string;
+    sourceKey: string;
+    startOffset: number;
+    endOffset: number;
+    selectedText: string;
+    color: PracticeSessionHighlightColor;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface UpdatePracticeSessionHighlightsDto {
+    highlights: PracticeSessionHighlightDto[];
+}
+
 export interface PracticeSessionStartDto {
     sessionId: string;
     examId: string;

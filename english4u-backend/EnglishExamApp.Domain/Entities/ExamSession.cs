@@ -9,6 +9,7 @@ public class ExamSession
     public DateTime StartedAt { get; set; } = DateTime.UtcNow;
     public DateTime? EndedAt { get; set; }
     public int? TimeRemaining { get; set; }
+    public string? HighlightsData { get; set; }
 
     public User User { get; set; } = null!;
     public Exam Exam { get; set; } = null!;

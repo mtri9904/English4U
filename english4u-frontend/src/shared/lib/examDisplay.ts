@@ -14,8 +14,8 @@ export const normalizeSkillType = (skillType?: string | null): NormalizedSkillTy
 
 const QUESTION_TYPE_LABELS: Record<string, string> = {
     MCQ_SINGLE: 'Multiple Choice (Single)',
-    MCQ_MULTIPLE: 'MCQ_MULTIPLE',
-    MCQ_CHOOSE_N: 'MCQ_CHOOSE_N',
+    MCQ_MULTIPLE: 'Multiple Choice (Multiple)',
+    MCQ_CHOOSE_N: 'Multiple Choice (Choose N)',
     TFNG: 'True/False/Not Given',
     YNNG: 'Yes/No/Not Given',
     MATCHING_HEADINGS: 'Matching Headings',
@@ -84,8 +84,6 @@ export const isSharedMcqAnswerBoxLayout = (contentData?: string | null) => {
 export const getEffectiveMcqGroupType = ({
     groupType,
     contentData,
-    questionCount = 0,
-    hasQuestionContent = false,
 }: {
     groupType?: string | null;
     contentData?: string | null;
@@ -98,14 +96,9 @@ export const getEffectiveMcqGroupType = ({
     }
 
     const hasSharedLayout = isSharedMcqAnswerBoxLayout(contentData);
-    const hasMultipleQuestionStems = questionCount > 1 && hasQuestionContent;
 
     if (normalizedType === 'MCQ_MULTIPLE' && hasSharedLayout) {
         return 'MCQ_CHOOSE_N';
-    }
-
-    if (normalizedType === 'MCQ_CHOOSE_N' && hasMultipleQuestionStems && !hasSharedLayout) {
-        return 'MCQ_MULTIPLE';
     }
 
     return normalizedType;
@@ -189,6 +182,23 @@ const parsePromptText = (contentData?: string | null) => {
 const getSharedOptions = (group: QuestionGroupLike) =>
     group.questions?.find((question) => (question.options?.length ?? 0) > 0)?.options ?? [];
 
+const hasSequentialAlphaOptionBank = (options: Array<{ optionText?: string | null }>) => {
+    if (options.length < 2) {
+        return false;
+    }
+
+    let labelledCount = 0;
+    for (let index = 0; index < options.length; index += 1) {
+        const expectedLabel = String.fromCharCode(65 + index);
+        const text = options[index]?.optionText?.trim() ?? '';
+        if (new RegExp(`^${expectedLabel}\\s*(?:[.)\\:-]\\s*|\\s+)\\S`, 'i').test(text)) {
+            labelledCount += 1;
+        }
+    }
+
+    return labelledCount >= Math.min(options.length, 4);
+};
+
 export const inferQuestionGroupOptionLabelType = (group: QuestionGroupLike): OptionLabelType => {
     if (group.optionLabelType === 'alpha' || group.optionLabelType === 'roman') {
         return group.optionLabelType;
@@ -201,12 +211,15 @@ export const inferQuestionGroupOptionLabelType = (group: QuestionGroupLike): Opt
     ].join(' ');
 
     if (/\b(?:appropriate|correct)\s+numbers?\b/i.test(combinedInstruction) ||
-        /\bi\s*[-–]\s*(?:v|vi|vii|viii|ix|x|xi|xii|xiii|xiv|xv|xvi|xvii|xviii|xix|xx)\b/i.test(combinedInstruction))
-    {
+        /\bi\s*[-–]\s*(?:v|vi|vii|viii|ix|x|xi|xii|xiii|xiv|xv|xvi|xvii|xviii|xix|xx)\b/i.test(combinedInstruction)) {
         return 'roman';
     }
 
     const sharedOptions = getSharedOptions(group);
+    if (hasSequentialAlphaOptionBank(sharedOptions)) {
+        return 'alpha';
+    }
+
     if (sharedOptions.some((option) => /^((?:ix|iv|v?i{1,3}|x{1,2}))\s*[).:\-]/i.test(option.optionText ?? ''))) {
         return 'roman';
     }

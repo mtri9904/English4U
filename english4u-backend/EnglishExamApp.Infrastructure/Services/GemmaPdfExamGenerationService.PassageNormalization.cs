@@ -56,9 +56,87 @@ public sealed partial class GemmaPdfExamGenerationService
             .ToDictionary(group => group.Key, group => group.First());
 
         var result = new Dictionary<int, RawQuestionGroupContext>();
+        var processedReviewedGroups = new List<PdfRawQuestionInstructionPreviewDto>();
+
         if (reviewedQuestionGroups is { Count: > 0 })
         {
-            foreach (var reviewedGroup in reviewedQuestionGroups
+            var groupsList = reviewedQuestionGroups.ToList();
+            foreach (var outline in rawQuestionGroupOutlines)
+            {
+                var matchingReviewed = groupsList
+                    .Where(g => g.StartQuestion >= outline.StartQuestion && g.EndQuestion <= outline.EndQuestion)
+                    .OrderBy(g => g.StartQuestion)
+                    .ToList();
+
+                if (matchingReviewed.Count > 1)
+                {
+                    var firstGroup = matchingReviewed[0];
+                    var shouldKeepSeparate =
+                        matchingReviewed.Any(group =>
+                            (group.TypeEvidence ?? string.Empty).Contains("Gemini JSON", StringComparison.OrdinalIgnoreCase)) ||
+                        matchingReviewed.Any(group =>
+                            NormalizeGroupType(group.GroupType) is "FLOWCHART_COMPLETION" or "MAP_LABELLING" or "MATCHING_VISUALS");
+                    var allSameType = matchingReviewed.All(g =>
+                        string.Equals(g.GroupType, firstGroup.GroupType, StringComparison.OrdinalIgnoreCase) ||
+                        string.IsNullOrWhiteSpace(g.GroupType) ||
+                        string.IsNullOrWhiteSpace(firstGroup.GroupType));
+
+                    if (!shouldKeepSeparate && allSameType)
+                    {
+                        var mergedInstruction = matchingReviewed
+                            .Select(g => g.Instruction)
+                            .FirstOrDefault(inst => !string.IsNullOrWhiteSpace(inst)) ?? outline.Instruction ?? string.Empty;
+
+                        var mergedGroupType = matchingReviewed
+                            .Select(g => g.GroupType)
+                            .FirstOrDefault(t => !string.IsNullOrWhiteSpace(t)) ?? outline.GroupType;
+
+                        var mergedTags = matchingReviewed
+                            .Select(g => g.Tags)
+                            .FirstOrDefault(tag => !string.IsNullOrWhiteSpace(tag)) ?? outline.Tags;
+
+                        var mergedQuestionPreview = string.Join("\n", matchingReviewed
+                            .Select(g => g.QuestionPreview)
+                            .Where(qp => !string.IsNullOrWhiteSpace(qp)));
+
+                        var mergedVisualPreviewItems = matchingReviewed
+                            .Where(g => g.VisualPreviewItems != null)
+                            .SelectMany(g => g.VisualPreviewItems!)
+                            .ToList();
+
+                        var mergedGroup = new PdfRawQuestionInstructionPreviewDto(
+                            PassageNumber: firstGroup.PassageNumber,
+                            StartQuestion: outline.StartQuestion,
+                            EndQuestion: outline.EndQuestion,
+                            Tags: mergedTags,
+                            GroupType: mergedGroupType,
+                            Instruction: mergedInstruction,
+                            QuestionPreview: string.IsNullOrWhiteSpace(mergedQuestionPreview) ? null : mergedQuestionPreview,
+                            TypeEvidence: matchingReviewed.Select(g => g.TypeEvidence).FirstOrDefault(e => !string.IsNullOrWhiteSpace(e)),
+                            VisualPreviewItems: mergedVisualPreviewItems.Count > 0 ? mergedVisualPreviewItems : null,
+                            VisualPreviewNote: matchingReviewed.Select(g => g.VisualPreviewNote).FirstOrDefault(n => !string.IsNullOrWhiteSpace(n)),
+                            DiagramPreviewImageDataUrl: matchingReviewed.Select(g => g.DiagramPreviewImageDataUrl).FirstOrDefault(url => !string.IsNullOrWhiteSpace(url)),
+                            DiagramPreviewPageNumber: matchingReviewed.Select(g => g.DiagramPreviewPageNumber).FirstOrDefault(p => p.HasValue),
+                            DiagramPreviewNote: matchingReviewed.Select(g => g.DiagramPreviewNote).FirstOrDefault(n => !string.IsNullOrWhiteSpace(n))
+                        );
+
+                        processedReviewedGroups.Add(mergedGroup);
+
+                        foreach (var g in matchingReviewed)
+                        {
+                            groupsList.Remove(g);
+                        }
+                    }
+                }
+            }
+
+            processedReviewedGroups.AddRange(groupsList);
+            processedReviewedGroups = processedReviewedGroups.OrderBy(g => g.StartQuestion).ToList();
+        }
+
+        if (processedReviewedGroups.Count > 0)
+        {
+            foreach (var reviewedGroup in processedReviewedGroups
                 .Where(group => group.StartQuestion > 0 && group.EndQuestion >= group.StartQuestion)
                 .GroupBy(group => (group.StartQuestion, group.EndQuestion))
                 .Select(group => group.First())
@@ -166,6 +244,7 @@ public sealed partial class GemmaPdfExamGenerationService
         normalized = PassageQuestionIntroLineRegex().Replace(normalized, string.Empty);
         normalized = StripInlinePassageFooterNoise(normalized);
         normalized = TrimPassageAtQuestionBoundary(normalized);
+        normalized = RemoveLeadingRepeatedPassageTitle(normalized, passageTitle);
         normalized = NormalizePassageParagraphBreaks(normalized);
         normalized = RemoveLeadingRepeatedPassageTitle(normalized, passageTitle);
 
@@ -212,6 +291,16 @@ public sealed partial class GemmaPdfExamGenerationService
         if (string.IsNullOrWhiteSpace(content))
         {
             return content;
+        }
+
+        var inlineBoundaryMatch = InlinePassageQuestionBoundaryRegex().Match(content);
+        if (inlineBoundaryMatch.Success && inlineBoundaryMatch.Index > 0)
+        {
+            var inlineTrimmed = content[..inlineBoundaryMatch.Index].TrimEnd();
+            if (!string.IsNullOrWhiteSpace(inlineTrimmed))
+            {
+                return inlineTrimmed;
+            }
         }
 
         var boundaryMatch = PassageQuestionBoundaryLineRegex().Match(content);
@@ -263,7 +352,9 @@ public sealed partial class GemmaPdfExamGenerationService
         }
 
         normalized = Regex.Replace(normalized, @"[ \t]*\n[ \t]*", "\n");
-        normalized = Regex.Replace(normalized, @"(?<!\n)\n(?!\n)", " ");
+        normalized = hasStructuredLabels
+            ? Regex.Replace(normalized, @"(?<!\n)\n(?!\n)", " ")
+            : NormalizeUnlabeledPassageLineBreaks(normalized);
         normalized = Regex.Replace(normalized, @"[ \t]{2,}", " ");
         normalized = Regex.Replace(normalized, @" *\n\n *", "\n\n");
         if (hasStructuredLabels)
@@ -299,6 +390,7 @@ public sealed partial class GemmaPdfExamGenerationService
                     return $"**{label}.**";
                 });
             normalized = MissingBlankLineBeforeLabeledPassageRegex().Replace(normalized, "\n\n");
+            normalized = RepairOutOfOrderStructuredParagraphLabels(normalized);
         }
 
         normalized = NormalizeSpeakerAttributionLines(normalized);
@@ -307,7 +399,295 @@ public sealed partial class GemmaPdfExamGenerationService
         normalized = RemoveOrphanMarkdownMarkersByLine(normalized);
         normalized = Regex.Replace(normalized, @"\n{3,}", "\n\n");
 
+        normalized = CleanPassageParagraphLabels(normalized);
+
         return normalized;
+    }
+
+    private static string CleanPassageParagraphLabels(string content)
+    {
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            return content;
+        }
+
+        var paragraphs = content.Split(new[] { "\n\n" }, StringSplitOptions.None);
+        var cleanParagraphs = new List<string>();
+
+        for (int i = 0; i < paragraphs.Length; i++)
+        {
+            var current = paragraphs[i].Trim();
+            if (string.IsNullOrWhiteSpace(current))
+            {
+                continue;
+            }
+
+            var standaloneMatch = Regex.Match(current, @"^\s*(?:\*\*)?(?<label>[A-H])\.?(?:\*\*)?\s*$", RegexOptions.IgnoreCase);
+            if (standaloneMatch.Success && i < paragraphs.Length - 1)
+            {
+                var label = standaloneMatch.Groups["label"].Value.ToUpperInvariant();
+                var next = paragraphs[i + 1].Trim();
+                if (Regex.IsMatch(next, @"^\s*(?:\*\*)?" + Regex.Escape(label) + @"\b", RegexOptions.IgnoreCase))
+                {
+                    continue;
+                }
+            }
+
+            var currentLabelMatch = Regex.Match(current, @"^\s*(?:\*\*)?(?<label>[A-H])(?:\s*[).:\-]|[.])?(?:\*\*)?", RegexOptions.IgnoreCase);
+            char currentLabel = (char)0;
+            if (currentLabelMatch.Success)
+            {
+                currentLabel = char.ToUpperInvariant(currentLabelMatch.Groups["label"].Value[0]);
+            }
+            else
+            {
+                currentLabel = (char)('A' + cleanParagraphs.Count);
+            }
+
+            if (currentLabel >= 'A' && currentLabel <= 'H')
+            {
+                char nextLabel = (char)(currentLabel + 1);
+                string nextLabelStr = nextLabel.ToString();
+                var nextLabelRegex = new Regex(@"(?<prefix>[\s,.;!?]+)(?:\*\*)?" + Regex.Escape(nextLabelStr) + @"\.?(?:\*\*)?\s*$", RegexOptions.IgnoreCase);
+                if (nextLabelRegex.IsMatch(current))
+                {
+                    current = nextLabelRegex.Replace(current, match => 
+                    {
+                        var prefix = match.Groups["prefix"].Value;
+                        if (prefix.Contains('?') || prefix.Contains('!'))
+                        {
+                            return prefix.Contains('?') ? "?" : "!";
+                        }
+                        return ".";
+                    });
+                }
+            }
+
+            cleanParagraphs.Add(current);
+        }
+
+        return string.Join("\n\n", cleanParagraphs);
+    }
+
+    private static string RepairOutOfOrderStructuredParagraphLabels(string content)
+    {
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            return content;
+        }
+
+        var lines = content
+            .Replace("\r\n", "\n")
+            .Replace('\r', '\n')
+            .Split('\n');
+        var rebuilt = new List<string>(lines.Length);
+        char? highestAcceptedLabel = null;
+        string? pendingTextPrefix = null;
+
+        foreach (var rawLine in lines)
+        {
+            var line = rawLine.Trim();
+            var labelMatch = Regex.Match(line, @"^\*\*(?<label>[A-H])\.\*\*$", RegexOptions.IgnoreCase);
+            if (labelMatch.Success)
+            {
+                var label = char.ToUpperInvariant(labelMatch.Groups["label"].Value[0]);
+                if (!highestAcceptedLabel.HasValue || label > highestAcceptedLabel.Value)
+                {
+                    highestAcceptedLabel = label;
+                    pendingTextPrefix = null;
+                    rebuilt.Add(line);
+                    continue;
+                }
+
+                pendingTextPrefix = label.ToString();
+                while (rebuilt.Count > 0 && string.IsNullOrWhiteSpace(rebuilt[^1]))
+                {
+                    rebuilt.RemoveAt(rebuilt.Count - 1);
+                }
+
+                continue;
+            }
+
+            if (!string.IsNullOrWhiteSpace(pendingTextPrefix))
+            {
+                if (string.IsNullOrWhiteSpace(line))
+                {
+                    continue;
+                }
+
+                var repairedLine = $"{pendingTextPrefix} {line}".Trim();
+                pendingTextPrefix = null;
+
+                if (rebuilt.Count > 0 && !string.IsNullOrWhiteSpace(rebuilt[^1]))
+                {
+                    rebuilt[^1] = $"{rebuilt[^1].TrimEnd()} {repairedLine}";
+                }
+                else
+                {
+                    rebuilt.Add(repairedLine);
+                }
+
+                continue;
+            }
+
+            rebuilt.Add(rawLine);
+        }
+
+        return Regex.Replace(string.Join('\n', rebuilt), @"\n{3,}", "\n\n").Trim();
+    }
+
+    private static string NormalizeUnlabeledPassageLineBreaks(string content)
+    {
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            return content;
+        }
+
+        var normalized = content
+            .Replace("\r\n", "\n")
+            .Replace('\r', '\n');
+        var lines = normalized.Split('\n');
+        var builder = new StringBuilder(normalized.Length + 16);
+
+        for (var i = 0; i < lines.Length; i++)
+        {
+            var current = lines[i].Trim();
+            if (string.IsNullOrWhiteSpace(current))
+            {
+                AppendParagraphBreak(builder);
+                continue;
+            }
+
+            if (builder.Length == 0)
+            {
+                builder.Append(current);
+                continue;
+            }
+
+            var previousLine = FindPreviousNonEmptyLine(lines, i);
+            if (ShouldPreserveUnlabeledPassageLineBreak(previousLine, current))
+            {
+                AppendParagraphBreak(builder);
+            }
+            else if (builder.Length > 0 && builder[^1] != '\n' && builder[^1] != ' ')
+            {
+                builder.Append(' ');
+            }
+
+            builder.Append(current);
+        }
+
+        return Regex.Replace(builder.ToString(), @"\n{3,}", "\n\n").Trim();
+    }
+
+    private static string? FindPreviousNonEmptyLine(string[] lines, int currentIndex)
+    {
+        for (var i = currentIndex - 1; i >= 0; i--)
+        {
+            var line = lines[i].Trim();
+            if (!string.IsNullOrWhiteSpace(line))
+            {
+                return line;
+            }
+        }
+
+        return null;
+    }
+
+    private static void AppendParagraphBreak(StringBuilder builder)
+    {
+        if (builder.Length == 0)
+        {
+            return;
+        }
+
+        while (builder.Length > 0 && builder[^1] == ' ')
+        {
+            builder.Length--;
+        }
+
+        if (builder.Length >= 2 && builder[^1] == '\n' && builder[^2] == '\n')
+        {
+            return;
+        }
+
+        if (builder.Length > 0 && builder[^1] == '\n')
+        {
+            builder.Append('\n');
+            return;
+        }
+
+        builder.Append("\n\n");
+    }
+
+    private static bool ShouldPreserveUnlabeledPassageLineBreak(string? previousLine, string currentLine)
+    {
+        if (string.IsNullOrWhiteSpace(previousLine) || string.IsNullOrWhiteSpace(currentLine))
+        {
+            return true;
+        }
+
+        var previous = previousLine.Trim();
+        var current = currentLine.Trim();
+
+        if (IsLikelyStandalonePassageHeading(previous) || IsLikelyStandalonePassageHeading(current))
+        {
+            return true;
+        }
+
+        if (SentenceEndingPunctuationRegex().IsMatch(previous) &&
+            Regex.IsMatch(current, @"^(?:[""'“‘]?\p{Lu}|\d{4}\b)", RegexOptions.CultureInvariant))
+        {
+            return true;
+        }
+
+        if (previous.Length <= 90 &&
+            Regex.IsMatch(previous, @"[:;]$") &&
+            Regex.IsMatch(current, @"^(?:[""'“‘]?\p{Lu}|\d+\b)", RegexOptions.CultureInvariant))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsLikelyStandalonePassageHeading(string line)
+    {
+        if (string.IsNullOrWhiteSpace(line))
+        {
+            return false;
+        }
+
+        var candidate = line.Trim();
+        if (candidate.Length < 3 || candidate.Length > 90)
+        {
+            return false;
+        }
+
+        if (SentenceEndingPunctuationRegex().IsMatch(candidate))
+        {
+            return false;
+        }
+
+        if (Regex.IsMatch(candidate, @"^(?:reading\s+)?passage\s*[0-9OoIl|]+$", RegexOptions.IgnoreCase))
+        {
+            return true;
+        }
+
+        var words = candidate.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (words.Length > 8)
+        {
+            return false;
+        }
+
+        var letters = Regex.Replace(candidate, @"[^\p{L}]", string.Empty);
+        if (letters.Length == 0)
+        {
+            return false;
+        }
+
+        var uppercaseCount = letters.Count(char.IsUpper);
+        return uppercaseCount >= Math.Max(2, letters.Length * 0.75d);
     }
 
     private static string RecoverStructuredParagraphLabels(string aiPassageContent, string rawPassageContent)
@@ -333,27 +713,19 @@ public sealed partial class GemmaPdfExamGenerationService
         string rawPassageContent,
         IReadOnlyDictionary<int, ReadingQuestionGroupOutline> rawQuestionGroupContexts)
     {
-        var preferredContent = RecoverStructuredParagraphLabels(aiPassageContent, rawPassageContent);
-        if (HasStructuredParagraphLabels(preferredContent))
+        return string.IsNullOrWhiteSpace(aiPassageContent)
+            ? rawPassageContent
+            : aiPassageContent;
+    }
+
+    private static int CountPassageWords(string? content)
+    {
+        if (string.IsNullOrWhiteSpace(content))
         {
-            return preferredContent;
+            return 0;
         }
 
-        if (!ShouldForceParagraphLabeling(rawQuestionGroupContexts))
-        {
-            return preferredContent;
-        }
-
-        var rawAutoLabeledContent = AutoLabelParagraphBlocks(rawPassageContent);
-        if (HasStructuredParagraphLabels(rawAutoLabeledContent))
-        {
-            return rawAutoLabeledContent;
-        }
-
-        var preferredAutoLabeledContent = AutoLabelParagraphBlocks(preferredContent);
-        return HasStructuredParagraphLabels(preferredAutoLabeledContent)
-            ? preferredAutoLabeledContent
-            : preferredContent;
+        return Regex.Matches(content, @"[A-Za-z][A-Za-z'’\-]*").Count;
     }
 
     private static bool ShouldForceParagraphLabeling(
@@ -654,6 +1026,7 @@ public sealed partial class GemmaPdfExamGenerationService
         }
 
         var result = string.Join('\n', lines);
+        result = RemoveLeadingTitlePrefix(result, passageTitle, normalizedTitle);
         if (!changed)
         {
             return result.Trim();
@@ -661,6 +1034,57 @@ public sealed partial class GemmaPdfExamGenerationService
 
         result = Regex.Replace(result, @"\n{3,}", "\n\n");
         return result.Trim();
+    }
+
+    private static string RemoveLeadingTitlePrefix(string content, string? passageTitle, string normalizedTitle)
+    {
+        if (string.IsNullOrWhiteSpace(content) || string.IsNullOrWhiteSpace(normalizedTitle))
+        {
+            return content;
+        }
+
+        var title = passageTitle?.Trim();
+        if (string.IsNullOrWhiteSpace(title))
+        {
+            return content;
+        }
+
+        var trimmed = content.TrimStart();
+        if (trimmed.Length <= title.Length ||
+            !trimmed.StartsWith(title, StringComparison.OrdinalIgnoreCase))
+        {
+            return content;
+        }
+
+        var leadingTitle = trimmed[..title.Length];
+        if (!IsMostlyUppercaseTitlePrefix(leadingTitle))
+        {
+            return content;
+        }
+
+        var remainder = trimmed[title.Length..];
+        remainder = Regex.Replace(remainder, @"^\s*[:\-–—]?\s*", string.Empty);
+
+        return string.IsNullOrWhiteSpace(remainder)
+            ? content
+            : remainder.TrimStart();
+    }
+
+    private static bool IsMostlyUppercaseTitlePrefix(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        var letters = value.Where(char.IsLetter).ToList();
+        if (letters.Count == 0)
+        {
+            return false;
+        }
+
+        var upperCount = letters.Count(char.IsUpper);
+        return upperCount >= Math.Max(2, letters.Count * 0.8d);
     }
 
     private static string NormalizeComparableTitle(string? value)

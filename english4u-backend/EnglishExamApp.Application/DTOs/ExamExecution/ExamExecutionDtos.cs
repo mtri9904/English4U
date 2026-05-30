@@ -18,6 +18,19 @@ public sealed record UpdatePracticeSessionAnswersDto(
     int? TimeRemaining,
     IReadOnlyList<PracticeSessionAnswerInputDto>? Answers);
 
+public sealed record PracticeSessionHighlightDto(
+    string Id,
+    string SourceKey,
+    int StartOffset,
+    int EndOffset,
+    string SelectedText,
+    string Color,
+    DateTime CreatedAt,
+    DateTime UpdatedAt);
+
+public sealed record UpdatePracticeSessionHighlightsDto(
+    IReadOnlyList<PracticeSessionHighlightDto>? Highlights);
+
 public sealed record PracticeSessionStartDto(
     Guid SessionId,
     Guid ExamId,

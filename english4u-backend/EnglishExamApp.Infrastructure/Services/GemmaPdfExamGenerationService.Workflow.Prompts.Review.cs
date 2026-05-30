@@ -124,6 +124,8 @@ public sealed partial class GemmaPdfExamGenerationService
         - instruction phải dừng ngay trước câu đầu tiên.
         - group_type phải được xác định bằng CẢ 3 nguồn: instruction, nội dung câu hỏi, và options/layout trong question block. KHÔNG được nhìn instruction một mình.
         - TAXONOMY RULE BẮT BUỘC:
+          + Chỉ phân loại là FLOWCHART_COMPLETION khi trong sơ đồ hình vẽ/flowchart có chứa số câu hỏi trực tiếp (ví dụ vẽ các ô trống đánh số 1, 2, 3... hoặc Q1, Q2, Q3... trong các bước của sơ đồ).
+          + Bắt buộc phân loại là MAP_LABELLING khi hình vẽ/diagram/bản đồ KHÔNG có số câu hỏi Q1, Q2... vẽ trực tiếp trên đó (hình chỉ chứa các nhãn chữ cái A, B, C... để người dùng dán nhãn, còn số câu hỏi là các nhãn chữ bên dưới).
           + Nếu instruction có chữ "summary" NHƯNG câu trả lời phải tự điền trực tiếp từ passage, không có word bank/options/list sẵn, hãy map về SENTENCE_COMPLETION.
           + Chỉ map SUMMARY_COMPLETION khi block "summary" có answer bank sẵn như list of words / answers from the box / write the correct letter A-F.
           + Cụm "Write the correct letter A-F" một mình KHÔNG đủ để map MATCHING_FEATURES. Nếu block là summary + word bank thì vẫn phải là SUMMARY_COMPLETION.
@@ -136,7 +138,7 @@ public sealed partial class GemmaPdfExamGenerationService
         - Nếu instruction kiểu "Choose two letters, A-E" / "Choose three letters" / "Choose the correct answer or answers": nếu group chỉ có 1 câu thì map MCQ_MULTIPLE; nếu group có nhiều câu con đánh số thì map MCQ_CHOOSE_N.
         - Nếu instruction nêu rõ "write TRUE / FALSE / NOT GIVEN" hoặc "write YES / NO / NOT GIVEN", phải ưu tiên map TFNG hoặc YNNG trước các loại completion như TABLE_COMPLETION.
         - Chỉ map TFNG hoặc YNNG khi instruction hoặc answer labels nêu rõ TRUE/FALSE/NOT GIVEN hoặc YES/NO/NOT GIVEN. Không được map TFNG/YNNG chỉ vì block bị lẫn token từ phần khác.
-        - group_type ưu tiên các loại: MATCHING_HEADINGS, MATCHING_INFO, MATCHING_FEATURES, MATCHING_VISUALS, MCQ_SINGLE, MCQ_MULTIPLE, MCQ_CHOOSE_N, SENTENCE_COMPLETION, SUMMARY_COMPLETION, TABLE_COMPLETION, FLOWCHART_COMPLETION, SHORT_ANSWER, TFNG, YNNG.
+        - group_type ưu tiên các loại: MATCHING_HEADINGS, MATCHING_INFO, MATCHING_FEATURES, MATCHING_VISUALS, MCQ_SINGLE, MCQ_MULTIPLE, MCQ_CHOOSE_N, SENTENCE_COMPLETION, SUMMARY_COMPLETION, TABLE_COMPLETION, FLOWCHART_COMPLETION, MAP_LABELLING, SHORT_ANSWER, TFNG, YNNG.
         - `question_preview` phải chứa snippet ngắn từ chính câu hỏi/options mà bạn dùng để phân loại type.
         - `type_evidence` phải nói ngắn gọn vì sao type đó được chọn dựa trên question/options.
         - Không thêm markdown fence, không giải thích.
@@ -236,6 +238,8 @@ public sealed partial class GemmaPdfExamGenerationService
         - "Which paragraph contains" => MatchingInfo.
         - "Choose the correct answer." => MultipleChoice.
         - "Choose the correct answer or answers" => nếu chỉ có 1 câu thì MultipleChoiceMultiple; nếu cùng instruction đó áp cho nhiều câu con trong cùng dải thì MultipleChoiceChooseN.
+        - FlowchartCompletion: Chỉ phân loại là FlowchartCompletion khi trong sơ đồ hình vẽ/flowchart có chứa số câu hỏi trực tiếp (ví dụ vẽ các ô trống đánh số 1, 2, 3... hoặc Q1, Q2, Q3... trong các bước của sơ đồ).
+        - MapLabelling: Bắt buộc phân loại là MapLabelling khi trong hình vẽ/sơ đồ/bản đồ/diagram KHÔNG có số câu hỏi Q1, Q2... vẽ trực tiếp trên đó (hình vẽ chỉ có các nhãn chữ cái A, B, C... để người dùng dán nhãn, còn danh sách các câu hỏi 1, 2, 3... là các nhãn chữ nằm ở bên dưới hình vẽ, ví dụ "Z-axis motor").
         - Block TRUE/FALSE/NOT GIVEN phải đồng nhất, không tự đổi sang YES/NO/NOT GIVEN.
         - FEW-SHOT TEMPLATE CẮT INSTRUCTION: raw "Complete the following sentences using NO MORE THAN THREE WORDS... Another example ... is 31" => instruction phải là "Complete the following sentences using NO MORE THAN THREE WORDS..." và question 31 phải là "Another example ... is ___".
         - FEW-SHOT TEMPLATE MCQ_CHOOSE_N: nếu raw "A B C D E F G H McCarthy claims... The cost... Most British..." là shared answer bank của cả group, options phải bung ra thành ["A. McCarthy claims ...", "B. The cost ...", "C. Most British ...", ...], không được để label trống.
@@ -254,5 +258,6 @@ public sealed partial class GemmaPdfExamGenerationService
         Nếu raw text chỉ còn "A B C D E F G H" và block thật sự dùng shared answer bank, BẠN BẮT BUỘC phải kéo xuống "Review and Explanations" để khôi phục nguyên văn nội dung từng option.
         Việc trả về options rỗng, label-only, hoặc checkbox-only cho MultipleChoiceChooseN là LỖI NGHIÊM TRỌNG.
         Sửa lỗi dính chữ do OCR/PDF khi hiển nhiên (missing spaces), không thay đổi nghĩa.
+        QUY TẮC BẮT BUỘC VỀ QUESTION_TEXT CÁC DẠNG ĐIỀN TỪ (FillInBlanks/SummaryCompletion/TableCompletion/FlowchartCompletion/SentenceCompletion): question_text phải chứa TOÀN BỘ nội dung câu từ PDF kể cả in đậm (**bold**), in nghiêng (*italic*), xuống dòng (\n), nhãn con, tiêu đề trong câu. Không được cắt bớt hay lấy một phần; question_text phải là bản sao nguyên vẹn của câu đó trong PDF.
         """;
 }

@@ -28,7 +28,8 @@ public sealed partial class GemmaPdfExamGenerationService
     private static bool TryDeserializePassage(
         string rawResponse,
         out GemmaPassagePayload payload,
-        out string error)
+        out string error,
+        string? fallbackPassageContent = null)
     {
         try
         {
@@ -37,6 +38,12 @@ public sealed partial class GemmaPdfExamGenerationService
             if (parsed is null)
             {
                 throw new JsonException(parseError ?? "Deserialized payload is null.");
+            }
+
+            if (string.IsNullOrWhiteSpace(parsed.PassageContent) &&
+                !string.IsNullOrWhiteSpace(fallbackPassageContent))
+            {
+                parsed.PassageContent = fallbackPassageContent.Trim();
             }
 
             if (string.IsNullOrWhiteSpace(parsed.PassageContent))

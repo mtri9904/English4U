@@ -39,3 +39,30 @@ export const getOptionLabel = (index: number, type: 'alpha' | 'roman' = 'alpha')
     }
     return String.fromCharCode(65 + index); // A, B, C...
 };
+
+/**
+ * Loại bỏ nhãn lựa chọn dẫn đầu (ví dụ: A. hoặc A- hoặc A:) ra khỏi text của option nếu có.
+ */
+export const stripOptionLeadingLabel = (
+    optionText: string | null | undefined,
+    index: number,
+    optionLabelType: 'alpha' | 'roman',
+): string => {
+    const trimmedText = (optionText ?? '').trim();
+    if (!trimmedText) {
+        return '';
+    }
+
+    const label = getOptionLabel(index, optionLabelType).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return trimmedText.replace(new RegExp(`^\\s*${label}\\s*[.)\\-:]\\s*`, 'i'), '').trim();
+};
+
+export const isOptionLabelOnly = (optionText: string | null | undefined): boolean => {
+    const trimmed = (optionText ?? '').trim();
+    return /^[A-Z]$/.test(trimmed);
+};
+
+export const areAllOptionsLabelOnly = (options: { optionText?: string | null }[]): boolean => {
+    if (options.length === 0) return false;
+    return options.every((option) => isOptionLabelOnly(option.optionText));
+};

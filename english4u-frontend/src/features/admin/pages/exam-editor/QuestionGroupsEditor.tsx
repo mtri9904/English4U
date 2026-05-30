@@ -609,7 +609,7 @@ const setListeningMcqOptionInputMode = (
                 const usesLegacySharedMultiSelectLayout =
                     groupType === QUESTION_TYPES.MCQ_CHOOSE_N ||
                     (groupType === QUESTION_TYPES.MCQ_MULTIPLE && hasMultiSelectLayout(group.contentData));
-                const showOptionsBox = (isMatchingType && !isMatchingHeadingsType) || isSummaryType;
+                const showOptionsBox = isMatchingType || isSummaryType;
                 const groupStartNum = runningQNum;
                 const sharedQuestionOptions = getSharedQuestionOptions(group);
                 const matchingHeadingOptionCount = Math.max(1, sharedQuestionOptions.length || 4);

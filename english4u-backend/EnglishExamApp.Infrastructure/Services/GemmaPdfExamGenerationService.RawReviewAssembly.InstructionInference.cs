@@ -90,6 +90,43 @@ public sealed partial class GemmaPdfExamGenerationService
             : normalizedAiPreview;
     }
 
+    private static string CleanLeadingInstructionNoise(string instruction)
+    {
+        if (string.IsNullOrWhiteSpace(instruction))
+        {
+            return string.Empty;
+        }
+
+        var result = instruction.Trim();
+        var rubrics = new[] { "READING PASSAGE", "COMPLETE ", "CHOOSE ", "MATCH ", "LOOK ", "CLASSIFY ", "WRITE ", "DO ", "USING ", "ANSWER ", "LABEL ", "IDENTIFY ", "WHICH " };
+        var bestIndex = -1;
+        foreach (var rubric in rubrics)
+        {
+            var idx = result.IndexOf(rubric, StringComparison.OrdinalIgnoreCase);
+            if (idx >= 0)
+            {
+                if (bestIndex == -1 || idx < bestIndex)
+                {
+                    bestIndex = idx;
+                }
+            }
+        }
+
+        if (bestIndex > 0)
+        {
+            var prefix = result[..bestIndex].Trim();
+            if (prefix.Length < 100 && (
+                Regex.IsMatch(prefix, @"^(?:\d+|\W|practice|test|page|questions?\s*\d+.*)+$", RegexOptions.IgnoreCase) ||
+                prefix.Split(' ').Length <= 5
+            ))
+            {
+                result = result[bestIndex..].Trim();
+            }
+        }
+
+        return result;
+    }
+
     private static string TrimLeadingQuestionPreviewArtifacts(string? value, int startQuestion)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -148,7 +185,7 @@ public sealed partial class GemmaPdfExamGenerationService
 
         return distinctCandidates
             .OrderByDescending(ScoreInstructionCandidate)
-            .ThenByDescending(candidate => candidate.Length)
+            .ThenBy(candidate => candidate.Length)
             .First();
     }
 
@@ -161,6 +198,12 @@ public sealed partial class GemmaPdfExamGenerationService
 
         var normalized = Regex.Replace(candidate, @"\s+", " ").Trim();
         var score = 0;
+
+        if (KnownIeltsInstructionPatterns.Any(pattern =>
+                Regex.IsMatch(normalized, pattern, RegexOptions.IgnoreCase | RegexOptions.Singleline)))
+        {
+            score += 50;
+        }
 
         if (Regex.IsMatch(normalized, @"(?i)\bchoose\s+(?:one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+phrase(?:s)?\s+from\s+the\s+list\s+of\s+phrases\b"))
         {

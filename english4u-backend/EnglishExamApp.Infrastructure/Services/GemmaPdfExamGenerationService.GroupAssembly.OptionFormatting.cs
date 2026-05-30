@@ -38,6 +38,7 @@ public sealed partial class GemmaPdfExamGenerationService
                 CorrectAnswer = NormalizeAnswerByGroupType("MCQ_CHOOSE_N", question.CorrectAnswer)
             })
             .ToList();
+        normalizedQuestions = DistributeChooseNSharedAnswerAcrossBoxes(normalizedQuestions);
 
         var optionSets = normalizedQuestions
             .Select(question => question.Options
@@ -132,6 +133,222 @@ public sealed partial class GemmaPdfExamGenerationService
         return normalizedQuestions;
     }
 
+    private static List<CreateQuestionDto> DistributeChooseNSharedAnswerAcrossBoxes(List<CreateQuestionDto> questions)
+    {
+        if (questions.Count <= 1)
+        {
+            return questions;
+        }
+
+        var answerValues = questions
+            .Select(question => question.CorrectAnswer?.Trim() ?? string.Empty)
+            .Where(answer => !string.IsNullOrWhiteSpace(answer))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (answerValues.Count != 1)
+        {
+            return questions;
+        }
+
+        var tokens = SplitAnswerTokens(answerValues[0])
+            .Select(token => token.Trim())
+            .Where(token => !string.IsNullOrWhiteSpace(token))
+            .ToList();
+        if (tokens.Count != questions.Count)
+        {
+            return questions;
+        }
+
+        var orderedQuestions = questions
+            .Select((question, index) => new { Question = question, Index = index })
+            .OrderBy(item => item.Question.QuestionNumber ?? int.MaxValue)
+            .ThenBy(item => item.Index)
+            .ToList();
+
+        var result = questions.ToList();
+        for (var index = 0; index < orderedQuestions.Count; index++)
+        {
+            var originalIndex = orderedQuestions[index].Index;
+            result[originalIndex] = result[originalIndex] with
+            {
+                CorrectAnswer = tokens[index]
+            };
+        }
+
+        return result;
+    }
+
+    private static List<CreateQuestionDto> NormalizeMatchingSharedOptionBank(
+        string mappedQuestionType,
+        List<CreateQuestionDto> questions,
+        string? instruction,
+        string? rawBlockText)
+    {
+        if (questions.Count == 0)
+        {
+            return questions;
+        }
+
+        var hasAnyOptions = questions.Any(question => question.Options.Count > 0);
+        if (hasAnyOptions)
+        {
+            return questions;
+        }
+
+        var sharedOptions = ExtractMatchingSharedOptionBank(instruction)
+            .Concat(ExtractMatchingSharedOptionBank(rawBlockText))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (sharedOptions.Count < 2)
+        {
+            return questions;
+        }
+
+        return questions
+            .Select(question => question with
+            {
+                Options = BuildOptions(sharedOptions, mappedQuestionType, question.CorrectAnswer)
+            })
+            .ToList();
+    }
+
+    private static List<string> ExtractMatchingSharedOptionBank(string? source)
+    {
+        if (string.IsNullOrWhiteSpace(source))
+        {
+            return [];
+        }
+
+        var normalized = NormalizeExtractedSpacing(source)
+            .Replace("\r\n", "\n")
+            .Replace('\r', '\n')
+            .Trim();
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            return [];
+        }
+
+        var colonMatches = Regex.Matches(
+                normalized,
+                @"(?is)(?<![A-Za-z\-])(?<label>[A-H])\s*:\s*(?<text>.*?)(?=\s*(?<![A-Za-z\-])[A-H]\s*:\s*|\z)")
+            .Cast<Match>()
+            .Select(match => new
+            {
+                Label = match.Groups["label"].Value.ToUpperInvariant(),
+                Text = CleanMatchingOptionText(match.Groups["text"].Value)
+            })
+            .Where(item => !string.IsNullOrWhiteSpace(item.Text))
+            .ToList();
+
+        if (colonMatches.Count >= 2 && AreSequentialOptionLabels(colonMatches.Select(item => item.Label[0]).ToList()))
+        {
+            return colonMatches
+                .Select(item => $"{item.Label}. {item.Text}")
+                .ToList();
+        }
+
+        var matches = Regex.Matches(
+                normalized,
+                @"(?im)^\s*(?<label>[A-H])\s*[.)]\s*(?<text>.+?)(?=\s*$)")
+            .Cast<Match>()
+            .Select(match => new
+            {
+                Label = match.Groups["label"].Value.ToUpperInvariant(),
+                Text = CleanMatchingOptionText(match.Groups["text"].Value)
+            })
+            .Where(item => !string.IsNullOrWhiteSpace(item.Text))
+            .ToList();
+
+        if (matches.Count < 2)
+        {
+            return [];
+        }
+
+        var labels = matches.Select(item => item.Label[0]).ToList();
+        if (!AreSequentialOptionLabels(labels))
+        {
+            return [];
+        }
+
+        return matches
+            .Select(item => $"{item.Label}. {item.Text}")
+            .ToList();
+    }
+
+    private static string? RemoveMatchingOptionBankFromInstruction(string? instruction)
+    {
+        if (string.IsNullOrWhiteSpace(instruction))
+        {
+            return instruction;
+        }
+
+        var cleaned = Regex.Replace(
+            instruction,
+            @"(?is)\s+(?<![A-Za-z\-])A\s*:\s*.+?(?=\s*$)",
+            string.Empty).Trim();
+        return string.IsNullOrWhiteSpace(cleaned) ? instruction.Trim() : cleaned;
+    }
+
+    private static string CleanMatchingOptionText(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        var cleaned = Regex.Replace(value, @"\s+", " ").Trim().Trim(',', ';');
+        cleaned = Regex.Replace(
+            cleaned,
+            @"(?i)\s+(?:and\s+)?(?:the\s+)?(?:list\s+of\s+)?(?:people|persons|researchers|scientists|categories|options|headings|phrases)\s*$",
+            string.Empty).Trim();
+        cleaned = Regex.Replace(
+            cleaned,
+            @"(?i)\s+match\s+each\s+statement.+$",
+            string.Empty).Trim();
+        cleaned = Regex.Replace(
+            cleaned,
+            @"(?i)\s+write\s+the\s+correct\s+letter.+$",
+            string.Empty).Trim();
+        return cleaned.Trim(',', ';', '.', ' ');
+    }
+
+    private static bool AreSequentialOptionLabels(IReadOnlyList<char> labels)
+    {
+        if (labels.Count < 2)
+        {
+            return false;
+        }
+
+        for (var index = 0; index < labels.Count; index++)
+        {
+            if (labels[index] != 'A' + index)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool IsAllSingleLetterOptions(List<string> options)
+    {
+        if (options.Count == 0)
+        {
+            return false;
+        }
+
+        foreach (var opt in options)
+        {
+            var trimmed = opt.Trim().Trim('.', ')', ':').ToUpperInvariant();
+            if (trimmed.Length != 1 || trimmed[0] < 'A' || trimmed[0] > 'Z')
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private static List<CreateQuestionOptionDto> BuildOptions(
         List<string>? rawOptions,
         string mappedQuestionType,
@@ -140,8 +357,16 @@ public sealed partial class GemmaPdfExamGenerationService
         var options = rawOptions?
             .Where(option => !string.IsNullOrWhiteSpace(option))
             .Select(option => RemoveSelectionMarkers(UnescapeExtractedText(option.Trim())))
+            .Select(SanitizeOptionForStorage)
             .Where(option => !string.IsNullOrWhiteSpace(option))
             .ToList() ?? [];
+
+        if ((string.Equals(mappedQuestionType, "FLOWCHART_COMPLETION", StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(mappedQuestionType, "MAP_LABELLING", StringComparison.OrdinalIgnoreCase)) &&
+            IsAllSingleLetterOptions(options))
+        {
+            return [];
+        }
 
         if (options.Count == 0 && string.Equals(mappedQuestionType, "TFNG", StringComparison.Ordinal))
         {
@@ -163,13 +388,24 @@ public sealed partial class GemmaPdfExamGenerationService
 
         for (var i = 0; i < options.Count; i++)
         {
+            var optionLabel = ((char)('A' + i)).ToString();
             var optionText = NormalizeOptionTextForDisplay(options[i], i, stripOptionLabelPrefix);
+            if (string.Equals(mappedQuestionType, "MATCHING_HEADINGS", StringComparison.OrdinalIgnoreCase))
+            {
+                optionText = StripLeadingRomanNumeral(optionText);
+            }
+
+            if (mappedQuestionType is "SUMMARY_COMPLETION" or "TABLE_COMPLETION" &&
+                !Regex.IsMatch(optionText, @"^\s*[A-Z]\s*[.)\:\-]\s+\S", RegexOptions.IgnoreCase))
+            {
+                optionText = $"{optionLabel}. {optionText}".Trim();
+            }
+
             if (IsMcqType(mappedQuestionType) && IsOptionLabelOnly(optionText))
             {
                 optionText = string.Empty;
             }
 
-            var optionLabel = ((char)('A' + i)).ToString();
             var normalizedOptionText = NormalizeToken(optionText);
             var isCorrect =
                 answerTokens.Contains(optionLabel) ||
@@ -253,5 +489,21 @@ public sealed partial class GemmaPdfExamGenerationService
         }
 
         return NormalizeExtractedSpacing(text).Trim();
+    }
+
+    private static string StripLeadingRomanNumeral(string optionText)
+    {
+        if (string.IsNullOrWhiteSpace(optionText))
+        {
+            return optionText;
+        }
+        var match = Regex.Match(
+            optionText,
+            @"^\s*(?:(?:i{1,3}|i[vx]|vi{0,3}|x[i]{0,3})\s*(?:[.)\:\-]\s+|\s+)|(?:I{1,3}|I[VX]|VI{0,3}|X[I]{0,3})\s*(?:[.)\:\-]\s+))(?<text>.+)$");
+        if (match.Success)
+        {
+            return match.Groups["text"].Value.Trim();
+        }
+        return optionText.Trim();
     }
 }

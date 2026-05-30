@@ -294,9 +294,12 @@ public sealed partial class GemmaPdfExamGenerationService
         Func<int, int, TimeSpan, string, Task>? onApiRetry,
         CancellationToken cancellationToken)
     {
-        var totalAttempts = MaxJsonParseRetries + 1;
+        var totalJsonAttempts = MaxJsonParseRetries + 1;
+        var jsonAttempt = 0;
+        var apiTransientAttempt = 0;
+        var lastParseError = string.Empty;
 
-        for (var attempt = 1; attempt <= totalAttempts; attempt++)
+        while (jsonAttempt < totalJsonAttempts)
         {
             string rawResponse;
             try
@@ -305,51 +308,61 @@ public sealed partial class GemmaPdfExamGenerationService
             }
             catch (Exception ex) when (GemmaApiRetryDelayResolver.TryResolve(ex, out var retryDelay, out var retryReason))
             {
+                apiTransientAttempt++;
+
                 logger.LogWarning(
                     ex,
-                    "Gemma API transient failure for passage {PassageNumber}/{TotalPassages} at attempt {Attempt}/{MaxAttempts}. Retry in {RetryDelaySeconds}s. Reason: {Reason}",
+                    "Gemini API transient failure for passage {PassageNumber}/{TotalPassages} at attempt {Attempt}/{MaxAttempts}. Retry in {RetryDelaySeconds}s. Reason: {Reason}",
                     passageNumber,
                     totalPassages,
-                    attempt,
-                    totalAttempts,
+                    apiTransientAttempt,
+                    MaxGemmaApiTransientRetries,
                     Math.Ceiling(retryDelay.TotalSeconds),
                     retryReason);
 
-                if (onApiRetry is not null)
-                {
-                    await onApiRetry(attempt, totalAttempts, retryDelay, retryReason);
-                }
-
-                if (attempt == totalAttempts)
+                if (apiTransientAttempt >= MaxGemmaApiTransientRetries)
                 {
                     throw;
+                }
+
+                if (onApiRetry is not null)
+                {
+                    await onApiRetry(apiTransientAttempt, MaxGemmaApiTransientRetries, retryDelay, retryReason);
                 }
 
                 await Task.Delay(retryDelay, cancellationToken);
                 continue;
             }
 
-            if (TryDeserializePassage(rawResponse, out var payload, out var parseError))
+            apiTransientAttempt = 0;
+            jsonAttempt++;
+
+            if (TryDeserializePassage(rawResponse, out var payload, out var parseError, passageText))
             {
                 return payload;
             }
 
+            lastParseError = parseError;
             logger.LogWarning(
-                "Gemma returned invalid JSON for passage {PassageNumber}/{TotalPassages} at attempt {Attempt}/{MaxAttempts}: {Error}",
+                "Gemini returned invalid JSON for passage {PassageNumber}/{TotalPassages} at attempt {Attempt}/{MaxAttempts}: {Error}",
                 passageNumber,
                 totalPassages,
-                attempt,
-                totalAttempts,
+                jsonAttempt,
+                totalJsonAttempts,
                 parseError);
 
             if (onInvalidJson is not null)
             {
-                await onInvalidJson(attempt, totalAttempts, parseError);
+                await onInvalidJson(jsonAttempt, totalJsonAttempts, parseError);
             }
         }
 
+        var errorSuffix = string.IsNullOrWhiteSpace(lastParseError)
+            ? string.Empty
+            : $" Last parse error: {BuildTextPreview(lastParseError)}";
+
         throw new InvalidOperationException(
-            $"Unable to parse Gemma response into JSON for passage {passageNumber} after {totalAttempts} attempts.");
+            $"Unable to parse Gemini response into JSON for passage {passageNumber} after {totalJsonAttempts} attempts.{errorSuffix}");
     }
 
     private Task<string> RequestGemmaPassageAsync(string passageText, CancellationToken cancellationToken) =>

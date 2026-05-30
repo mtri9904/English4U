@@ -1074,25 +1074,65 @@ export const inferCopilotReplayMatchFromText = (content?: string | null): Inferr
 
     const timestampRangePattern = /[\[(]?(\d{1,2}:\d{2}(?::\d{2})?)[\])]?\s*(?:đến|den|tới|toi|[-–—]|to)\s*[\[(]?(\d{1,2}:\d{2}(?::\d{2})?)[\])]?/i;
     const timestampRangePatternGlobal = /[\[(]?(\d{1,2}:\d{2}(?::\d{2})?)[\])]?\s*(?:đến|den|tới|toi|[-–—]|to)\s*[\[(]?(\d{1,2}:\d{2}(?::\d{2})?)[\])]?/gi;
+    const questionMatch = normalizedContent.match(/(?:câu|cau|question|q)\s*(\d{1,3})/i);
+    const buildMatchResult = (
+        match: RegExpMatchArray,
+        transcriptSnippet?: string | null,
+    ): InferredCopilotReplayMatch | null => {
+        const answerStartSecond = parseTranscriptTimeLabel(match[1]);
+        const answerEndSecond = parseTranscriptTimeLabel(match[2] ?? null);
+        if (answerStartSecond == null) {
+            return null;
+        }
+
+        return {
+            answerStartSecond,
+            answerEndSecond,
+            answerTimestampLabel: formatTranscriptRangeLabel(answerStartSecond, answerEndSecond),
+            questionNumber: questionMatch ? Number(questionMatch[1]) : null,
+            transcriptSnippet: normalizeInferredSnippetText(transcriptSnippet) || null,
+        };
+    };
+
+    const answerLocationRangeMatch = normalizedContent.match(
+        new RegExp(
+            [
+                String.raw`(?:`,
+                String.raw`(?:để|de)\s+(?:trả|tra)\s+(?:lời|loi)(?:\s+(?:đúng|dung))?(?:\s+(?:câu|cau|question|q)\s*\d{1,3})?`,
+                String.raw`|(?:cần|can|hãy|hay)\s+(?:lắng|lang)\s+nghe`,
+                String.raw`|(?:nghe|listen)(?:\s+(?:đoạn|doan|khúc|khuc|phần|phan|to))?`,
+                String.raw`)[^\n]{0,180}?`,
+                timestampRangePattern.source,
+            ].join(''),
+            'i',
+        ),
+    );
+    if (answerLocationRangeMatch) {
+        const quotedSnippetMatches = Array.from(
+            normalizedContent.matchAll(/["“”]([^"“”\n]{4,220})["“”]/g),
+        ).map((match) => match[1]?.trim() ?? '').filter(Boolean);
+        const inferredMatch = buildMatchResult(
+            answerLocationRangeMatch,
+            quotedSnippetMatches[0] ?? null,
+        );
+        if (inferredMatch) {
+            return inferredMatch;
+        }
+    }
+
     const answerSpecificRangeMatch = normalizedContent.match(
         new RegExp(`(?:đáp án(?:\\s+đúng)?|answer|evidence|timestamp)(?:\\s+(?:nằm|nam|ở|o|at|is|appears|xuất hiện|xuat hien))?(?:\\s*[:\\-]?\\s*)${timestampRangePattern.source}`, 'i'),
     );
     if (answerSpecificRangeMatch) {
-        const answerStartSecond = parseTranscriptTimeLabel(answerSpecificRangeMatch[1]);
-        const answerEndSecond = parseTranscriptTimeLabel(answerSpecificRangeMatch[2] ?? null);
-        if (answerStartSecond != null) {
-            const questionMatch = normalizedContent.match(/(?:câu|cau|question|q)\s*(\d{1,3})/i);
-            const quotedSnippetMatches = Array.from(
-                normalizedContent.matchAll(/["“”]([^"“”\n]{4,220})["“”]/g),
-            ).map((match) => match[1]?.trim() ?? '').filter(Boolean);
-
-            return {
-                answerStartSecond,
-                answerEndSecond,
-                answerTimestampLabel: formatTranscriptRangeLabel(answerStartSecond, answerEndSecond),
-                questionNumber: questionMatch ? Number(questionMatch[1]) : null,
-                transcriptSnippet: normalizeInferredSnippetText(quotedSnippetMatches[quotedSnippetMatches.length - 1] ?? null) || null,
-            };
+        const quotedSnippetMatches = Array.from(
+            normalizedContent.matchAll(/["“”]([^"“”\n]{4,220})["“”]/g),
+        ).map((match) => match[1]?.trim() ?? '').filter(Boolean);
+        const inferredMatch = buildMatchResult(
+            answerSpecificRangeMatch,
+            quotedSnippetMatches[quotedSnippetMatches.length - 1] ?? null,
+        );
+        if (inferredMatch) {
+            return inferredMatch;
         }
     }
 
@@ -1115,7 +1155,6 @@ export const inferCopilotReplayMatchFromText = (content?: string | null): Inferr
         return null;
     }
 
-    const questionMatch = normalizedContent.match(/(?:câu|cau|question|q)\s*(\d{1,3})/i);
     const quotedSnippetMatches = Array.from(
         normalizedContent.matchAll(/["“”]([^"“”\n]{4,220})["“”]/g),
     ).map((match) => ({

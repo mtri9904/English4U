@@ -122,6 +122,9 @@ public sealed partial class GemmaPdfExamGenerationService
     [GeneratedRegex(@"(?im)^\s*(?:questions?\s*[0-9OoIl\|]{1,2}\s*(?:-|–|—|‑|−|to)\s*[0-9OoIl\|]{1,2}\b|question\s*[0-9OoIl\|]{1,2}\b|do\s+the\s+following\s+statements\b|complete\s+the\s+following\s+sentences\b|according\s+to\s+the\s+information\s+given\b|for\s+each\s+question\b|in\s+boxes?\s*[0-9OoIl\|]{1,2}\s*(?:-|–|—|‑|−|to)\s*[0-9OoIl\|]{1,2}\b|the\s+text\s+has\s+\d+\s+paragraphs?\b|choose\s+the\s+required\s+letters\b|choose\s+the\s+correct\s+answer(?:\s+or\s+answers?)?\b|solution\s*:|review\s+and\s+explanations?\b)\b.*$")]
     private static partial Regex PassageQuestionBoundaryLineRegex();
 
+    [GeneratedRegex(@"(?i)(?<![A-Za-z])questions?\s*[0-9OoIl\|]{1,2}\s*(?:-|–|—|‑|−|to)\s*[0-9OoIl\|]{1,2}\b")]
+    private static partial Regex InlinePassageQuestionBoundaryRegex();
+
     [GeneratedRegex(@"(?<!\b[A-Z]\.)(?<=[\.\?!""'”’\)\]])\s*(?=(?:\*\*)?[A-H](?:\s*[).:\-]|[.])?(?:\*\*)?\s+)")]
     private static partial Regex CollapsedPassageParagraphBoundaryRegex();
 
@@ -303,7 +306,7 @@ public sealed partial class GemmaPdfExamGenerationService
     [GeneratedRegex(@"\bchoose\s+the\s+correct\s+answer\s+or\s+answers?\b|\bchoose\s+the\s+correct\s+answers?\b", RegexOptions.IgnoreCase)]
     private static partial Regex ChooseCorrectAnswersOnlyRegex();
 
-    [GeneratedRegex(@"\b(one|two|three|four|five|six|seven|eight|nine|ten|\d+)\b\s+of\s+the\s+following\s+(statements?|options?)\b|\bin\s+any\s+order\b|\bcorresponding\s+letters?\b", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"\b(two|three|four|five|six|seven|eight|nine|ten|[2-9]|\d{2,})\b\s+of\s+the\s+following\s+(statements?|options?)\b|\bin\s+any\s+order\b|\bcorresponding\s+letters\b", RegexOptions.IgnoreCase)]
     private static partial Regex ChooseNStatementsInstructionRegex();
 
     [GeneratedRegex(@"\b(which|choose|according|match|write|complete|paragraph|headings?|statements?|following|correct)\b", RegexOptions.IgnoreCase)]
@@ -362,6 +365,10 @@ public sealed partial class GemmaPdfExamGenerationService
         int StartQuestion,
         int EndQuestion,
         int StartIndex);
+    private readonly record struct GroupedQuestionRange(
+        int StartQuestion,
+        int EndQuestion,
+        string BlockText);
 
     private sealed record IndexedQuestion(GemmaQuestionPayload Question, int Index);
 
@@ -403,23 +410,32 @@ public sealed partial class GemmaPdfExamGenerationService
     private sealed class GemmaQuestionPayload
     {
         [JsonPropertyName("question_number")]
-        public JsonElement QuestionNumber { get; set; }
+        public JsonElement? QuestionNumber { get; set; }
 
         [JsonPropertyName("question_type")]
-        public JsonElement QuestionType { get; set; }
+        public JsonElement? QuestionType { get; set; }
+
+        [JsonPropertyName("instruction")]
+        public JsonElement? Instruction { get; set; }
 
         [JsonPropertyName("question_text")]
-        public JsonElement QuestionText { get; set; }
+        public JsonElement? QuestionText { get; set; }
 
         [JsonPropertyName("options")]
-        public JsonElement Options { get; set; }
+        public JsonElement? Options { get; set; }
 
         [JsonPropertyName("answer")]
-        public JsonElement Answer { get; set; }
+        public JsonElement? Answer { get; set; }
 
         [JsonPropertyName("explanation")]
-        public JsonElement Explanation { get; set; }
+        public JsonElement? Explanation { get; set; }
+
+        [JsonPropertyName("question_group")]
+        public JsonElement? QuestionGroup { get; set; }
     }
+
+    private sealed record GeminiPassageContentRepairPayload(
+        [property: JsonPropertyName("passage_content")] string? PassageContent);
 
     private sealed record MultiSelectContentData(
         [property: JsonPropertyName("layout")] string Layout,
@@ -430,7 +446,8 @@ public sealed partial class GemmaPdfExamGenerationService
         [property: JsonPropertyName("imageUrl")] string ImageUrl,
         [property: JsonPropertyName("answerMode")] string AnswerMode,
         [property: JsonPropertyName("pageNumber")] int? PageNumber = null,
-        [property: JsonPropertyName("note")] string? Note = null);
+        [property: JsonPropertyName("note")] string? Note = null,
+        [property: JsonPropertyName("cropBox")] PdfVisualCropBoxDto? CropBox = null);
 
     private sealed record MapLabellingGroupAssetsData(
         [property: JsonPropertyName("layout")] string Layout,
@@ -438,7 +455,8 @@ public sealed partial class GemmaPdfExamGenerationService
         [property: JsonPropertyName("width")] int Width,
         [property: JsonPropertyName("zoom")] int Zoom,
         [property: JsonPropertyName("pageNumber")] int? PageNumber = null,
-        [property: JsonPropertyName("note")] string? Note = null);
+        [property: JsonPropertyName("note")] string? Note = null,
+        [property: JsonPropertyName("cropBox")] PdfVisualCropBoxDto? CropBox = null);
 
     private sealed record MatchingVisualGroupAssetsData(
         [property: JsonPropertyName("layout")] string Layout,
@@ -599,41 +617,9 @@ public sealed partial class GemmaPdfExamGenerationService
         public string? Explanation { get; set; }
     }
 
-    private readonly record struct PdfTextExtractionResult(
-        string RawText,
-        int PageCount,
-        string Engine,
-        IReadOnlyList<PdfExtractedPage> Pages,
-        byte[] PdfBytes);
-
-    private sealed record PdfExtractedPage(
-        int PageNumber,
-        string RawText,
-        double PageHeight,
-        IReadOnlyList<PdfExtractedWord> Words,
-        IReadOnlyList<PdfExtractedPageImage> Images);
-
-    private sealed record PdfExtractedWord(
-        string Text,
-        double TopFromPageTop,
-        double BottomFromPageTop,
-        double Left,
-        double Right);
-
     private sealed record PdfExtractedWordLine(
         string Text,
         string NormalizedText,
-        double TopFromPageTop,
-        double BottomFromPageTop,
-        double Left,
-        double Right);
-
-    private sealed record PdfExtractedPageImage(
-        string DataUrl,
-        double PageCoverage,
-        int PixelArea,
-        int WidthInSamples,
-        int HeightInSamples,
         double TopFromPageTop,
         double BottomFromPageTop,
         double Left,
@@ -643,7 +629,9 @@ public sealed partial class GemmaPdfExamGenerationService
         double TopRatio,
         double BottomRatio,
         bool HasExplicitBottomBoundary,
-        bool HasExplicitInstructionBoundary);
+        bool HasExplicitInstructionBoundary,
+        double LeftRatio = 0d,
+        double RightRatio = 1d);
 
     private sealed record QuestionGroupReviewContextBlock(
         int StartQuestion,
@@ -654,4 +642,15 @@ public sealed partial class GemmaPdfExamGenerationService
         string? BlockText,
         string? HeuristicGroupType,
         string? TypeEvidence);
+    private sealed record GeminiDiagramCropResponse(
+        [property: JsonPropertyName("crop_box")] GeminiDiagramCropBox? CropBox,
+        [property: JsonPropertyName("page_number")] int? PageNumber,
+        [property: JsonPropertyName("confidence")] double? Confidence = null,
+        [property: JsonPropertyName("reason")] string? Reason = null);
+
+    private sealed record GeminiDiagramCropBox(
+        [property: JsonPropertyName("x")] double X,
+        [property: JsonPropertyName("y")] double Y,
+        [property: JsonPropertyName("width")] double Width,
+        [property: JsonPropertyName("height")] double Height);
 }

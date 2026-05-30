@@ -59,6 +59,9 @@ public sealed partial class GemmaPdfExamGenerationService
     private static string NormalizeToken(string value) =>
         Regex.Replace(value.Trim(), @"\s+", " ").ToUpperInvariant();
 
+    private static string? ReadJsonAsText(JsonElement? element) =>
+        element.HasValue ? ReadJsonAsText(element.Value) : null;
+
     private static string? ReadJsonAsText(JsonElement element) => element.ValueKind switch
     {
         JsonValueKind.String => element.GetString(),
@@ -69,16 +72,17 @@ public sealed partial class GemmaPdfExamGenerationService
         _ => element.ToString()
     };
 
-    private static List<string> ExtractOptions(JsonElement optionsElement)
+    private static List<string> ExtractOptions(JsonElement? optionsElement)
     {
-        if (optionsElement.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
+        if (optionsElement == null || optionsElement.Value.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
         {
             return [];
         }
 
-        if (optionsElement.ValueKind != JsonValueKind.Array)
+        var val = optionsElement.Value;
+        if (val.ValueKind != JsonValueKind.Array)
         {
-            var fallbackOption = ReadJsonAsText(optionsElement);
+            var fallbackOption = ReadJsonAsText(val);
             if (string.IsNullOrWhiteSpace(fallbackOption))
             {
                 return [];
@@ -89,7 +93,7 @@ public sealed partial class GemmaPdfExamGenerationService
         }
 
         var options = new List<string>();
-        foreach (var item in optionsElement.EnumerateArray())
+        foreach (var item in val.EnumerateArray())
         {
             var optionValue = item.ValueKind switch
             {
@@ -168,7 +172,112 @@ public sealed partial class GemmaPdfExamGenerationService
     }
 
     private static bool IsOptionBasedType(string mappedQuestionType) =>
-        mappedQuestionType is "MCQ_SINGLE" or "MCQ_MULTIPLE" or "MCQ_CHOOSE_N" or "TFNG" or "YNNG" or "MATCHING_INFO" or "MATCHING_FEATURES" or "MATCHING_VISUALS" or "MATCHING_HEADINGS" or "FLOWCHART_COMPLETION";
+        mappedQuestionType is "MCQ_SINGLE" or "MCQ_MULTIPLE" or "MCQ_CHOOSE_N" or "TFNG" or "YNNG" or "MATCHING_INFO" or "MATCHING_FEATURES" or "MATCHING_VISUALS" or "MATCHING_HEADINGS" or "FLOWCHART_COMPLETION" or "SUMMARY_COMPLETION" or "TABLE_COMPLETION" or "MAP_LABELLING";
+
+    private static bool IsCompletionTemplateType(string mappedQuestionType) =>
+        mappedQuestionType is "SENTENCE_COMPLETION" or "SUMMARY_COMPLETION" or "TABLE_COMPLETION" or "FLOWCHART_COMPLETION" or "MAP_LABELLING";
+
+    private static bool IsCompletionTemplateType(string mappedQuestionType, string? questionText, int? questionNumber)
+    {
+        if (!IsCompletionTemplateType(mappedQuestionType))
+        {
+            return false;
+        }
+
+        return IsRealSentenceCompletionQuestion(mappedQuestionType, questionText, questionNumber);
+    }
+
+    private static bool IsCompletionTemplateType(string mappedQuestionType, List<CreateQuestionDto> questions)
+    {
+        if (!IsCompletionTemplateType(mappedQuestionType))
+        {
+            return false;
+        }
+
+        return IsRealSentenceCompletionGroup(mappedQuestionType, questions);
+    }
+
+    private static bool IsRealSentenceCompletionQuestion(string mappedQuestionType, string? questionText, int? questionNumber)
+    {
+        if (mappedQuestionType is not "FLOWCHART_COMPLETION" and not "MAP_LABELLING")
+        {
+            return true;
+        }
+
+        if (string.IsNullOrWhiteSpace(questionText))
+        {
+            return false;
+        }
+
+        if (questionText.Contains("___") || questionText.Contains("..."))
+        {
+            return true;
+        }
+
+        if (questionNumber.HasValue)
+        {
+            var placeholder = $"[Q{questionNumber.Value}]";
+            if (questionText.Contains(placeholder))
+            {
+                var idx = questionText.IndexOf(placeholder, StringComparison.Ordinal);
+                var before = questionText[..idx].Trim();
+                var after = questionText[(idx + placeholder.Length)..].Trim();
+                if (!string.IsNullOrEmpty(before) && !string.IsNullOrEmpty(after))
+                {
+                    return true;
+                }
+            }
+            else
+            {
+                var words = questionText.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                if (words.Length > 5)
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsRealSentenceCompletionGroup(string mappedQuestionType, List<CreateQuestionDto> questions)
+    {
+        if (mappedQuestionType is not "FLOWCHART_COMPLETION" and not "MAP_LABELLING")
+        {
+            return true;
+        }
+
+        foreach (var q in questions)
+        {
+            if (IsRealSentenceCompletionQuestion(mappedQuestionType, q.Content, q.QuestionNumber))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool HasSharedCompletionOptionBank(string? instruction, IReadOnlyList<string> options)
+    {
+        if (options.Count < 2)
+        {
+            return false;
+        }
+
+        var evidenceText = instruction ?? string.Empty;
+        if (Regex.IsMatch(
+                evidenceText,
+                @"(?i)\b(?:list\s+of\s+words|list\s+of\s+phrases|words?\s*,?\s*[A-Z]\s*[-–—]\s*[A-Z]|choose\s+your\s+answers?\s+from\s+the\s+box|from\s+the\s+list\s+below)\b"))
+        {
+            return true;
+        }
+
+        var meaningfulOptions = options
+            .Select(option => RemoveSelectionMarkers(option ?? string.Empty).Trim())
+            .Count(option => !string.IsNullOrWhiteSpace(option) && !IsOptionLabelOnly(option));
+        return meaningfulOptions >= 6;
+    }
 
     private static string BuildInstruction(string mappedQuestionType) => mappedQuestionType switch
     {
@@ -180,40 +289,27 @@ public sealed partial class GemmaPdfExamGenerationService
         "MATCHING_INFO" or "MATCHING_FEATURES" or "MATCHING_VISUALS" or "MATCHING_HEADINGS" => "Match each statement with the correct option.",
         "FLOWCHART_COMPLETION" => "Complete the flowchart with the correct answers.",
         "SENTENCE_COMPLETION" => "Complete the sentences with words from the passage.",
+        "SUMMARY_COMPLETION" => "Complete the summary.",
         _ => "Answer the following questions."
     };
 
-    private static string ResolveMappedQuestionType(string? rawGroupType, string aiMappedQuestionType)
+    private static string ResolveMappedQuestionType(string? rawGroupType, string? aiMappedQuestionType)
     {
+        if (!string.IsNullOrWhiteSpace(aiMappedQuestionType))
+        {
+            return aiMappedQuestionType;
+        }
+
         var normalizedRawGroupType = NormalizeGroupType(rawGroupType);
-        if (string.IsNullOrWhiteSpace(normalizedRawGroupType))
-        {
-            return aiMappedQuestionType;
-        }
-
-        if (string.Equals(normalizedRawGroupType, aiMappedQuestionType, StringComparison.Ordinal))
-        {
-            return normalizedRawGroupType;
-        }
-
-        // AI question typing is more trustworthy than raw heuristics when the raw parser
-        // falls back to a completion type but the AI found an explicit matching / choose-N / TFNG pattern.
-        if (normalizedRawGroupType is "SENTENCE_COMPLETION" or "SUMMARY_COMPLETION" &&
-            aiMappedQuestionType is "MATCHING_INFO" or "MATCHING_FEATURES" or "MATCHING_VISUALS" or "MATCHING_HEADINGS" or "MCQ_CHOOSE_N" or "MCQ_MULTIPLE" or "TFNG" or "YNNG")
-        {
-            return aiMappedQuestionType;
-        }
-
-        // The AI mapper defaults to MCQ_SINGLE for unknown values, so keep the raw type when AI is generic.
-        if (aiMappedQuestionType == "MCQ_SINGLE" && normalizedRawGroupType != "MCQ_SINGLE")
-        {
-            return normalizedRawGroupType;
-        }
-
-        return normalizedRawGroupType;
+        return string.IsNullOrWhiteSpace(normalizedRawGroupType)
+            ? "MCQ_SINGLE"
+            : normalizedRawGroupType;
     }
 
-    private static string MapQuestionType(string? rawQuestionType)
+    private static string MapQuestionType(string? rawQuestionType) =>
+        TryMapQuestionType(rawQuestionType) ?? "MCQ_SINGLE";
+
+    private static string? TryMapQuestionType(string? rawQuestionType)
     {
         var normalized = NormalizeQuestionTypeToken(rawQuestionType);
 
@@ -231,6 +327,8 @@ public sealed partial class GemmaPdfExamGenerationService
             "FILLINBLANKS" => "SENTENCE_COMPLETION",
             "FILLINBLANK" => "SENTENCE_COMPLETION",
             "SENTENCECOMPLETION" => "SENTENCE_COMPLETION",
+            "SUMMARYCOMPLETION" => "SUMMARY_COMPLETION",
+            "TABLECOMPLETION" => "TABLE_COMPLETION",
             "MATCHING" => "MATCHING_INFO",
             "MATCHINGINFO" => "MATCHING_INFO",
             "MATCHINGINFORMATION" => "MATCHING_INFO",
@@ -244,7 +342,7 @@ public sealed partial class GemmaPdfExamGenerationService
             "MAPLABELING" => "MAP_LABELLING",
             "DIAGRAMLABELLING" => "MAP_LABELLING",
             "DIAGRAMLABELING" => "MAP_LABELLING",
-            _ => "MCQ_SINGLE"
+            _ => null
         };
     }
 }

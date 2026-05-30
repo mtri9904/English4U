@@ -72,6 +72,13 @@ public sealed partial class GemmaPdfExamGenerationService
                     return questions;
                 }
 
+                var originalPlaceholderCount = Regex.Matches(question.Content ?? string.Empty, @"\[Q\d+\]|___").Count;
+                if (originalPlaceholderCount >= 2)
+                {
+                    rebuiltQuestions.Add(question);
+                    continue;
+                }
+
                 var normalizedTemplate = NormalizeQuestionBody(
                     "SENTENCE_COMPLETION",
                     template,
@@ -81,9 +88,10 @@ public sealed partial class GemmaPdfExamGenerationService
                     return questions;
                 }
 
+                var finalTemplate = RestoreOriginalLeadingContext(question.Content, normalizedTemplate, question.QuestionNumber.Value);
                 rebuiltQuestions.Add(question with
                 {
-                    Content = normalizedTemplate
+                    Content = finalTemplate
                 });
             }
 

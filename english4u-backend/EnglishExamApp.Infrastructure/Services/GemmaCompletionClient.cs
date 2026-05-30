@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.Configuration;
 
 namespace EnglishExamApp.Infrastructure.Services;
@@ -16,7 +17,7 @@ public sealed class GemmaCompletionClient(
     IConfiguration configuration) : IGemmaCompletionClient
 {
     private const string DefaultBaseUrl = "https://generativelanguage.googleapis.com/v1beta/openai/";
-    private const string DefaultModel = "gemma-3-27b-it";
+    private const string DefaultModel = "gemini-3.1-flash-lite";
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -29,23 +30,30 @@ public sealed class GemmaCompletionClient(
         configuration,
         "GemmaExamGeneration:ApiKey");
 
+    private readonly string _baseUrl = configuration["GemmaExamGeneration:BaseUrl"] ?? DefaultBaseUrl;
+
     private readonly string _model = configuration["GemmaExamGeneration:Model"] ?? DefaultModel;
 
     private readonly double _temperature =
-        configuration.GetValue<double?>("GemmaExamGeneration:Temperature") ?? 0.1d;
+        configuration.GetValue<double?>("GemmaExamGeneration:Temperature") ?? 0.0d;
+
+    private readonly int _maxOutputTokens = Math.Clamp(
+        configuration.GetValue<int?>("GemmaExamGeneration:MaxOutputTokens") ?? 8192,
+        1024,
+        32768);
+
+    private readonly bool? _sendAuthorizationHeader = configuration.GetValue<bool?>("GemmaExamGeneration:SendAuthorizationHeader");
 
     public async Task<string> CompleteAsync(string prompt, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(_apiKey))
+        if (string.IsNullOrWhiteSpace(_apiKey) && ShouldSendAuthorizationHeader())
         {
             throw new InvalidOperationException("GemmaExamGeneration:ApiKey is missing.");
         }
 
         if (httpClient.BaseAddress is null)
         {
-            httpClient.BaseAddress = new Uri(
-                configuration["GemmaExamGeneration:BaseUrl"] ?? DefaultBaseUrl,
-                UriKind.Absolute);
+            httpClient.BaseAddress = new Uri(_baseUrl, UriKind.Absolute);
         }
 
         var requestPayload = new OpenAiChatCompletionRequest(
@@ -54,37 +62,88 @@ public sealed class GemmaCompletionClient(
             [
                 new OpenAiChatMessage("user", prompt)
             ],
-            Temperature: _temperature);
+            Temperature: _temperature,
+            MaxTokens: _maxOutputTokens);
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "chat/completions");
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
+        if (ShouldSendAuthorizationHeader() && !string.IsNullOrWhiteSpace(_apiKey))
+        {
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
+        }
+
         request.Content = JsonContent.Create(requestPayload, options: JsonOptions);
 
-        using var response = await httpClient.SendAsync(request, cancellationToken);
-        if (!response.IsSuccessStatusCode)
+        HttpResponseMessage response;
+        try
         {
-            var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            response = await httpClient.SendAsync(request, cancellationToken);
+        }
+        catch (HttpRequestException ex) when (IsLocalBaseUrl(_baseUrl))
+        {
             throw new InvalidOperationException(
-                $"Gemma API request failed with status {(int)response.StatusCode}: {errorBody}");
+                $"Local OpenAI-compatible LLM server is not reachable at {_baseUrl}.",
+                ex);
         }
 
-        var completion = await response.Content.ReadFromJsonAsync<OpenAiChatCompletionResponse>(
-            JsonOptions,
-            cancellationToken);
-        var content = completion?.Choices?.FirstOrDefault()?.Message?.Content;
-
-        if (string.IsNullOrWhiteSpace(content))
+        using (response)
         {
-            throw new InvalidOperationException("Gemma API returned an empty completion.");
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
+                throw new InvalidOperationException(
+                    $"LLM API request failed with status {(int)response.StatusCode}: {errorBody}");
+            }
+
+            var completion = await response.Content.ReadFromJsonAsync<OpenAiChatCompletionResponse>(
+                JsonOptions,
+                cancellationToken);
+            var content = completion?.Choices?.FirstOrDefault()?.Message?.Content;
+
+            if (string.IsNullOrWhiteSpace(content))
+            {
+                throw new InvalidOperationException("LLM API returned an empty completion.");
+            }
+
+            return StripReasoningText(content);
+        }
+    }
+
+    private bool ShouldSendAuthorizationHeader()
+    {
+        if (_sendAuthorizationHeader.HasValue)
+        {
+            return _sendAuthorizationHeader.Value;
         }
 
-        return content;
+        return !IsLocalBaseUrl(_baseUrl);
+    }
+
+    private static bool IsLocalBaseUrl(string baseUrl)
+    {
+        if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri))
+        {
+            return false;
+        }
+
+        return uri.IsLoopback ||
+               string.Equals(uri.Host, "localhost", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(uri.Host, "127.0.0.1", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string StripReasoningText(string content)
+    {
+        var cleaned = Regex.Replace(
+            content,
+            @"(?is)<think>.*?</think>",
+            string.Empty);
+        return cleaned.Trim();
     }
 
     private sealed record OpenAiChatCompletionRequest(
         [property: JsonPropertyName("model")] string Model,
         [property: JsonPropertyName("messages")] IReadOnlyList<OpenAiChatMessage> Messages,
-        [property: JsonPropertyName("temperature")] double Temperature);
+        [property: JsonPropertyName("temperature")] double Temperature,
+        [property: JsonPropertyName("max_tokens")] int MaxTokens);
 
     private sealed record OpenAiChatMessage(
         [property: JsonPropertyName("role")] string Role,

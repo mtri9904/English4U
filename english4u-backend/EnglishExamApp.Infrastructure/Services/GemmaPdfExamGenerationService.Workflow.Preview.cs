@@ -42,7 +42,7 @@ public sealed partial class GemmaPdfExamGenerationService
             throw new ArgumentException("File name is required.", nameof(fileName));
         }
 
-        var rawText = await ExtractPdfTextAsync(pdfStream, cancellationToken);
+        var rawText = await ExtractPdfTextAsync(pdfStream, fileName, cancellationToken);
         var normalizedRawText = rawText
             .Replace("\r\n", "\n")
             .Replace('\r', '\n');
@@ -104,7 +104,7 @@ public sealed partial class GemmaPdfExamGenerationService
             throw new ArgumentException("File name is required.", nameof(fileName));
         }
 
-        var rawText = await ExtractPdfTextAsync(pdfStream, cancellationToken);
+        var rawText = await ExtractPdfTextAsync(pdfStream, fileName, cancellationToken);
         var passages = SplitPassages(rawText);
 
         return new PdfQuestionGroupPreviewDto(

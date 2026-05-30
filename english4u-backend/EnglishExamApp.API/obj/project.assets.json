@@ -1856,8 +1856,8 @@
         "framework": ".NETCoreApp,Version=v9.0",
         "dependencies": {
           "EnglishExamApp.Domain": "1.0.0",
-          "Microsoft.EntityFrameworkCore": "9.0.0",
-          "Microsoft.EntityFrameworkCore.Relational": "9.0.0"
+          "Microsoft.EntityFrameworkCore": "9.0.15",
+          "Microsoft.EntityFrameworkCore.Relational": "9.0.15"
         },
         "compile": {
           "bin/placeholder/EnglishExamApp.Application.dll": {}
@@ -1885,7 +1885,7 @@
         "dependencies": {
           "Docnet.Core": "2.6.0",
           "EnglishExamApp.Application": "1.0.0",
-          "Microsoft.EntityFrameworkCore.SqlServer": "9.0.0",
+          "Microsoft.EntityFrameworkCore.SqlServer": "9.0.15",
           "System.Drawing.Common": "6.0.0",
           "UglyToad.PdfPig": "1.7.0-custom-5"
         },
@@ -5104,10 +5104,10 @@
       "EnglishExamApp.Application >= 1.0.0",
       "EnglishExamApp.Infrastructure >= 1.0.0",
       "Google.Apis.Auth >= 1.73.0",
-      "Microsoft.AspNetCore.Authentication.JwtBearer >= 9.*",
-      "Microsoft.AspNetCore.OpenApi >= 9.*",
-      "Microsoft.EntityFrameworkCore.Design >= 9.*",
-      "Microsoft.EntityFrameworkCore.SqlServer >= 9.*",
+      "Microsoft.AspNetCore.Authentication.JwtBearer >= 9.0.15",
+      "Microsoft.AspNetCore.OpenApi >= 9.0.15",
+      "Microsoft.EntityFrameworkCore.Design >= 9.0.15",
+      "Microsoft.EntityFrameworkCore.SqlServer >= 9.0.15",
       "Scalar.AspNetCore >= 2.12.50"
     ]
   },
@@ -5169,21 +5169,21 @@
           },
           "Microsoft.AspNetCore.Authentication.JwtBearer": {
             "target": "Package",
-            "version": "[9.*, )"
+            "version": "[9.0.15, )"
           },
           "Microsoft.AspNetCore.OpenApi": {
             "target": "Package",
-            "version": "[9.*, )"
+            "version": "[9.0.15, )"
           },
           "Microsoft.EntityFrameworkCore.Design": {
             "include": "Runtime, Build, Native, ContentFiles, Analyzers, BuildTransitive",
             "suppressParent": "All",
             "target": "Package",
-            "version": "[9.*, )"
+            "version": "[9.0.15, )"
           },
           "Microsoft.EntityFrameworkCore.SqlServer": {
             "target": "Package",
-            "version": "[9.*, )"
+            "version": "[9.0.15, )"
           },
           "Scalar.AspNetCore": {
             "target": "Package",

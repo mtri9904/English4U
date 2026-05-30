@@ -224,11 +224,6 @@ public sealed partial class GemmaPdfExamGenerationService
                         continue;
                     }
 
-                    if (TryInferQuestionTypeFromAnswer(extractedAnswerFromKey, out var inferredQuestionType))
-                    {
-                        question.QuestionType = JsonSerializer.SerializeToElement(inferredQuestionType);
-                    }
-
                     var normalizedAnswerFromKey = CanonicalizeAnswerForQuestionType(question, extractedAnswerFromKey);
                     if (string.IsNullOrWhiteSpace(normalizedAnswerFromKey))
                     {
@@ -360,6 +355,7 @@ public sealed partial class GemmaPdfExamGenerationService
 
         var hasTfngSignal = tokens.Contains("TRUE") || tokens.Contains("FALSE");
         var hasYnngSignal = tokens.Contains("YES") || tokens.Contains("NO");
+        var hasNotGivenSignal = tokens.Contains("NOT GIVEN") || tokens.Contains("NG") || tokens.Contains("NOTGIVEN");
 
         if (hasTfngSignal && !hasYnngSignal)
         {
@@ -370,6 +366,12 @@ public sealed partial class GemmaPdfExamGenerationService
         if (hasYnngSignal && !hasTfngSignal)
         {
             inferredQuestionType = "YesNoNotGiven";
+            return true;
+        }
+
+        if (hasNotGivenSignal && !hasTfngSignal && !hasYnngSignal)
+        {
+            inferredQuestionType = "TrueFalseNotGiven";
             return true;
         }
 
