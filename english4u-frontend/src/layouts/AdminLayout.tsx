@@ -4,7 +4,6 @@ import {
     DashboardOutlined,
     UserOutlined,
     FormOutlined,
-    FileSearchOutlined,
     TrophyOutlined,
     CreditCardOutlined,
     BellOutlined,
@@ -208,11 +207,6 @@ export const AdminLayout: React.FC = () => {
             key: '/admin/exams',
             icon: <FormOutlined />,
             label: 'Bài thi & Kiểm tra',
-        },
-        {
-            key: '/admin/exams/raw-preview',
-            icon: <FileSearchOutlined />,
-            label: 'Demo Text Thô PDF',
         },
         {
             key: '/admin/attempts',

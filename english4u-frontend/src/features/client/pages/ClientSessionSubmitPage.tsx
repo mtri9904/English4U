@@ -63,13 +63,6 @@ import { ListeningBody, ReadingBody } from './ClientObjectiveSessionRunnerPage';
 
 const { Title, Paragraph, Text } = Typography;
 
-const statusColorMap: Record<string, string> = {
-    NotStarted: 'default',
-    InProgress: 'processing',
-    Submitted: 'warning',
-    Completed: 'success',
-    Abandoned: 'error',
-};
 
 const statusLabelMap: Record<string, string> = {
     NotStarted: 'Chưa bắt đầu',
@@ -522,7 +515,7 @@ const parseQuestionRangeFromListeningTranscriptSegment = (value?: string | null)
 
     const startQuestion = parseListeningQuestionNumberToken(match[1]);
     const endQuestion = parseListeningQuestionNumberToken(match[2]);
-    if (!Number.isFinite(startQuestion) || !Number.isFinite(endQuestion) || startQuestion > endQuestion) {
+    if (startQuestion === null || endQuestion === null || !Number.isFinite(startQuestion) || !Number.isFinite(endQuestion) || startQuestion > endQuestion) {
         return null;
     }
 
@@ -944,6 +937,30 @@ const isAmbiguousListeningReplayRequest = (message: string, focusedQuestionNumbe
     }
 
     return extractRequestedReplayQuestionNumber(message, focusedQuestionNumber) == null;
+};
+
+const isCorrectAnswerQuery = (message: string) => {
+    const normalized = message
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim();
+
+    if (normalized.includes('tai sao sai') || normalized.includes('vi sao sai') || normalized.includes('chua dung') || normalized.includes('chon sai') || normalized.includes('loi sai')) {
+        return false;
+    }
+
+    return normalized.includes('dung')
+        || normalized.includes('correct')
+        || normalized.includes('chinh xac')
+        || normalized.includes('nghe dau')
+        || normalized.includes('nghe cho nao')
+        || normalized.includes('nghe doan nao')
+        || normalized.includes('o dau')
+        || normalized.includes('cho nao')
+        || normalized.includes('bang chung')
+        || normalized.includes('dan chung')
+        || normalized.includes('evidence');
 };
 
 const buildListeningReplayLookup = ({
@@ -1865,6 +1882,13 @@ const ObjectiveSessionReviewRunner = ({
                                                 || inferredReplay.questionNumber === authoritativeReplayQuestionNumber;
 
                                             if (inferredReplay.answerStartSecond != null && inferredQuestionMatchesRequest) {
+                                                if (localReplayAction && isCorrectAnswerQuery(userMessage)) {
+                                                    const isClose = Math.abs(inferredReplay.answerStartSecond - localReplayAction.playAtSecond) <= 15;
+                                                    if (!isClose) {
+                                                        return localReplayAction;
+                                                    }
+                                                }
+
                                                 const transcriptSnippet = resolveListeningTranscriptSnippetForReplay({
                                                     parts: listeningParts,
                                                     activePartIndex: activeItemIndex,

@@ -306,3 +306,16 @@ class ListeningAlignmentSelectionBatch(BaseModel):
 
 class GeminiAlignmentQuotaExhaustedError(RuntimeError):
     pass
+
+
+class ReadabilityAnalysisRequest(BaseModel):
+    text: str
+
+
+class ReadabilityAnalysisResponse(BaseModel):
+    flesch_kincaid_grade: float
+    gunning_fog: float
+    word_count: int
+    zipf_frequency: float
+    awl_ratio: float
+

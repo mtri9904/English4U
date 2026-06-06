@@ -651,4 +651,59 @@ public sealed partial class AiScoringHttpService(
                 alignment.Confidence)).ToList());
     }
 
+    public async Task<ReadabilityAnalysisResponseDto?> AnalyzeReadabilityAsync(
+        string text,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var response = await httpClient.PostAsJsonAsync(
+                "/api/ai/analyze-readability",
+                new { text = text.Trim() },
+                JsonOptions,
+                cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
+                var detail = AiServiceErrorDetailParser.Extract(errorBody);
+                logger.LogWarning(
+                    "AI readability analysis failed with status {StatusCode}: {Detail}",
+                    (int)response.StatusCode,
+                    string.IsNullOrWhiteSpace(detail) ? errorBody : detail);
+                return null;
+            }
+
+            var pythonResponse = await response.Content.ReadFromJsonAsync<PythonReadabilityResponse>(JsonOptions, cancellationToken);
+            if (pythonResponse is null)
+            {
+                return null;
+            }
+
+            return new ReadabilityAnalysisResponseDto(
+                FleschKincaidGrade: pythonResponse.FleschKincaidGrade,
+                GunningFog: pythonResponse.GunningFog,
+                WordCount: pythonResponse.WordCount,
+                ZipfFrequency: pythonResponse.ZipfFrequency,
+                AwlRatio: pythonResponse.AwlRatio);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or JsonException or InvalidOperationException)
+        {
+            logger.LogWarning(ex, "Failed to call AI readability analysis endpoint.");
+            return null;
+        }
+    }
+
+    private sealed record PythonReadabilityResponse(
+        [property: JsonPropertyName("flesch_kincaid_grade")] double FleschKincaidGrade,
+        [property: JsonPropertyName("gunning_fog")] double GunningFog,
+        [property: JsonPropertyName("word_count")] int WordCount,
+        [property: JsonPropertyName("zipf_frequency")] double ZipfFrequency,
+        [property: JsonPropertyName("awl_ratio")] double AwlRatio);
+
 }

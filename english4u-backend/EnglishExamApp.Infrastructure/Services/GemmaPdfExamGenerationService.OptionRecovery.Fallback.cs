@@ -41,36 +41,36 @@ public sealed partial class GemmaPdfExamGenerationService
             JsonOptions);
 
         return $"""
-            Báº¡n lÃ  bá»™ mÃ¡y khÃ´i phá»¥c lá»±a chá»n tráº¯c nghiá»‡m IELTS.
-            Nhiá»‡m vá»¥: khÃ´i phá»¥c ná»™i dung options cho cÃ¡c cÃ¢u bá»‹ máº¥t text (chá»‰ cÃ²n A/B/C hoáº·c rá»—ng) CHá»ˆ dá»±a trÃªn QUESTION_CONTEXT_FROM_RAW_TEXT vÃ  REVIEW_AND_EXPLANATIONS.
+            Bạn là bộ máy khôi phục lựa chọn trắc nghiệm IELTS.
+            Nhiệm vụ: khôi phục nội dung options cho các câu bị mất text (chỉ còn A/B/C hoặc rỗng) CHỈ dựa trên QUESTION_CONTEXT_FROM_RAW_TEXT và REVIEW_AND_EXPLANATIONS.
 
-            QUY Táº®C Cá»¨NG:
-            - KhÃ´ng tá»± giáº£i bÃ i, khÃ´ng suy luáº­n theo passage.
-            - Chá»‰ dÃ¹ng QUESTION_CONTEXT_FROM_RAW_TEXT vÃ  REVIEW_AND_EXPLANATIONS Ä‘á»ƒ khÃ´i phá»¥c options.
-            - NghiÃªm cáº¥m dÃ¹ng khá»‘i "Solution:" dáº¡ng dÃ­nh chá»¯ (vÃ­ dá»¥: 1C2D3F... hoáº·c 1822A,C,D,E,H).
-            - Vá»›i cÃ¢u MCQ, khÃ´ng Ä‘Æ°á»£c tráº£ options = [].
-            - NghiÃªm cáº¥m tráº£ option chá»‰ lÃ  nhÃ£n "A", "B", "C"... khÃ´ng cÃ³ ná»™i dung.
-            - Náº¿u cÃ¢u MCQ Ä‘ang thiáº¿u option (vÃ­ dá»¥ chá»‰ cÃ³ A/B), pháº£i cá»‘ gáº¯ng khÃ´i phá»¥c Ä‘á»§ option cÃ²n thiáº¿u tá»« Review and Explanations.
-            - Náº¿u Ä‘Ã¡p Ã¡n Ä‘Ã£ chá»‰ ra letter chÆ°a cÃ³ option tÆ°Æ¡ng á»©ng (vÃ­ dá»¥ answer = C nhÆ°ng chÆ°a cÃ³ option C), báº¯t buá»™c tiáº¿p tá»¥c tÃ¬m vÃ  khÃ´i phá»¥c option Ä‘Ã³.
-            - Vá»›i MCQ_CHOOSE_N, pháº£i khÃ´i phá»¥c Ä‘áº§y Ä‘á»§ option text cho Tá»ªNG cÃ¢u. Náº¿u block dÃ¹ng chung má»™t answer bank A-H/A-F thÃ¬ pháº£i khÃ´i phá»¥c trá»n bá»™ answer bank Ä‘Ã³; náº¿u má»—i cÃ¢u cÃ³ option riÃªng thÃ¬ pháº£i giá»¯ option riÃªng theo tá»«ng cÃ¢u.
-            - OPTION TEXT MANDATORY: vá»›i MCQ_CHOOSE_N, máº£ng options TUYá»†T Äá»I KHÃ”NG ÄÆ¯á»¢C chá»‰ chá»©a "A", "B", "C", "D"... hoáº·c checkbox tráº§n khÃ´ng cÃ³ text.
-            - Náº¿u QUESTION_CONTEXT_FROM_RAW_TEXT chá»‰ cÃ²n cá»¥m nhÃ£n rá»i nhÆ° "A B C D ..." vÃ  block tháº­t sá»± dÃ¹ng shared answer bank, Báº N Báº®T BUá»˜C pháº£i kÃ©o xuá»‘ng REVIEW_AND_EXPLANATIONS Ä‘á»ƒ láº¥y láº¡i Ä‘áº§y Ä‘á»§ ná»™i dung tá»«ng option.
-            - Viá»‡c tráº£ vá» ["A", "B", "C"] hoáº·c label-only options cho MCQ_CHOOSE_N lÃ  Lá»–I NGHIÃŠM TRá»ŒNG; pháº£i tráº£ vá» text Ä‘áº§y Ä‘á»§ kiá»ƒu "A. ...", "B. ...".
-            - QUY Táº®C Sá»NG CÃ’N: TUYá»†T Äá»I KHÃ”NG BAO GIá»œ tráº£ option rá»—ng. Cáº¥m tráº£ "A", "B", "C"... náº¿u khÃ´ng cÃ³ ná»™i dung text Ä‘i kÃ¨m.
-            - Náº¿u thiáº¿u text option trong pháº§n cÃ¢u há»i, báº¯t buá»™c Ä‘á»‘i chiáº¿u chÃ©o pháº§n Review and Explanations Ä‘á»ƒ khÃ´i phá»¥c Ä‘á»§ text cho tá»«ng option trÆ°á»›c khi tráº£ JSON.
-            - LUáº¬T CHá»NG Lá»–I DÃNH Cá»˜T PDF: náº¿u phÃ¡t hiá»‡n cá»¥m nhÃ£n kiá»ƒu "A B C D ...", rá»“i má»™t khá»‘i cÃ¢u dÃ­nh liá»n phÃ­a sau, pháº£i tá»± tÃ¡ch khá»‘i cÃ¢u Ä‘Ã³ theo dáº¥u cháº¥m/chá»¯ hoa vÃ  map tuáº§n tá»± vÃ o A, B, C, D...
-            - Khi Ã¡p dá»¥ng luáº­t dÃ­nh cá»™t, pháº£i giá»¯ Ä‘Ãºng thá»© tá»± nhÃ£n ban Ä‘áº§u (A trÆ°á»›c B trÆ°á»›c C...) vÃ  Ä‘iá»n Ä‘á»§ text cho tá»«ng nhÃ£n.
-            - Cáº¢NH BÃO Lá»–I Láº®P SAI OPTIONS (MCQ): TUYá»†T Äá»I KHÃ”NG láº¥y option cá»§a cÃ¢u nÃ y gÃ¡n sang cÃ¢u khÃ¡c.
-            - Báº¯t buá»™c Ä‘á»‘i chiáº¿u 1-1 theo Ä‘Ãºng question_number; chá»‰ láº¥y dá»¯ liá»‡u tá»« pháº§n Review/Explanations cá»§a CHÃNH cÃ¢u Ä‘Ã³.
-            - KhÃ´ng tá»± Ã½ thÃªm/bá»›t lá»±a chá»n. Náº¿u cÃ¢u chá»‰ cÃ³ A,B,C thÃ¬ output báº¯t buá»™c Ä‘Ãºng 3 options; khÃ´ng Ä‘Æ°á»£c sinh thÃªm D.
-            - VÃ­ dá»¥: náº¿u review ghi "answer ... must be A. mornings" thÃ¬ option A cá»§a cÃ¢u Ä‘Ã³ pháº£i lÃ  "mornings" (khÃ´ng Ä‘á»ƒ trá»‘ng).
-            - Vá»›i má»—i cÃ¢u, sá»‘ lÆ°á»£ng options tráº£ vá» pháº£i khá»›p sá»‘ lÆ°á»£ng expected_option_labels trong QUESTIONS_NEED_OPTIONS_JSON.
-            - Giá»¯ wording gá»‘c; chá»‰ sá»­a lá»—i dÃ­nh chá»¯/máº¥t khoáº£ng tráº¯ng khi hiá»ƒn nhiÃªn.
-            - FEW-SHOT TEMPLATE CHO MCQ_CHOOSE_N: náº¿u block raw bá»‹ dÃ­nh kiá»ƒu "A B C D E F G H McCarthy claims... The cost... Most British..." vÃ  Ä‘Ã¢y lÃ  shared answer bank cá»§a cáº£ group, output há»£p lá»‡ pháº£i cÃ³ dáº¡ng:
+            QUY TẮC CỨNG:
+            - Không tự giải bài, không suy luận theo passage.
+            - Chỉ dùng QUESTION_CONTEXT_FROM_RAW_TEXT và REVIEW_AND_EXPLANATIONS để khôi phục options.
+            - Nghiêm cấm dùng khối "Solution:" dạng dính chữ (ví dụ: 1C2D3F... hoặc 1822A,C,D,E,H).
+            - Với câu MCQ, không được trả options = [].
+            - Nghiêm cấm trả option chỉ là nhãn "A", "B", "C"... không có nội dung.
+            - Nếu câu MCQ đang thiếu option (ví dụ chỉ có A/B), phải cố gắng khôi phục đủ option còn thiếu từ Review and Explanations.
+            - Nếu đáp án đã chỉ ra letter chưa có option tương ứng (ví dụ answer = C nhưng chưa có option C), bắt buộc tiếp tục tìm và khôi phục option đó.
+            - Với MCQ_CHOOSE_N, phải khôi phục đầy đủ option text cho TỪNG câu. Nếu block dùng chung một answer bank A-H/A-F thì phải khôi phục trọn bộ answer bank đó; nếu mỗi câu có option riêng thì phải giữ option riêng theo từng câu.
+            - OPTION TEXT MANDATORY: với MCQ_CHOOSE_N, mảng options TUYỆT ĐỐI KHÔNG ĐƯỢC chỉ chứa "A", "B", "C", "D"... hoặc checkbox trần không có text.
+            - Nếu QUESTION_CONTEXT_FROM_RAW_TEXT chỉ còn cụm nhãn rời như "A B C D ..." và block thực sự dùng shared answer bank, BẠN BẮT BUỘC phải kéo xuống REVIEW_AND_EXPLANATIONS để lấy lại đầy đủ nội dung từng option.
+            - Việc trả về ["A", "B", "C"] hoặc label-only options cho MCQ_CHOOSE_N là LỖI NGHIÊM TRỌNG; phải trả về text đầy đủ kiểu "A. ...", "B. ...".
+            - QUY TẮC SỐNG CÒN: TUYỆT ĐỐI KHÔNG BAO GIỜ trả option rỗng. Cấm trả "A", "B", "C"... nếu không có nội dung text đi kèm.
+            - Nếu thiếu text option trong phần câu hỏi, bắt buộc đối chiếu chéo phần Review and Explanations để khôi phục đủ text cho từng option trước khi trả JSON.
+            - LUẬT CHỐNG LỖI DÍNH CỘT PDF: nếu phát hiện cụm nhãn kiểu "A B C D ...", rồi một khối câu dính liền phía sau, phải tự tách khối câu đó theo dấu chấm/chữ hoa và map tuần tự vào A, B, C, D...
+            - Khi áp dụng luật dính cột, phải giữ đúng thứ tự nhãn ban đầu (A trước B trước C...) và điền đủ text cho từng nhãn.
+            - CẢNH BÁO LỖI LẮP SAI OPTIONS (MCQ): TUYỆT ĐỐI KHÔNG lấy option của câu này gán sang câu khác.
+            - Bắt buộc đối chiếu 1-1 theo đúng question_number; chỉ lấy dữ liệu từ phần Review/Explanations của CHÍNH câu đó.
+            - Không tự ý thêm/bớt lựa chọn. Nếu câu chỉ có A,B,C thì output bắt buộc đúng 3 options; không được sinh thêm D.
+            - Ví dụ: nếu review ghi "answer ... must be A. mornings" thì option A của câu đó phải là "mornings" (không để trống).
+            - Với mỗi câu, số lượng options trả về phải khớp số lượng expected_option_labels trong QUESTIONS_NEED_OPTIONS_JSON.
+            - Giữ wording gốc; chỉ sửa lỗi dính chữ/mất khoảng trắng khi hiển nhiên.
+            - FEW-SHOT TEMPLATE CHO MCQ_CHOOSE_N: nếu block raw bị dính kiểu "A B C D E F G H McCarthy claims... The cost... Most British..." và đây là shared answer bank của cả group, output hợp lệ phải có dạng:
               ["A. McCarthy claims ...", "B. The cost ...", "C. Most British ...", "D. ...", "E. ...", "F. ...", "G. ...", "H. ..."].
-              Output kiá»ƒu ["A", "B", "C", ...] lÃ  sai vÃ  pháº£i tá»± sá»­a trÆ°á»›c khi tráº£ JSON.
-            - Tráº£ vá» DUY NHáº¤T JSON object cÃ³ field "options".
-              Má»—i pháº§n tá»­ pháº£i cÃ³: "question_number", "options" (máº£ng string).
+              Output kiểu ["A", "B", "C", ...] là sai và phải tự sửa trước khi trả JSON.
+            - Trả về DUY NHẤT JSON object có field "options".
+              Mỗi phần tử phải có: "question_number", "options" (mảng string).
 
             QUESTIONS_NEED_OPTIONS_JSON:
             {candidatesJson}
@@ -279,6 +279,11 @@ public sealed partial class GemmaPdfExamGenerationService
         if (options.Count < 2)
         {
             return false;
+        }
+
+        if (IsAllSingleLetterOptions(options.ToList()))
+        {
+            return true;
         }
 
         var meaningfulCount = options.Count(option => !IsOptionLabelOnly(option));

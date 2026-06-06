@@ -127,7 +127,7 @@ public sealed partial class GemmaPdfExamGenerationService
 
         var compactSolution = Regex.Match(
             normalized,
-            @"(?i)(?<![A-Za-z])solution\s*:\s*(?:\d{1,2}\s*(?:TRUE|FALSE|YES|NO|NOT\s+GIVEN|[A-H]))");
+            @"(?i)(?<![A-Za-z])solution\s*:\s*(?:\d{1,2}\s*(?:TRUE|FALSE|YES|NO|NOT\s+GIVEN|[A-Z]))");
         AddMatchIndex(cutIndexes, compactSolution);
 
         var reviewMarker = Regex.Match(
@@ -524,7 +524,7 @@ public sealed partial class GemmaPdfExamGenerationService
 
         var optionMatches = Regex.Matches(
                 rawBlock,
-                @"(?ms)(?<![A-Za-z0-9])(?<label>[A-H])\s*(?:[).:\-]|O\s+|\s{1,3})(?<text>.*?)(?=(?<![A-Za-z0-9])[A-H]\s*(?:[).:\-]|O\s+|\s{1,3})|\z)")
+                @"(?ms)(?<![A-Za-z0-9])(?<label>[A-Z])\s*(?:[).:\-]|O\s+|\s{1,3})(?<text>.*?)(?=(?<![A-Za-z0-9])[A-Z]\s*(?:[).:\-]|O\s+|\s{1,3})|\z)")
             .Cast<Match>()
             .Select(match => new
             {
@@ -552,7 +552,7 @@ public sealed partial class GemmaPdfExamGenerationService
         for (var index = 0; index < lines.Count; index++)
         {
             var line = RemoveSelectionMarkers(lines[index]).Trim();
-            var standaloneLabel = Regex.Match(line, @"^(?<label>[A-H])(?:[).:\-])?$", RegexOptions.IgnoreCase);
+            var standaloneLabel = Regex.Match(line, @"^(?<label>[A-Z])(?:[).:\-])?$", RegexOptions.IgnoreCase);
             if (standaloneLabel.Success && index + 1 < lines.Count)
             {
                 var text = RemoveSelectionMarkers(lines[index + 1]).Trim();
@@ -567,7 +567,7 @@ public sealed partial class GemmaPdfExamGenerationService
                 continue;
             }
 
-            var labeled = Regex.Match(line, @"^(?<label>[A-H])\s*(?<text>[A-Z][^\n]{2,160})$", RegexOptions.IgnoreCase);
+            var labeled = Regex.Match(line, @"^(?<label>[A-Z])\s*(?<text>[A-Z][^\n]{2,160})$", RegexOptions.IgnoreCase);
             if (labeled.Success &&
                 !Regex.IsMatch(labeled.Groups["text"].Value, @"^\d{1,2}\b"))
             {
@@ -586,7 +586,7 @@ public sealed partial class GemmaPdfExamGenerationService
 
         var compactOptions = Regex.Matches(
                 rawBlock,
-                @"(?s)(?<![A-Za-z0-9])(?<label>[A-H])(?<text>[A-Z][A-Za-z .'’\-]{2,160}?)(?=(?<![A-Za-z0-9])[A-H][A-Z]|\d{1,2}\b|$)")
+                @"(?s)(?<![A-Za-z0-9])(?<label>[A-Z])(?<text>[A-Z][A-Za-z .'’\-]{2,160}?)(?=(?<![A-Za-z0-9])[A-Z][A-Z]|\d{1,2}\b|$)")
             .Cast<Match>()
             .Select(match => $"{match.Groups["label"].Value.ToUpperInvariant()}. {NormalizeExtractedSpacing(match.Groups["text"].Value)}")
             .ToList();
@@ -598,7 +598,7 @@ public sealed partial class GemmaPdfExamGenerationService
     {
         var matches = Regex.Matches(
                 rawBlock,
-                @"(?<![A-Za-z0-9])(?<label>[A-H])\s*(?:[).:\-]|O\b)?\s+(?=\S)",
+                @"(?<![A-Za-z0-9])(?<label>[A-Z])\s*(?:[).:\-]|O\b)?\s+(?=\S)",
                 RegexOptions.IgnoreCase)
             .Cast<Match>()
             .Where(match => !Regex.IsMatch(match.Value, @"^\s*O\s*$", RegexOptions.IgnoreCase))

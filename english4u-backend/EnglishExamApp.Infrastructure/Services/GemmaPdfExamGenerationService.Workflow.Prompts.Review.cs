@@ -124,8 +124,8 @@ public sealed partial class GemmaPdfExamGenerationService
         - instruction phải dừng ngay trước câu đầu tiên.
         - group_type phải được xác định bằng CẢ 3 nguồn: instruction, nội dung câu hỏi, và options/layout trong question block. KHÔNG được nhìn instruction một mình.
         - TAXONOMY RULE BẮT BUỘC:
-          + Chỉ phân loại là FLOWCHART_COMPLETION khi trong sơ đồ hình vẽ/flowchart có chứa số câu hỏi trực tiếp (ví dụ vẽ các ô trống đánh số 1, 2, 3... hoặc Q1, Q2, Q3... trong các bước của sơ đồ).
-          + Bắt buộc phân loại là MAP_LABELLING khi hình vẽ/diagram/bản đồ KHÔNG có số câu hỏi Q1, Q2... vẽ trực tiếp trên đó (hình chỉ chứa các nhãn chữ cái A, B, C... để người dùng dán nhãn, còn số câu hỏi là các nhãn chữ bên dưới).
+          + Phân loại là MAP_LABELLING (Label the Diagram/Map) khi đáp án hoặc danh sách lựa chọn (options) chỉ đơn giản là các nhãn chữ cái đơn lẻ như A, B, C, D, E, F... (người học nhìn vào sơ đồ/bản đồ/hình vẽ và chọn các chữ cái tương ứng cho mỗi câu hỏi). Mỗi câu hỏi có nội dung (question text) riêng lẻ.
+          + Phân loại là FLOWCHART_COMPLETION khi đáp án là các từ, cụm từ hoặc số (hoặc nếu có lựa chọn thì danh sách lựa chọn là ngân hàng từ/cụm từ - word/phrase bank, không phải là nhãn chữ cái đơn thuần như A, B, C, D). Dạng này có thể có sơ đồ đi kèm với các câu văn/đoạn văn điền từ.
           + Nếu instruction có chữ "summary" NHƯNG câu trả lời phải tự điền trực tiếp từ passage, không có word bank/options/list sẵn, hãy map về SENTENCE_COMPLETION.
           + Chỉ map SUMMARY_COMPLETION khi block "summary" có answer bank sẵn như list of words / answers from the box / write the correct letter A-F.
           + Cụm "Write the correct letter A-F" một mình KHÔNG đủ để map MATCHING_FEATURES. Nếu block là summary + word bank thì vẫn phải là SUMMARY_COMPLETION.

@@ -15,6 +15,7 @@ namespace EnglishExamApp.API.Controllers;
 public class ExamController(
     IExamService examService,
     IExamPdfGenerationService examPdfGenerationService,
+    IExamAiGenerationService examAiGenerationService,
     IAiIntegrationService aiIntegrationService,
     ISpeakingMediaStorageService speakingMediaStorageService,
     IWritingVisualExtractionService writingVisualExtractionService,
@@ -278,141 +279,6 @@ public class ExamController(
         }
     }
 
-    [HttpPost("preview-pdf-raw")]
-    [RequestFormLimits(MultipartBodyLengthLimit = 50 * 1024 * 1024)]
-    public async Task<IResult> PreviewPdfRawExtraction(
-        [FromForm(Name = "file")] IFormFile? file,
-        CancellationToken cancellationToken)
-    {
-        if (file is null || file.Length == 0)
-        {
-            return TypedResults.BadRequest(new { message = "PDF file is required." });
-        }
-
-        if (!file.FileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
-        {
-            return TypedResults.BadRequest(new { message = "Only PDF files are supported." });
-        }
-
-        try
-        {
-            await using var stream = file.OpenReadStream();
-            var preview = await examPdfGenerationService.PreviewPdfExtractionAsync(
-                stream,
-                file.FileName,
-                cancellationToken);
-
-            return TypedResults.Ok(preview);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (InvalidOperationException ex)
-        {
-            logger.LogWarning(ex, "Preview PDF raw extraction failed with validation error for file {FileName}", file.FileName);
-            return TypedResults.BadRequest(new { message = ex.Message });
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Preview PDF raw extraction failed unexpectedly for file {FileName}", file.FileName);
-            return TypedResults.Problem(
-                title: "Failed to preview PDF extraction.",
-                detail: "Unexpected server error while reading the uploaded PDF.",
-                statusCode: StatusCodes.Status500InternalServerError);
-        }
-    }
-
-    [HttpPost("preview-pdf-question-groups")]
-    [RequestFormLimits(MultipartBodyLengthLimit = 50 * 1024 * 1024)]
-    public async Task<IResult> PreviewPdfQuestionGroups(
-        [FromForm(Name = "file")] IFormFile? file,
-        CancellationToken cancellationToken)
-    {
-        if (file is null || file.Length == 0)
-        {
-            return TypedResults.BadRequest(new { message = "PDF file is required." });
-        }
-
-        if (!file.FileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
-        {
-            return TypedResults.BadRequest(new { message = "Only PDF files are supported." });
-        }
-
-        try
-        {
-            await using var stream = file.OpenReadStream();
-            var preview = await examPdfGenerationService.PreviewPdfQuestionGroupsAsync(
-                stream,
-                file.FileName,
-                cancellationToken);
-
-            return TypedResults.Ok(preview);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (InvalidOperationException ex)
-        {
-            logger.LogWarning(ex, "Preview PDF question groups failed with validation error for file {FileName}", file.FileName);
-            return TypedResults.BadRequest(new { message = ex.Message });
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Preview PDF question groups failed unexpectedly for file {FileName}", file.FileName);
-            return TypedResults.Problem(
-                title: "Failed to preview PDF question groups.",
-                detail: "Unexpected server error while reading the uploaded PDF.",
-                statusCode: StatusCodes.Status500InternalServerError);
-        }
-    }
-
-    [HttpPost("review-pdf-raw")]
-    [RequestFormLimits(MultipartBodyLengthLimit = 50 * 1024 * 1024)]
-    public async Task<IResult> ReviewPdfRaw(
-        [FromForm(Name = "file")] IFormFile? file,
-        CancellationToken cancellationToken)
-    {
-        if (file is null || file.Length == 0)
-        {
-            return TypedResults.BadRequest(new { message = "PDF file is required." });
-        }
-
-        if (!file.FileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
-        {
-            return TypedResults.BadRequest(new { message = "Only PDF files are supported." });
-        }
-
-        try
-        {
-            await using var stream = file.OpenReadStream();
-            var review = await examPdfGenerationService.ReviewPdfRawAsync(
-                stream,
-                file.FileName,
-                cancellationToken);
-
-            return TypedResults.Ok(review);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (InvalidOperationException ex)
-        {
-            logger.LogWarning(ex, "Review PDF raw failed with validation error for file {FileName}", file.FileName);
-            return TypedResults.BadRequest(new { message = ex.Message });
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Review PDF raw failed unexpectedly for file {FileName}", file.FileName);
-            return TypedResults.Problem(
-                title: "Failed to review raw PDF text.",
-                detail: "Unexpected server error while reading or analyzing the uploaded PDF.",
-                statusCode: StatusCodes.Status500InternalServerError);
-        }
-    }
-
     [HttpGet("generate-from-pdf/progress")]
     public IResult GetGenerateExamFromPdfProgress(
         [FromQuery] string? clientRequestId,
@@ -501,6 +367,104 @@ public class ExamController(
         return updated
             ? TypedResults.Ok(new { message = "Status updated successfully." })
             : TypedResults.NotFound(new { message = "Exam not found." });
+    }
+
+    [HttpPost("generate-ai")]
+    [RequestFormLimits(MultipartBodyLengthLimit = 50 * 1024 * 1024)]
+    public async Task<IResult> GenerateExamAi(
+        [FromForm(Name = "file")] IFormFile? file,
+        [FromForm(Name = "inputMode")] string inputMode,
+        [FromForm(Name = "topicDescription")] string? topicDescription,
+        [FromForm(Name = "languageCode")] string? languageCode,
+        [FromHeader(Name = "X-Client-Request-Id")] string? clientRequestId,
+        CancellationToken cancellationToken)
+    {
+        if (!currentUser.TryGetUserId(out var createdBy))
+        {
+            return TypedResults.Unauthorized();
+        }
+
+        if (string.IsNullOrWhiteSpace(inputMode))
+        {
+            return TypedResults.BadRequest(new { message = "inputMode is required." });
+        }
+
+        if (inputMode == "document" && (file is null || file.Length == 0))
+        {
+            return TypedResults.BadRequest(new { message = "File is required for document mode." });
+        }
+
+        try
+        {
+            var uploadId = Guid.NewGuid();
+            var fileName = file?.FileName;
+
+            if (!string.IsNullOrWhiteSpace(clientRequestId))
+            {
+                pdfGenerationProgressTracker.Upsert(new PdfGenerationProgressStatusDto(
+                    UploadId: uploadId,
+                    UploadedBy: createdBy,
+                    Status: "processing",
+                    ProgressPercent: 1,
+                    Stage: "uploading",
+                    Message: "Đang khởi tạo tiến trình sinh đề thi bằng AI.",
+                    PassageNumber: null,
+                    TotalPassages: null,
+                    ExamId: null,
+                    ClientRequestId: clientRequestId.Trim(),
+                    UpdatedAtUtc: DateTime.UtcNow));
+            }
+
+            Stream? stream = null;
+            if (file is not null)
+            {
+                stream = file.OpenReadStream();
+            }
+
+            var request = new ExamAiGenerationRequestDto(
+                InputMode: inputMode,
+                TopicDescription: topicDescription,
+                FileUrl: null,
+                LanguageCode: languageCode ?? "en"
+            );
+
+            var result = await examAiGenerationService.GenerateExamAiAsync(
+                stream,
+                fileName,
+                request,
+                createdBy,
+                clientRequestId,
+                uploadId,
+                cancellationToken);
+
+            await PublishExamChangedAsync(cancellationToken);
+            return TypedResults.Created(
+                $"/api/exam/{result.ExamId}",
+                new
+                {
+                    examId = result.ExamId,
+                    uploadId = result.UploadId,
+                    passageCount = result.PassageCount,
+                    questionCount = result.QuestionCount
+                });
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (InvalidOperationException ex)
+        {
+            logger.LogWarning(ex, "Generate exam from AI failed with validation error.");
+            return TypedResults.BadRequest(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Generate exam from AI failed unexpectedly.");
+            return TypedResults.Problem(
+                title: "Failed to generate exam using AI.",
+                detail: ex.Message,
+                statusCode: StatusCodes.Status500InternalServerError);
+        }
     }
 
     private Task PublishExamChangedAsync(CancellationToken cancellationToken) =>

@@ -382,7 +382,7 @@ public sealed partial class GeminiReadingCopilotService
         - Nếu không tìm thấy bằng chứng Reading thật rõ trong REVIEW_DOCUMENT/CURRENT_LOCATION/CURRENT_FOCUS, hãy nói "mình chưa thấy bằng chứng đủ rõ trong phần review hiện có" và nêu thông tin còn thiếu; không được đoán hoặc bịa vị trí.
         - Nếu CURRENT_FOCUS của Listening đã kèm transcript window của một câu, hãy dùng đúng cửa sổ transcript đó để giải thích; không được nói transcript bị thiếu nếu bằng chứng đã có trong cửa sổ này.
         - Nếu CURRENT_FOCUS của Listening cung cấp transcript scope hoặc transcript của đúng part, hãy tự tìm bằng chứng liên quan trong scope đó dựa trên câu hỏi, đáp án đúng, options, bảng/map/hình và selected text; không được phàn nàn là thiếu exact map nếu trong scope có câu chứng minh.
-        - Với Listening, khi giải thích đáp án phải trích 1-2 câu tiếng Anh ngắn từ transcript window làm bằng chứng trước, rồi mới giải thích bằng tiếng Việt.
+        - Với Listening, khi giải thích đáp án phải ghi rõ timestamp của đáp án đúng trong ngoặc (lấy từ tapescript window, ví dụ: `(02:45 - 03:00)`) ngay cạnh đáp án đúng đó, trích 1-2 câu tiếng Anh ngắn làm bằng chứng, rồi mới giải thích bằng tiếng Việt.
         - Với Listening dạng map labelling, matching hoặc sơ đồ, nếu đáp án là một ký hiệu vị trí như F hay G thì phải nói rõ vì sao vị trí đó đúng trên sơ đồ; không được chỉ trả lời mỗi ký hiệu.
         - Nếu transcript window chưa đủ để kết luận thì nói rõ là transcript window hiện tại chưa đủ bằng chứng, không được đoán bừa.
         - Khi giải thích, ưu tiên: đoạn nào trong bài hỗ trợ kết luận, vì sao đáp án đúng, vì sao đáp án học viên sai, và cách loại trừ lựa chọn khác nếu có.

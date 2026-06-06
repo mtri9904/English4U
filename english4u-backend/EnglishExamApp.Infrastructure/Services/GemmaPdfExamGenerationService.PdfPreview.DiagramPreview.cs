@@ -97,7 +97,17 @@ public sealed partial class GemmaPdfExamGenerationService
 
         try
         {
-            var prompt = BuildGeminiDiagramCropPrompt(group, candidates);
+            var bestCandidate = candidates[0];
+            var bestPage = bestCandidate.Page;
+            var bestPageLines = BuildPdfWordLines(bestPage.Words);
+            var instructionBottom = bestPageLines.Count > 0
+                ? FindDiagramInstructionBottom(group, bestPage, bestPageLines)
+                : null;
+            var instructionBottomRatio = instructionBottom.HasValue && bestPage.PageHeight > 0
+                ? instructionBottom.Value / bestPage.PageHeight
+                : (double?)null;
+
+            var prompt = BuildGeminiDiagramCropPrompt(group, candidates, instructionBottomRatio);
             var rawJson = await geminiPdfNativeExtractionClient.ExtractExamJsonAsync(
                 pdfBytes,
                 fileName,
@@ -120,7 +130,7 @@ public sealed partial class GemmaPdfExamGenerationService
                 return null;
             }
 
-            var cropBounds = BuildGeminiDiagramCropBounds(response.CropBox);
+            var cropBounds = BuildGeminiDiagramCropBounds(response.CropBox, page, group, instructionBottomRatio);
             if (cropBounds is null)
             {
                 SaveCropAssistDebugLog(group, prompt, rawJson, "BuildGeminiDiagramCropBounds returned null (too small)");
@@ -169,7 +179,7 @@ public sealed partial class GemmaPdfExamGenerationService
 
             try
             {
-                var prompt = BuildGeminiDiagramCropPrompt(group, candidates);
+                var prompt = BuildGeminiDiagramCropPrompt(group, candidates, null);
                 SaveCropAssistDebugLog(group, prompt, string.Empty, ex.ToString());
             }
             catch { }
@@ -180,6 +190,7 @@ public sealed partial class GemmaPdfExamGenerationService
 
     private async Task<PdfRawQuestionInstructionPreviewDto?> TryAttachGeminiAssistedDiagramPreviewAsync(
         PdfRawQuestionInstructionPreviewDto group,
+        IReadOnlyList<PdfExtractedPage> pages,
         byte[] pdfBytes,
         string fileName,
         CancellationToken cancellationToken)
@@ -193,7 +204,24 @@ public sealed partial class GemmaPdfExamGenerationService
 
         try
         {
-            var prompt = BuildGeminiDiagramCropPrompt(group);
+            var instructionBottomRatioFullPdf = (double?)null;
+            foreach (var candidatePage in pages)
+            {
+                var candidateLines = BuildPdfWordLines(candidatePage.Words);
+                if (candidateLines.Count == 0)
+                {
+                    continue;
+                }
+
+                var instructionBottomCandidate = FindDiagramInstructionBottom(group, candidatePage, candidateLines);
+                if (instructionBottomCandidate.HasValue && candidatePage.PageHeight > 0)
+                {
+                    instructionBottomRatioFullPdf = instructionBottomCandidate.Value / candidatePage.PageHeight;
+                    break;
+                }
+            }
+
+            var prompt = BuildGeminiDiagramCropPrompt(group, instructionBottomRatioFullPdf);
             var rawJson = await geminiPdfNativeExtractionClient.ExtractExamJsonAsync(
                 pdfBytes,
                 fileName,
@@ -207,7 +235,14 @@ public sealed partial class GemmaPdfExamGenerationService
                 return null;
             }
 
-            var cropBounds = BuildGeminiDiagramCropBounds(response.CropBox);
+            var page = pages.FirstOrDefault(p => p.PageNumber == response.PageNumber.Value);
+            if (page is null)
+            {
+                SaveCropAssistDebugLog(group, prompt, rawJson, $"Full-PDF page number {response.PageNumber.Value} is not found in pages");
+                return null;
+            }
+
+            var cropBounds = BuildGeminiDiagramCropBounds(response.CropBox, page, group, instructionBottomRatioFullPdf);
             if (cropBounds is null)
             {
                 SaveCropAssistDebugLog(group, prompt, rawJson, "BuildGeminiDiagramCropBounds full-PDF returned null (too small)");
@@ -256,7 +291,7 @@ public sealed partial class GemmaPdfExamGenerationService
 
             try
             {
-                var prompt = BuildGeminiDiagramCropPrompt(group);
+                var prompt = BuildGeminiDiagramCropPrompt(group, null);
                 SaveCropAssistDebugLog(group, prompt, string.Empty, ex.ToString());
             }
             catch { }
@@ -267,7 +302,8 @@ public sealed partial class GemmaPdfExamGenerationService
 
     private static string BuildGeminiDiagramCropPrompt(
         PdfRawQuestionInstructionPreviewDto group,
-        IReadOnlyList<(PdfExtractedPage Page, DiagramPreviewCropBounds CropBounds, int Score)> candidates)
+        IReadOnlyList<(PdfExtractedPage Page, DiagramPreviewCropBounds CropBounds, int Score)> candidates,
+        double? instructionBottomRatio)
     {
         var candidatePages = string.Join(
             ", ",
@@ -284,6 +320,10 @@ public sealed partial class GemmaPdfExamGenerationService
                     return $"PAGE {candidate.Page.PageNumber} TEXT PREVIEW:\n{textPreview}";
                 }));
 
+        var instructionConstraint = instructionBottomRatio.HasValue
+            ? $"\n        INSTRUCTION BOUNDARY (CRITICAL): The question instruction text (e.g. \"{group.Instruction}\") ends at Y = {instructionBottomRatio.Value:F4} (normalized ratio). The diagram starts AFTER this line. We will automatically fix the crop top boundary at Y = {instructionBottomRatio.Value:F4}. Your primary task is to identify where the diagram ENDS. Please make sure the crop_box height is large enough to cover the entire diagram down to its bottom boundary, but do not exceed the next question text."
+            : string.Empty;
+
         return
         $$"""
         You are locating the visual asset needed by an IELTS Reading question group in the attached PDF.
@@ -297,27 +337,33 @@ public sealed partial class GemmaPdfExamGenerationService
         Candidate page(s): {{candidatePages}}
 
         {{snippets}}
+        {{instructionConstraint}}
 
         Return ONLY valid JSON, no markdown.
 
-        Find the tight rectangle around the actual diagram/flowchart/map/image that students must look at to answer questions {{group.StartQuestion}}-{{group.EndQuestion}}.
+        Find the rectangle around the diagram/flowchart/map/image AND all its associated text labels, description sentences, and question numbers (like "Whole tower can be raised...") that students must look at to answer questions {{group.StartQuestion}}-{{group.EndQuestion}}.
         
         CRITICAL RULES FOR FLOWCHART/DIAGRAM CROP:
         1. Coordinate normalization:
            - The crop_box coordinates (x, y, width, height) MUST be normalized float ratios relative to the full page width and height (strictly between 0.0 and 1.0).
            - Do NOT use absolute pixel coordinates (like 110, 75, 780, 520). You must convert them to ratios! (e.g. x = 0.05, y = 0.48).
-        2. Flowchart vs Option list:
+        2. Top boundary:
+           - The top of the crop box starts after the instruction. If a fixed boundary Y = {{(instructionBottomRatio.HasValue ? instructionBottomRatio.Value.ToString("F4") : "instruction bottom")}} is provided, we will enforce it.
+           - Ensure the crop box includes any description sentences and question labels (like "Whole tower can be raised...") pointing to the top parts of the diagram.
+        3. Flowchart vs Option list:
            - If the page contains a list of options (e.g., options A-F like "A Timber and petro-chemical industries threatened...") at the top, and a flowchart/diagram structure with placeholders (like "[27] ....", "[28] ....") at the bottom, you MUST prioritize cropping the flowchart structure at the bottom.
-           - The flowchart typically starts at Y >= 0.45. Ensure your 'y' starts at around 0.45 to 0.50, and 'height' captures the rest of the flowchart down to the bottom (Y close to 0.95).
+           - Identify where the visual diagram or flowchart structure begins and ends. The crop box should strictly encompass all visual elements, lines, and shape boxes of the diagram.
            - Do NOT include the A-F option table/list in your crop box. It is plain text and already rendered as text questions.
-        3. Margins:
+        4. Margins:
            - Include enough margin so no boxes/arrows/labels/placeholders are cut off.
-        4. Exclude answer sheet / other questions:
+        5. Exclude answer sheet / other questions:
            - Do NOT include any answer sheets, answer inputs, dropdown lists, or check-boxes (e.g. where students input answers for questions like 27-31) in your crop box.
            - Do NOT include title text or instructions for the NEXT question group (e.g. "Questions 32-33").
            - Make the bottom boundary of the crop box tight to the lowest element of the flowchart/diagram itself.
-        5. Exclude numbered list of questions:
-           - If a numbered list of questions (e.g. "1 Z-axis motor", "2 hot end of extruder", etc.) is printed underneath the diagram/flowchart, you MUST exclude that text list from the crop box. The crop box bottom boundary MUST stop right below the diagram/flowchart image itself, leaving the text list below uncropped.
+        6. Include diagram labels and description sentences:
+           - Description sentences, text labels, and question numbers (e.g. "23", "24", etc. or "Air bubbles result from...") that point to the diagram are an integral part of the diagram itself.
+           - You MUST include these description text blocks and labels inside the crop box so students can read them.
+           - Only exclude a plain, separate numbered list of questions if it is not physically connected or pointing to the diagram.
 
         JSON schema:
         {
@@ -329,7 +375,15 @@ public sealed partial class GemmaPdfExamGenerationService
         """;
     }
 
-    private static string BuildGeminiDiagramCropPrompt(PdfRawQuestionInstructionPreviewDto group) =>
+    private static string BuildGeminiDiagramCropPrompt(
+        PdfRawQuestionInstructionPreviewDto group,
+        double? instructionBottomRatio)
+    {
+        var instructionConstraint = instructionBottomRatio.HasValue
+            ? $"\n        INSTRUCTION BOUNDARY (CRITICAL): The question instruction text (e.g. \"{group.Instruction}\") ends at Y = {instructionBottomRatio.Value:F4} (normalized ratio). The diagram starts AFTER this line. We will automatically fix the crop top boundary at Y = {instructionBottomRatio.Value:F4}. Your primary task is to identify where the diagram ENDS. Please make sure the crop_box height is large enough to cover the entire diagram down to its bottom boundary, but do not exceed the next question text."
+            : string.Empty;
+
+        return
         $$"""
         You are locating the visual asset needed by an IELTS Reading question group in the attached PDF.
 
@@ -338,27 +392,33 @@ public sealed partial class GemmaPdfExamGenerationService
         - group type: {{group.GroupType}}
         - instruction: {{group.Instruction}}
         - question preview: {{group.QuestionPreview}}
+        {{instructionConstraint}}
 
         Return ONLY valid JSON, no markdown.
 
-        Find the tight rectangle around the actual diagram/flowchart/map/image that students must look at to answer questions {{group.StartQuestion}}-{{group.EndQuestion}}.
+        Find the rectangle around the diagram/flowchart/map/image AND all its associated text labels, description sentences, and question numbers (like "Whole tower can be raised...") that students must look at to answer questions {{group.StartQuestion}}-{{group.EndQuestion}}.
         
         CRITICAL RULES FOR FLOWCHART/DIAGRAM CROP:
         1. Coordinate normalization:
            - The crop_box coordinates (x, y, width, height) MUST be normalized float ratios relative to the full page width and height (strictly between 0.0 and 1.0).
            - Do NOT use absolute pixel coordinates (like 110, 75, 780, 520). You must convert them to ratios! (e.g. x = 0.05, y = 0.48).
-        2. Flowchart vs Option list:
+        2. Top boundary:
+           - The top of the crop box starts after the instruction. If a fixed boundary Y = {{(instructionBottomRatio.HasValue ? instructionBottomRatio.Value.ToString("F4") : "instruction bottom")}} is provided, we will enforce it.
+           - Ensure the crop box includes any description sentences and question labels (like "Whole tower can be raised...") pointing to the top parts of the diagram.
+        3. Flowchart vs Option list:
            - If the page contains a list of options (e.g., options A-F like "A Timber and petro-chemical industries threatened...") at the top, and a flowchart/diagram structure with placeholders (like "[27] ....", "[28] ....") at the bottom, you MUST prioritize cropping the flowchart structure at the bottom.
-           - The flowchart typically starts at Y >= 0.45. Ensure your 'y' starts at around 0.45 to 0.50, and 'height' captures the rest of the flowchart down to the bottom (Y close to 0.95).
+           - Identify where the visual diagram or flowchart structure begins and ends. The crop box should strictly encompass all visual elements, lines, and shape boxes of the diagram.
            - Do NOT include the A-F option table/list in your crop box. It is plain text and already rendered as text questions.
-        3. Margins:
+        4. Margins:
            - Include enough margin so no boxes/arrows/labels/placeholders are cut off.
-        4. Exclude answer sheet / other questions:
+        5. Exclude answer sheet / other questions:
            - Do NOT include any answer sheets, answer inputs, dropdown lists, or check-boxes (e.g. where students input answers for questions like 27-31) in your crop box.
            - Do NOT include title text or instructions for the NEXT question group (e.g. "Questions 32-33").
            - Make the bottom boundary of the crop box tight to the lowest element of the flowchart/diagram itself.
-        5. Exclude numbered list of questions:
-           - If a numbered list of questions (e.g. "1 Z-axis motor", "2 hot end of extruder", etc.) is printed underneath the diagram/flowchart, you MUST exclude that text list from the crop box. The crop box bottom boundary MUST stop right below the diagram/flowchart image itself, leaving the text list below uncropped.
+        6. Include diagram labels and description sentences:
+           - Description sentences, text labels, and question numbers (e.g. "23", "24", etc. or "Air bubbles result from...") that point to the diagram are an integral part of the diagram itself.
+           - You MUST include these description text blocks and labels inside the crop box so students can read them.
+           - Only exclude a plain, separate numbered list of questions if it is not physically connected or pointing to the diagram.
 
         JSON schema:
         {
@@ -368,6 +428,7 @@ public sealed partial class GemmaPdfExamGenerationService
           "reason": "short reason explaining why this crop box strictly contains the flowchart structure and excludes the option lists and answer dropdowns"
         }
         """;
+    }
 
     private static string BuildDiagramCropTextPreview(string rawText, int maxLength)
     {
@@ -396,19 +457,96 @@ public sealed partial class GemmaPdfExamGenerationService
         return JsonSerializer.Deserialize<GeminiDiagramCropResponse>(normalized, JsonOptions);
     }
 
-    private static DiagramPreviewCropBounds? BuildGeminiDiagramCropBounds(GeminiDiagramCropBox cropBox)
+    private static DiagramPreviewCropBounds? BuildGeminiDiagramCropBounds(
+        GeminiDiagramCropBox cropBox,
+        PdfExtractedPage page,
+        PdfRawQuestionInstructionPreviewDto group,
+        double? instructionBottomRatio = null)
     {
-        var left = Math.Clamp(cropBox.X, 0d, 0.98d);
-        var top = Math.Clamp(cropBox.Y, 0d, 0.98d);
-        var right = Math.Clamp(cropBox.X + cropBox.Width, left + 0.02d, 1d);
-        var bottom = Math.Clamp(cropBox.Y + cropBox.Height, top + 0.02d, 1d);
+        double pageHeight = page.PageHeight;
 
-        var marginX = Math.Max(0.005d, (right - left) * 0.02d);
-        var marginY = Math.Max(0.006d, (bottom - top) * 0.02d);
+        double x = cropBox.X;
+        double y = cropBox.Y;
+        double width = cropBox.Width;
+        double height = cropBox.Height;
+
+        if (x > 1.0d)
+        {
+            x = x / 1000.0d;
+        }
+        if (width > 1.0d)
+        {
+            width = width / 1000.0d;
+        }
+        if (y > 1.0d)
+        {
+            y = y / 1000.0d;
+        }
+        if (height > 1.0d)
+        {
+            height = height / 1000.0d;
+        }
+
+        var left = Math.Clamp(x, 0d, 0.98d);
+        var top = Math.Clamp(y, 0d, 0.98d);
+        var right = Math.Clamp(x + width, left + 0.02d, 1d);
+
+        var resolvedInstructionBottomRatio = instructionBottomRatio;
+        if (!resolvedInstructionBottomRatio.HasValue)
+        {
+            var lines = BuildPdfWordLines(page.Words);
+            if (lines.Count > 0)
+            {
+                var headerBottom = FindDiagramInstructionBottom(group, page, lines);
+                if (headerBottom.HasValue)
+                {
+                    resolvedInstructionBottomRatio = headerBottom.Value / pageHeight;
+                }
+            }
+        }
+
+        if (resolvedInstructionBottomRatio.HasValue)
+        {
+            top = resolvedInstructionBottomRatio.Value + 0.002d;
+        }
+
+        var bottom = Math.Clamp(y + height, top + 0.02d, 1d);
+
+        var lines2 = BuildPdfWordLines(page.Words);
+        if (lines2.Count > 0)
+        {
+            double? nextGroupHeaderTop = null;
+            var nextGroupNumber = group.EndQuestion + 1;
+            var nextGroupRegex = new Regex($@"(?i)questions?\s*{nextGroupNumber}\b");
+            var nextGroupLine = lines2
+                .Where(line => line.TopFromPageTop >= top * pageHeight)
+                .FirstOrDefault(line => nextGroupRegex.IsMatch(line.Text));
+            if (nextGroupLine is not null)
+            {
+                nextGroupHeaderTop = nextGroupLine.TopFromPageTop;
+            }
+
+            if (nextGroupHeaderTop is not null)
+            {
+                var nextGroupRatio = nextGroupHeaderTop.Value / pageHeight;
+                bottom = Math.Min(bottom, nextGroupRatio - 0.01d);
+            }
+        }
+
+        if (top >= bottom - 0.02d)
+        {
+            top = resolvedInstructionBottomRatio.HasValue
+                ? resolvedInstructionBottomRatio.Value + 0.002d
+                : Math.Clamp(y, 0d, 0.98d);
+            bottom = Math.Clamp(y + height, top + 0.02d, 1d);
+        }
+
+        var marginX = Math.Max(0.01d, (right - left) * 0.02d);
         left = Math.Clamp(left - marginX, 0d, 0.98d);
         right = Math.Clamp(right + marginX, left + 0.02d, 1d);
-        top = Math.Clamp(top - marginY, 0d, 0.98d);
-        bottom = Math.Clamp(bottom + marginY, top + 0.02d, 1d);
+
+        left = Math.Min(left, 0.05d);
+        right = Math.Max(right, 0.95d);
 
         if (right - left < 0.08d || bottom - top < 0.06d)
         {
@@ -419,10 +557,10 @@ public sealed partial class GemmaPdfExamGenerationService
             TopRatio: top,
             BottomRatio: bottom,
             HasExplicitBottomBoundary: true,
-            HasExplicitInstructionBoundary: true,
+            HasExplicitInstructionBoundary: resolvedInstructionBottomRatio.HasValue,
             LeftRatio: left,
             RightRatio: right);
-     }
+    }
 
     private static PdfVisualCropBoxDto BuildVisualCropBox(DiagramPreviewCropBounds cropBounds) =>
         new(
@@ -443,6 +581,7 @@ public sealed partial class GemmaPdfExamGenerationService
         {
             var geminiAssistedPreviewWithoutCandidates = await TryAttachGeminiAssistedDiagramPreviewAsync(
                 group,
+                pages,
                 pdfBytes,
                 fileName,
                 cancellationToken);
@@ -521,6 +660,7 @@ public sealed partial class GemmaPdfExamGenerationService
 
         var geminiAssistedPreviewAfterCandidateFailure = await TryAttachGeminiAssistedDiagramPreviewAsync(
             group,
+            pages,
             pdfBytes,
             fileName,
             cancellationToken);

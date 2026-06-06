@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using System.Globalization;
+using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
@@ -58,9 +59,33 @@ public sealed partial class GemmaPdfExamGenerationService
 
         var totalQuestions = runningQuestionNumber - 1;
         var titleWithoutExtension = Path.GetFileNameWithoutExtension(fileName);
-        var examTitle = string.IsNullOrWhiteSpace(titleWithoutExtension)
-            ? $"Generated IELTS Reading {DateTime.UtcNow:yyyyMMddHHmmss}"
-            : $"Generated IELTS Reading - {titleWithoutExtension.Trim()}";
+        var passageTitles = parsedPassages
+            .Select(p => p.PassageTitle?.Trim())
+            .Where(t => !string.IsNullOrWhiteSpace(t))
+            .ToList();
+
+        var joinedTitles = passageTitles.Count > 0
+            ? string.Join(" | ", passageTitles)
+            : (string.IsNullOrWhiteSpace(titleWithoutExtension) ? "IELTS Reading Exam" : titleWithoutExtension.Trim());
+
+        var randomCode = Guid.NewGuid().ToString("N")[..4].ToUpperInvariant();
+        var localDate = DateTime.UtcNow.AddHours(7).ToString("dd/MM/yyyy");
+        var suffix = $" ({localDate} - {randomCode})";
+        var prefix = "[Reading] ";
+
+        var examTitle = prefix + joinedTitles + suffix;
+        if (examTitle.Length > 255)
+        {
+            var maxJoinedLength = 255 - prefix.Length - suffix.Length;
+            if (maxJoinedLength > 3)
+            {
+                examTitle = prefix + joinedTitles[..(maxJoinedLength - 3)] + "..." + suffix;
+            }
+            else
+            {
+                examTitle = examTitle[..255];
+            }
+        }
 
         return new CreateExamDto(
             Title: examTitle,

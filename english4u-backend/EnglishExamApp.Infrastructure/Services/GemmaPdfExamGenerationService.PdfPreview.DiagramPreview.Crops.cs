@@ -246,7 +246,7 @@ public sealed partial class GemmaPdfExamGenerationService
         IReadOnlyList<PdfExtractedWordLine> lines)
     {
         var rangeRegex = new Regex(
-            $@"(?i)\bquestions?\s*{group.StartQuestion}\s*(?:-|–|—|â€“|â€”|to|\s+)\s*{group.EndQuestion}(?!\d)",
+            $@"(?i)(\bquestions?\s*{group.StartQuestion}\s*(?:-|–|—|â€“|â€”|to|\s+)\s*{group.EndQuestion}(?!\d)|\bcâu\s*{group.StartQuestion}\s*(?:-|–|—|â€“|â€”|to|\s+)\s*{group.EndQuestion}(?!\d))",
             RegexOptions.Compiled);
 
         var instructionTokens = BuildComparableSearchTokens(group.Instruction)
@@ -265,12 +265,34 @@ public sealed partial class GemmaPdfExamGenerationService
             .ThenBy(entry => entry.Index)
             .ToList();
 
+        int anchorIndex;
         if (headerCandidates.Count == 0)
         {
-            return null;
-        }
+            var fallbackEntry = lines
+                .Select((line, index) => new { Line = line, Index = index })
+                .Where(item => item.Line.TopFromPageTop <= page.PageHeight * 0.80d)
+                .Where(item =>
+                    item.Line.NormalizedText.Contains("DIAGRAM", StringComparison.Ordinal) ||
+                    item.Line.NormalizedText.Contains("FLOWCHART", StringComparison.Ordinal) ||
+                    item.Line.NormalizedText.Contains("FLOW CHART", StringComparison.Ordinal) ||
+                    item.Line.NormalizedText.Contains("MAP", StringComparison.Ordinal) ||
+                    item.Line.NormalizedText.Contains("LABEL", StringComparison.Ordinal) ||
+                    item.Line.NormalizedText.Contains("ILLUSTRATION", StringComparison.Ordinal) ||
+                    item.Line.NormalizedText.Contains("PICTURE", StringComparison.Ordinal) ||
+                    item.Line.NormalizedText.Contains("FIGURE", StringComparison.Ordinal))
+                .OrderBy(item => item.Line.TopFromPageTop)
+                .FirstOrDefault();
 
-        var anchorIndex = headerCandidates[0].Index;
+            if (fallbackEntry is null)
+            {
+                return null;
+            }
+            anchorIndex = fallbackEntry.Index;
+        }
+        else
+        {
+            anchorIndex = headerCandidates[0].Index;
+        }
         var maxGap = Math.Max(26d, page.PageHeight * 0.03d);
         var scanLimit = Math.Min(lines.Count - 1, anchorIndex + 10);
         var lowestBottom = lines[anchorIndex].BottomFromPageTop;

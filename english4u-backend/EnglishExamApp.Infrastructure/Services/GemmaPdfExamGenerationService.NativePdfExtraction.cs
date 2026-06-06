@@ -778,10 +778,12 @@ public sealed partial class GemmaPdfExamGenerationService
         - FillInBlanks — sentence/note completion with blanks in running text (NOT table/diagram)
         - SummaryCompletion — like FillInBlanks but with a word bank
         - TableCompletion — blanks inside a TABLE
-        - FlowchartCompletion — blanks inside a FLOWCHART, DIAGRAM, or actual visual graphic (instruction says "diagram below", "flow chart below", "label the diagram", etc.). Do NOT use FlowchartCompletion if it is just a sequential sentence list wrapped in a border box with no graphical connections; use FillInBlanks instead.
-        - MapLabelling — blanks on a MAP or PLAN diagram
+        - FlowchartCompletion — blanks inside a FLOWCHART, DIAGRAM, or process graphic where the answers are actual words, numbers, or phrases (optionally chosen from a word/phrase bank, not simple letters like A, B, C, D).
+        - MapLabelling — labels/blanks on a MAP, PLAN, or DIAGRAM where the answers / options are purely single letters like A, B, C, D, E... representing labeled points on the graphic. Each question has its own text (e.g. "Q1. library", "Q2. post office").
 
-        KEY: If instruction says "diagram below" or "label the diagram" → check the PDF visual: if it has actual flowchart arrows/shapes/diagram graphics, use FlowchartCompletion; if it is just a list of sentences wrapped in a box/timeline frame, use FillInBlanks.
+        KEY:
+        - Classify as MapLabelling if the question group requires matching numbered questions to lettered locations/points on a diagram/map/plan (answers are letters A, B, C, D...).
+        - Classify as FlowchartCompletion if the question group is to complete steps/boxes in a flowchart/diagram with actual words/numbers (or choosing words/phrases from a box).
 
         ===== TABLE RULES =====
         For TableCompletion:
@@ -808,7 +810,7 @@ public sealed partial class GemmaPdfExamGenerationService
         - If there is no surrounding visible text for a blank, question_text may be only `[Qn]`.
         - Do NOT invent sentences. Do NOT copy passage text as question_text unless that text is visibly printed in the diagram/flowchart/timeline itself.
         - If the PDF has a real graphical visual (flowchart, process chart, beehive diagram), keep it as a visual question so the backend can crop the PDF image. If it is just text sentences wrapped in a border box, treat it as non-visual FillInBlanks.
-        - Use MapLabelling only for maps/plans/layouts; use FlowchartCompletion for ordinary diagrams, process charts, beehive diagrams, and flow charts.
+        - Use MapLabelling if options are purely single letters (A, B, C, D...) representing labeled points on a map/plan/diagram. Use FlowchartCompletion for diagrams, processes, and flowcharts where answers are words/phrases (even if chosen from a word bank containing actual words).
         - Include option bank in "options" if printed, else []
 
         ===== GENERAL RULES =====

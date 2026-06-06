@@ -27,6 +27,7 @@ import {
     PlusOutlined,
     ReloadOutlined,
     SearchOutlined,
+    ThunderboltOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useNavigate } from 'react-router-dom';
@@ -467,6 +468,24 @@ export const ExamManagement = () => {
                         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                             <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
                                 <Button
+                                    icon={<ThunderboltOutlined />}
+                                    onClick={() => navigate('/admin/exams/generate-ai')}
+                                    style={{
+                                        borderRadius: 10,
+                                        border: '1px solid rgba(255, 255, 255, 0.45)',
+                                        height: 40,
+                                        paddingInline: 16,
+                                        fontWeight: 700,
+                                        color: '#e2e8f0',
+                                        background: 'rgba(99, 102, 241, 0.35)',
+                                    }}
+                                >
+                                    Sinh đề bằng AI
+                                </Button>
+                            </motion.div>
+
+                            <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+                                <Button
                                     icon={<InboxOutlined />}
                                     onClick={handleOpenPdfModal}
                                     disabled={isPdfGenerationLocked}
@@ -487,23 +506,7 @@ export const ExamManagement = () => {
                                     {isPdfGenerationLocked ? `Đang generate ${pdfJobPercent}%` : 'Gen đề từ PDF'}
                                 </Button>
                             </motion.div>
-                            <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-                                <Button
-                                    icon={<EyeOutlined />}
-                                    onClick={() => navigate('/admin/exams/raw-preview')}
-                                    style={{
-                                        borderRadius: 10,
-                                        border: '1px solid rgba(255, 255, 255, 0.45)',
-                                        height: 40,
-                                        paddingInline: 16,
-                                        fontWeight: 700,
-                                        color: '#e2e8f0',
-                                        background: 'rgba(15, 23, 42, 0.35)',
-                                    }}
-                                >
-                                    Demo text thô
-                                </Button>
-                            </motion.div>
+
                             <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
                                 <Button
                                     icon={<PlusOutlined />}

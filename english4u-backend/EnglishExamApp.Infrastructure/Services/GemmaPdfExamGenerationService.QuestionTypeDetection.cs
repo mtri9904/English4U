@@ -404,6 +404,11 @@ public sealed partial class GemmaPdfExamGenerationService
             var match = OptionStartsWithLetterLabelRegex().Match(option);
             if (!match.Success)
             {
+                match = OptionStartsWithLetterSpaceRegex().Match(option);
+            }
+
+            if (!match.Success)
+            {
                 continue;
             }
 

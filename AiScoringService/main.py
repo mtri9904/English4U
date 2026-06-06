@@ -35,7 +35,10 @@ from schemas import (
     ScoreResponse,
     ScoreSpeakingSessionRequest,
     ScoreWritingRequest,
+    ReadabilityAnalysisRequest,
+    ReadabilityAnalysisResponse,
 )
+from readability_utils import analyze_text_readability
 from speaking.audio_activity import get_speaking_audio_tool_status
 from speaking.service import score_speaking_answer_response
 from speaking.session_scoring import score_speaking_session_rubrics
@@ -227,6 +230,17 @@ async def align_listening_transcript(request: ListeningTranscriptAlignmentReques
         )
     except ValueError as ex:
         raise HTTPException(status_code=400, detail=str(ex)) from ex
+
+
+@app.post("/api/ai/analyze-readability", response_model=ReadabilityAnalysisResponse)
+async def analyze_readability(request: ReadabilityAnalysisRequest):
+    if not request.text.strip():
+        raise HTTPException(status_code=400, detail="Text is empty.")
+    try:
+        result = analyze_text_readability(request.text)
+        return ReadabilityAnalysisResponse(**result)
+    except Exception as ex:
+        raise HTTPException(status_code=500, detail=str(ex)) from ex
 
 
 @app.get("/health")

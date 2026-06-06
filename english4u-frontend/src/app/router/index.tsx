@@ -11,9 +11,9 @@ import {
     AdminDashboard,
     StudentManagementPage,
     ExamManagement,
-    PdfRawPreviewPage,
     ExamDetailPage,
     ExamEditorPage,
+    AdminExamAiGenerationPage,
     AttemptManagementPage,
     ProfilePage,
     NotificationManagementPage,
@@ -97,10 +97,6 @@ export const appRouter = createBrowserRouter([
                 element: <ExamManagement />,
             },
             {
-                path: 'exams/raw-preview',
-                element: <PdfRawPreviewPage />,
-            },
-            {
                 path: 'attempts',
                 element: <AttemptManagementPage />,
             },
@@ -111,6 +107,10 @@ export const appRouter = createBrowserRouter([
             {
                 path: 'exams/create',
                 element: <ExamEditorPage />,
+            },
+            {
+                path: 'exams/generate-ai',
+                element: <AdminExamAiGenerationPage />,
             },
             {
                 path: 'exams/edit/:id',

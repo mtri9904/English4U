@@ -20,18 +20,7 @@ if errorlevel 1 (
   echo [!] Migration that bai ^(co the do Application Control policy^). Tiep tuc...
 )
 
-echo [*] Publishing Backend outside OneDrive to bypass Windows Defender Application Control...
-dotnet publish EnglishExamApp.API -o "C:\EnglishExamApp\publish" --no-self-contained
-if errorlevel 1 (
-  echo [x] Publish that bai.
-  exit /b 1
-)
-
-echo [*] Unblocking published files...
-powershell -InputFormat None -NonInteractive -Command "Get-ChildItem -Path 'C:\EnglishExamApp\publish' -Recurse -File | Unblock-File -ErrorAction SilentlyContinue"
-
-echo [*] Starting Backend on http://localhost:5000...
-cd /d "C:\EnglishExamApp\publish"
+echo [*] Starting Backend directly using dotnet run to bypass Windows Defender Application Control...
 title EnglishExamApp Backend
-dotnet EnglishExamApp.API.dll
+dotnet run --project EnglishExamApp.API\EnglishExamApp.API.csproj --urls "http://localhost:5000"
 pause

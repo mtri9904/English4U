@@ -182,15 +182,18 @@ public sealed partial class GemmaPdfExamGenerationService
         string mappedQuestionType,
         List<CreateQuestionDto> questions,
         string? instruction,
-        string? rawBlockText)
+        string? rawBlockText,
+        string? passageContent = null)
     {
         if (questions.Count == 0)
         {
             return questions;
         }
 
-        var hasAnyOptions = questions.Any(question => question.Options.Count > 0);
-        if (hasAnyOptions)
+        var hasMeaningfulOptions = questions.Any(question =>
+            question.Options.Count > 0 &&
+            !IsAllSingleLetterOptions(question.Options.Select(o => o.OptionText ?? string.Empty).ToList()));
+        if (hasMeaningfulOptions)
         {
             return questions;
         }
@@ -199,6 +202,14 @@ public sealed partial class GemmaPdfExamGenerationService
             .Concat(ExtractMatchingSharedOptionBank(rawBlockText))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
+
+        if (sharedOptions.Count < 2 &&
+            string.Equals(mappedQuestionType, "MATCHING_INFO", StringComparison.OrdinalIgnoreCase) &&
+            !string.IsNullOrWhiteSpace(passageContent))
+        {
+            sharedOptions = ExtractParagraphLabelsForOptions(passageContent);
+        }
+
         if (sharedOptions.Count < 2)
         {
             return questions;
@@ -209,6 +220,24 @@ public sealed partial class GemmaPdfExamGenerationService
             {
                 Options = BuildOptions(sharedOptions, mappedQuestionType, question.CorrectAnswer)
             })
+            .ToList();
+    }
+
+    private static List<string> ExtractParagraphLabelsForOptions(string content)
+    {
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            return [];
+        }
+
+        return Regex.Matches(
+                content,
+                @"(?m)^\s*(?:\*\*)?(?<label>[A-Z])(?:\s*[).:\-]|[.])?(?:\*\*)?(?:\s+\S.*)?$")
+            .Select(match => match.Groups["label"].Value)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value.ToUpperInvariant())
+            .Distinct()
+            .OrderBy(label => label)
             .ToList();
     }
 
@@ -332,13 +361,17 @@ public sealed partial class GemmaPdfExamGenerationService
 
     private static bool IsAllSingleLetterOptions(List<string> options)
     {
-        if (options.Count == 0)
+        if (options == null || options.Count == 0)
         {
             return false;
         }
 
         foreach (var opt in options)
         {
+            if (string.IsNullOrWhiteSpace(opt))
+            {
+                return false;
+            }
             var trimmed = opt.Trim().Trim('.', ')', ':').ToUpperInvariant();
             if (trimmed.Length != 1 || trimmed[0] < 'A' || trimmed[0] > 'Z')
             {
@@ -361,12 +394,6 @@ public sealed partial class GemmaPdfExamGenerationService
             .Where(option => !string.IsNullOrWhiteSpace(option))
             .ToList() ?? [];
 
-        if ((string.Equals(mappedQuestionType, "FLOWCHART_COMPLETION", StringComparison.OrdinalIgnoreCase) ||
-             string.Equals(mappedQuestionType, "MAP_LABELLING", StringComparison.OrdinalIgnoreCase)) &&
-            IsAllSingleLetterOptions(options))
-        {
-            return [];
-        }
 
         if (options.Count == 0 && string.Equals(mappedQuestionType, "TFNG", StringComparison.Ordinal))
         {
@@ -395,12 +422,6 @@ public sealed partial class GemmaPdfExamGenerationService
                 optionText = StripLeadingRomanNumeral(optionText);
             }
 
-            if (mappedQuestionType is "SUMMARY_COMPLETION" or "TABLE_COMPLETION" &&
-                !Regex.IsMatch(optionText, @"^\s*[A-Z]\s*[.)\:\-]\s+\S", RegexOptions.IgnoreCase))
-            {
-                optionText = $"{optionLabel}. {optionText}".Trim();
-            }
-
             if (IsMcqType(mappedQuestionType) && IsOptionLabelOnly(optionText))
             {
                 optionText = string.Empty;
@@ -426,7 +447,7 @@ public sealed partial class GemmaPdfExamGenerationService
 
     private static bool ShouldStripOptionLabelPrefix(string mappedQuestionType, IReadOnlyList<string> options)
     {
-        if (mappedQuestionType is not "MCQ_SINGLE" and not "MCQ_MULTIPLE" and not "MCQ_CHOOSE_N" and not "FLOWCHART_COMPLETION")
+        if (mappedQuestionType is not "MCQ_SINGLE" and not "MCQ_MULTIPLE" and not "MCQ_CHOOSE_N" and not "FLOWCHART_COMPLETION" and not "SUMMARY_COMPLETION" and not "TABLE_COMPLETION")
         {
             return false;
         }

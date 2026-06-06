@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Text.RegularExpressions;
 using EnglishExamApp.Application.DTOs.Exams;
 
@@ -23,6 +24,24 @@ public sealed partial class GemmaPdfExamGenerationService
             if (mappedQuestionType is "FLOWCHART_COMPLETION" or "MAP_LABELLING")
             {
                 mappedQuestionType = "SENTENCE_COMPLETION";
+            }
+        }
+
+        if (mappedQuestionType is "FLOWCHART_COMPLETION" or "MAP_LABELLING")
+        {
+            var hasLetterOptions = IsPurelyLetterOptions(options);
+            var hasLetterAnswers = IsPurelyLetterAnswers(answerText);
+            if (options.Count > 0 && !hasLetterOptions)
+            {
+                mappedQuestionType = "FLOWCHART_COMPLETION";
+            }
+            else if (hasLetterOptions || hasLetterAnswers)
+            {
+                mappedQuestionType = "MAP_LABELLING";
+            }
+            else
+            {
+                mappedQuestionType = "FLOWCHART_COMPLETION";
             }
         }
 
@@ -154,6 +173,11 @@ public sealed partial class GemmaPdfExamGenerationService
             return "MCQ_CHOOSE_N";
         }
 
+        if (IsMcqChoiceGroup(questions))
+        {
+            return questions.Any(q => HasMultipleLetterAnswerTokens(q.CorrectAnswer)) ? "MCQ_MULTIPLE" : "MCQ_SINGLE";
+        }
+
         var finalType = ReconcileQuestionTypeByEvidence(groupType, instruction, questionText, options, answerText);
         if (finalType == "MCQ_SINGLE" && questions.Any(q => HasMultipleLetterAnswerTokens(q.CorrectAnswer)))
         {
@@ -185,8 +209,7 @@ public sealed partial class GemmaPdfExamGenerationService
 
         if (IsMcqType(mappedType) &&
             HasExplicitMatchingTaskInstruction(evidenceText) &&
-            !ContainsMcqSingleInstruction(evidenceText) &&
-            !ContainsMcqMultipleInstruction(evidenceText))
+            !HasExplicitMcqInstruction(evidenceText))
         {
             issues.Add($"{groupLabel} is mapped as {mappedType} but instruction looks like a matching task.");
         }
@@ -269,7 +292,10 @@ public sealed partial class GemmaPdfExamGenerationService
 
         return Regex.IsMatch(
             evidenceText,
-            @"(?i)\bchoose\s+(?:two|three|four|five|six|2|3|4|5|6)\s+letters?\b");
+            @"(?i)\bchoose\s+(?:two|three|four|five|six|2|3|4|5|6)\s+(?:letters?|statements?|answers?|claims?|reasons?|paragraphs?|options?)\b") ||
+               Regex.IsMatch(
+            evidenceText,
+            @"(?i)\bwhich\s+(?:two|three|four|five|six|2|3|4|5|6)\b");
     }
 
     private static bool LooksLikeMatchingSentenceEndingsInstruction(string? evidenceText, IReadOnlyList<string> options)
@@ -296,5 +322,75 @@ public sealed partial class GemmaPdfExamGenerationService
             var normalized = Regex.Replace(option ?? string.Empty, @"\s+", " ").Trim();
             return normalized.Length >= 2 && !IsOptionLabelOnly(normalized);
         }) >= 2;
+    }
+
+    private static bool IsPurelyLetterOptions(IReadOnlyList<string> options)
+    {
+        if (options == null || options.Count == 0)
+        {
+            return false;
+        }
+        return options.All(option =>
+        {
+            if (string.IsNullOrWhiteSpace(option))
+            {
+                return false;
+            }
+            var trimmed = option.Trim();
+            return Regex.IsMatch(trimmed, @"^[A-Z](?:\s*[\.\-]\s*)?$");
+        });
+    }
+
+    private static bool IsPurelyLetterAnswers(string? answerText)
+    {
+        if (string.IsNullOrWhiteSpace(answerText))
+        {
+            return false;
+        }
+        var tokens = Regex.Split(answerText, @"\s+");
+        var validTokens = tokens.Where(t => !string.IsNullOrWhiteSpace(t)).ToList();
+        if (validTokens.Count == 0)
+        {
+            return false;
+        }
+        return validTokens.All(t => Regex.IsMatch(t.Trim(), @"^[A-Z]$"));
+    }
+
+    private static bool IsMcqChoiceGroup(IReadOnlyList<CreateQuestionDto> questions)
+    {
+        if (questions.Count == 0)
+        {
+            return false;
+        }
+
+        if (questions.Count > 1)
+        {
+            var firstOpts = questions[0].Options.Select(o => o.OptionText?.Trim()).Where(t => !string.IsNullOrEmpty(t)).OrderBy(t => t).ToList();
+            var secondOpts = questions[1].Options.Select(o => o.OptionText?.Trim()).Where(t => !string.IsNullOrEmpty(t)).OrderBy(t => t).ToList();
+            if (firstOpts.Count > 0 && firstOpts.SequenceEqual(secondOpts, StringComparer.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+        }
+
+        return questions.Any(q =>
+        {
+            var opts = q.Options.Select(o => o.OptionText).Where(o => !string.IsNullOrWhiteSpace(o)).ToList();
+            if (LooksLikeMcqChoiceSet(opts))
+            {
+                return true;
+            }
+
+            if (q.Options.Count >= 2 && q.Options.Count <= 5 && !string.IsNullOrWhiteSpace(q.CorrectAnswer))
+            {
+                var ans = q.CorrectAnswer.Trim().ToUpperInvariant();
+                if (ans.Length == 1 && ans[0] >= 'A' && ans[0] < 'A' + q.Options.Count)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        });
     }
 }

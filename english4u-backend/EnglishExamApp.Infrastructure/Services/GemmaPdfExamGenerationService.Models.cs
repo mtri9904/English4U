@@ -261,7 +261,7 @@ public sealed partial class GemmaPdfExamGenerationService
     [GeneratedRegex(@"^(?<answer>.+?)(?:\s*(?:[-–—]|because|since|therefore|=>)\s+.+)$", RegexOptions.IgnoreCase)]
     private static partial Regex AnswerBeforeExplanationRegex();
 
-    [GeneratedRegex(@"^(?:TRUE|FALSE|YES|NO|NOT\s+GIVEN|[A-H])(?:[).:\-]|\s)+(?<explanation>.+)$", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"^(?:TRUE|FALSE|YES|NO|NOT\s+GIVEN|[A-Z])(?:[).:\-]|\s)+(?<explanation>.+)$", RegexOptions.IgnoreCase)]
     private static partial Regex LeadingAnswerTokenRegex();
 
     [GeneratedRegex(@"(?i)\b(?:access\s+https?://|https?://|page\s*\d+)\b")]
@@ -273,13 +273,13 @@ public sealed partial class GemmaPdfExamGenerationService
     [GeneratedRegex(@"(?i)\b(?:https?://|access\b|open\s+this\s+url|how\s+to\s+use|on\s+your\s+computer|ways?\s+to\s+access|reading\s+passage|answer\s+sheet|ieltsonlinetests|page\s*\d+|questions?\b)\b")]
     private static partial Regex AnswerKeyNoiseHintRegex();
 
-    [GeneratedRegex(@"(?i)(?:\d{1,2}\s*[A-H]){3,}")]
+    [GeneratedRegex(@"(?i)(?:\d{1,2}\s*[A-Z]){3,}")]
     private static partial Regex CompactAnswerBlobRegex();
 
-    [GeneratedRegex(@"^\s*(?<label>[A-H])\s*[).:\-]\s*(?<text>.+)$", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"^\s*(?<label>[A-Z])\s*[).:\-]\s*(?<text>.+)$", RegexOptions.IgnoreCase)]
     private static partial Regex OptionStartsWithLetterLabelRegex();
 
-    [GeneratedRegex(@"^\s*(?<label>[A-H])\s+(?<text>.+)$", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"^\s*(?<label>[A-Z])\s+(?<text>.+)$", RegexOptions.IgnoreCase)]
     private static partial Regex OptionStartsWithLetterSpaceRegex();
 
     [GeneratedRegex(@"^\s*\d{1,2}\s*[).:\-]?\s+")]
@@ -291,7 +291,7 @@ public sealed partial class GemmaPdfExamGenerationService
     [GeneratedRegex(@"\b(YES|NO|NOT\s+GIVEN)\b", RegexOptions.IgnoreCase)]
     private static partial Regex YesNoNotGivenRegex();
 
-    [GeneratedRegex(@"\b(choose|write)\b.*\b(letter|letters)\b|\bA\s*-\s*H\b", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"\b(choose|write)\b.*\b(letter|letters)\b|\bA\s*-\s*[A-Z]\b", RegexOptions.IgnoreCase)]
     private static partial Regex MatchingInstructionRegex();
 
     [GeneratedRegex(@"\bwhich\s+paragraphs?\s+contain(?:s)?\b|\bwhich\s+paragraph\s+contains\b", RegexOptions.IgnoreCase)]
@@ -341,18 +341,6 @@ public sealed partial class GemmaPdfExamGenerationService
 
     [GeneratedRegex(@"([.?!])\s*$")]
     private static partial Regex SentenceEndingPunctuationRegex();
-
-    private sealed record PdfGenerationProgressPayload(
-        Guid UploadId,
-        Guid UploadedBy,
-        string Status,
-        int ProgressPercent,
-        string Stage,
-        string Message,
-        int? PassageNumber,
-        int? TotalPassages,
-        Guid? ExamId,
-        string? ClientRequestId);
 
     private readonly record struct PassageMarker(int Number, int StartIndex);
     private readonly record struct PassageQuestionSegment(
@@ -654,3 +642,15 @@ public sealed partial class GemmaPdfExamGenerationService
         [property: JsonPropertyName("width")] double Width,
         [property: JsonPropertyName("height")] double Height);
 }
+
+internal sealed record PdfGenerationProgressPayload(
+    Guid UploadId,
+    Guid UploadedBy,
+    string Status,
+    int ProgressPercent,
+    string Stage,
+    string Message,
+    int? PassageNumber,
+    int? TotalPassages,
+    Guid? ExamId,
+    string? ClientRequestId);

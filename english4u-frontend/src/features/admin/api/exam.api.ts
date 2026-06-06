@@ -8,9 +8,6 @@ import type {
     GenerateExamFromPdfResult,
     GenerateListeningTranscriptResultDto,
     PdfGenerationProgressStatus,
-    PdfQuestionGroupPreviewDto,
-    PdfRawExtractionPreviewDto,
-    PdfRawReviewDto,
     UploadSpeakingPromptAudioResult,
     WritingVisualExtractionResultDto,
 } from '../types/exam.types';
@@ -71,6 +68,39 @@ export const examApi = {
         });
         return res.data;
     },
+    generateAi: async ({
+        file,
+        inputMode,
+        topicDescription,
+        languageCode,
+        clientRequestId,
+    }: {
+        file?: File | null;
+        inputMode: string;
+        topicDescription?: string | null;
+        languageCode?: string | null;
+        clientRequestId: string;
+    }): Promise<GenerateExamFromPdfResult> => {
+        const formData = new FormData();
+        if (file) {
+            formData.append('file', file);
+        }
+        formData.append('inputMode', inputMode);
+        if (topicDescription) {
+            formData.append('topicDescription', topicDescription);
+        }
+        if (languageCode) {
+            formData.append('languageCode', languageCode);
+        }
+        const res = await axiosInstance.post<GenerateExamFromPdfResult>('/exam/generate-ai', formData, {
+            headers: {
+                'Content-Type': 'multipart/form-data',
+                'X-Client-Request-Id': clientRequestId,
+            },
+            timeout: 20 * 60 * 1000,
+        });
+        return res.data;
+    },
     getPdfGenerationProgress: async ({ clientRequestId, uploadId }: { clientRequestId?: string | null; uploadId?: string | null }): Promise<PdfGenerationProgressStatus> => {
         const res = await axiosInstance.get<PdfGenerationProgressStatus>('/exam/generate-from-pdf/progress', {
             params: {
@@ -80,33 +110,7 @@ export const examApi = {
         });
         return res.data;
     },
-    previewPdfRaw: async (file: File): Promise<PdfRawExtractionPreviewDto> => {
-        const formData = new FormData();
-        formData.append('file', file);
-        const res = await axiosInstance.post<PdfRawExtractionPreviewDto>('/exam/preview-pdf-raw', formData, {
-            headers: { 'Content-Type': 'multipart/form-data' },
-            timeout: 10 * 60 * 1000,
-        });
-        return res.data;
-    },
-    previewPdfQuestionGroups: async (file: File): Promise<PdfQuestionGroupPreviewDto> => {
-        const formData = new FormData();
-        formData.append('file', file);
-        const res = await axiosInstance.post<PdfQuestionGroupPreviewDto>('/exam/preview-pdf-question-groups', formData, {
-            headers: { 'Content-Type': 'multipart/form-data' },
-            timeout: 10 * 60 * 1000,
-        });
-        return res.data;
-    },
-    reviewPdfRaw: async (file: File): Promise<PdfRawReviewDto> => {
-        const formData = new FormData();
-        formData.append('file', file);
-        const res = await axiosInstance.post<PdfRawReviewDto>('/exam/review-pdf-raw', formData, {
-            headers: { 'Content-Type': 'multipart/form-data' },
-            timeout: 15 * 60 * 1000,
-        });
-        return res.data;
-    },
+
     extractWritingVisualData: async ({
         imageUrl,
         promptText,
@@ -205,15 +209,17 @@ export const useGenerateExamFromPdfMutation = () => {
     });
 };
 
-export const usePreviewPdfRawMutation = () =>
-    useMutation({
-        mutationFn: examApi.previewPdfRaw,
+export const useGenerateExamAiMutation = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: examApi.generateAi,
+        onSuccess: (result) => {
+            queryClient.invalidateQueries({ queryKey: examKeys.all });
+            queryClient.invalidateQueries({ queryKey: examKeys.detail(result.examId) });
+        },
     });
+};
 
-export const useReviewPdfRawMutation = () =>
-    useMutation({
-        mutationFn: examApi.reviewPdfRaw,
-    });
 
 export const useExtractWritingVisualDataMutation = () =>
     useMutation({

@@ -112,7 +112,8 @@ public sealed partial class GemmaPdfExamGenerationService
                 finalGroupType,
                 builder.Questions,
                 SanitizeInstructionForStorage(builder.RawInstruction),
-                builder.RawBlockText);
+                builder.RawBlockText,
+                passageContent);
             if (string.Equals(finalGroupType, "SENTENCE_COMPLETION", StringComparison.OrdinalIgnoreCase))
             {
                 normalizedQuestions = await TryRepairSentenceCompletionQuestionSetWithGemmaAsync(

@@ -104,6 +104,7 @@ builder.Services.AddHttpClient<IGeminiPdfNativeExtractionClient, GeminiPdfNative
 
 builder.Services.AddScoped<IPdfTextExtractionService, LocalPdfTextExtractionService>();
 builder.Services.AddScoped<IExamPdfGenerationService, GemmaPdfExamGenerationService>();
+builder.Services.AddScoped<IExamAiGenerationService, GeminiExamAiGenerationService>();
 
 builder.Services.AddHttpClient<IReadingCopilotService, GeminiReadingCopilotService>(client =>
 {

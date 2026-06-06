@@ -15,4 +15,7 @@ public interface IAiIntegrationService
     Task<AlignListeningTranscriptResultDto> AlignListeningTranscriptAsync(
         AlignListeningTranscriptRequestDto request,
         CancellationToken cancellationToken = default);
+    Task<ReadabilityAnalysisResponseDto?> AnalyzeReadabilityAsync(
+        string text,
+        CancellationToken cancellationToken = default);
 }

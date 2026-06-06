@@ -143,14 +143,14 @@ public sealed partial class GemmaPdfExamGenerationService
 
         var match = Regex.Match(
             line,
-            @"^\s*(?<labels>[A-H](?:\s+[A-H]){3,7})(?<remainder>\s+.+)?$",
+            @"^\s*(?<labels>[A-Z](?:\s+[A-Z]){3,12})(?<remainder>\s+.+)?$",
             RegexOptions.IgnoreCase);
         if (!match.Success)
         {
             return false;
         }
 
-        labels = Regex.Matches(match.Groups["labels"].Value, @"[A-H]", RegexOptions.IgnoreCase)
+        labels = Regex.Matches(match.Groups["labels"].Value, @"[A-Z]", RegexOptions.IgnoreCase)
             .Cast<Match>()
             .Select(item => char.ToUpperInvariant(item.Value[0]))
             .Distinct()
@@ -254,7 +254,7 @@ public sealed partial class GemmaPdfExamGenerationService
 
         var matches = Regex.Matches(
             normalized,
-            @"(?is)(?<![A-Za-z])(?<label>[A-H])\s*[).:\-]?\s+(?<text>.*?)(?=(?<![A-Za-z])[A-H]\s*[).:\-]?\s+|$)");
+            @"(?is)(?<![A-Za-z])(?<label>[A-Z])\s*[).:\-]?\s+(?<text>.*?)(?=(?<![A-Za-z])[A-Z]\s*[).:\-]?\s+|$)");
         if (matches.Count == 0)
         {
             return [];
@@ -269,7 +269,7 @@ public sealed partial class GemmaPdfExamGenerationService
             }
 
             var label = char.ToUpperInvariant(match.Groups["label"].Value[0]);
-            if (label is < 'A' or > 'H' || optionsByLabel.ContainsKey(label))
+            if (label is < 'A' or > 'Z' || optionsByLabel.ContainsKey(label))
             {
                 continue;
             }
@@ -324,7 +324,7 @@ public sealed partial class GemmaPdfExamGenerationService
         if (labeledMatch.Success)
         {
             label = char.ToUpperInvariant(labeledMatch.Groups["label"].Value[0]);
-            if (label is < 'A' or > 'H')
+            if (label is < 'A' or > 'Z')
             {
                 return false;
             }
@@ -334,7 +334,7 @@ public sealed partial class GemmaPdfExamGenerationService
         }
 
         var compact = line.Trim().Trim('.', ')', ':', '-', ' ');
-        if (compact.Length == 1 && compact[0] is >= 'A' and <= 'H')
+        if (compact.Length == 1 && compact[0] is >= 'A' and <= 'Z')
         {
             label = compact[0];
             optionText = string.Empty;

@@ -29,7 +29,8 @@ public sealed partial class GemmaPdfExamGenerationService
         string mappedQuestionType,
         List<CreateQuestionDto> sourceQuestions,
         string? preferredInstruction = null,
-        string? rawBlockText = null)
+        string? rawBlockText = null,
+        string? passageContent = null)
     {
         var sharedInstruction = ExtractSharedInstructionLine(mappedQuestionType, sourceQuestions);
         var effectiveInstruction = string.IsNullOrWhiteSpace(preferredInstruction)
@@ -81,7 +82,8 @@ public sealed partial class GemmaPdfExamGenerationService
                 effectiveGroupType,
                 normalizedQuestions,
                 effectiveInstruction,
-                rawBlockText);
+                rawBlockText,
+                passageContent);
             if (string.Equals(effectiveGroupType, "MATCHING_HEADINGS", StringComparison.Ordinal))
             {
                 normalizedQuestions = RepairMatchingHeadingParagraphStems(normalizedQuestions);
