@@ -176,6 +176,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapGet("/", () => Results.Ok("EnglishExamApp API is running."));
 app.Map("/ws/realtime", async context =>
 {
     var wsToken = context.Request.Query["token"].ToString();
