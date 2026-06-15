@@ -11,3 +11,4 @@ lexicalrichness
 praat-parselmouth
 allosaurus
 python-multipart
+textstat

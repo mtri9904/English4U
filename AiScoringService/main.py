@@ -53,6 +53,18 @@ gemini_client: google_genai.Client | None = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global speaking_whisper_model, listening_whisper_model, gemini_client
+    
+    # Copy pre-downloaded MFA models from read-only /code/mfa_models to writable /tmp/mfa at runtime
+    if "SPACE_ID" in os.environ:
+        import shutil
+        src_mfa = "/code/mfa_models"
+        dst_mfa = "/tmp/mfa"
+        if os.path.exists(src_mfa) and not os.path.exists(os.path.join(dst_mfa, "acoustic")):
+            try:
+                shutil.copytree(src_mfa, dst_mfa, dirs_exist_ok=True)
+            except Exception as e:
+                print(f"Error copying MFA models: {e}")
+
     speaking_whisper_model = WhisperModel(WHISPER_MODEL_SIZE, device="cpu", compute_type="int8")
     listening_whisper_model = WhisperModel(
         LISTENING_TRANSCRIPT_WHISPER_MODEL_SIZE,
