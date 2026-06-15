@@ -1,35 +1,34 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\Hande\\OneDrive\\Documents\\DoAnTotNghiep\\English4skills\\english4u-backend\\EnglishExamApp.Infrastructure\\EnglishExamApp.Infrastructure.csproj": {}
+    "C:\\Users\\Admin\\Documents\\English4U\\english4u-backend\\EnglishExamApp.Infrastructure\\EnglishExamApp.Infrastructure.csproj": {}
   },
   "projects": {
-    "C:\\Users\\Hande\\OneDrive\\Documents\\DoAnTotNghiep\\English4skills\\english4u-backend\\EnglishExamApp.Application\\EnglishExamApp.Application.csproj": {
+    "C:\\Users\\Admin\\Documents\\English4U\\english4u-backend\\EnglishExamApp.Application\\EnglishExamApp.Application.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\Hande\\OneDrive\\Documents\\DoAnTotNghiep\\English4skills\\english4u-backend\\EnglishExamApp.Application\\EnglishExamApp.Application.csproj",
+        "projectUniqueName": "C:\\Users\\Admin\\Documents\\English4U\\english4u-backend\\EnglishExamApp.Application\\EnglishExamApp.Application.csproj",
         "projectName": "EnglishExamApp.Application",
-        "projectPath": "C:\\Users\\Hande\\OneDrive\\Documents\\DoAnTotNghiep\\English4skills\\english4u-backend\\EnglishExamApp.Application\\EnglishExamApp.Application.csproj",
-        "packagesPath": "C:\\Users\\Hande\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\Hande\\OneDrive\\Documents\\DoAnTotNghiep\\English4skills\\english4u-backend\\EnglishExamApp.Application\\obj\\",
+        "projectPath": "C:\\Users\\Admin\\Documents\\English4U\\english4u-backend\\EnglishExamApp.Application\\EnglishExamApp.Application.csproj",
+        "packagesPath": "C:\\Users\\Admin\\.nuget\\packages\\",
+        "outputPath": "C:\\Users\\Admin\\Documents\\English4U\\english4u-backend\\EnglishExamApp.Application\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
-          "C:\\Users\\Hande\\AppData\\Roaming\\NuGet\\NuGet.Config",
-          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+          "C:\\Users\\Admin\\AppData\\Roaming\\NuGet\\NuGet.Config"
         ],
         "originalTargetFrameworks": [
           "net9.0"
         ],
         "sources": {
-          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
           "https://api.nuget.org/v3/index.json": {}
         },
         "frameworks": {
           "net9.0": {
+            "framework": "net9.0",
             "targetAlias": "net9.0",
             "projectReferences": {
-              "C:\\Users\\Hande\\OneDrive\\Documents\\DoAnTotNghiep\\English4skills\\english4u-backend\\EnglishExamApp.Domain\\EnglishExamApp.Domain.csproj": {
-                "projectPath": "C:\\Users\\Hande\\OneDrive\\Documents\\DoAnTotNghiep\\English4skills\\english4u-backend\\EnglishExamApp.Domain\\EnglishExamApp.Domain.csproj"
+              "C:\\Users\\Admin\\Documents\\English4U\\english4u-backend\\EnglishExamApp.Domain\\EnglishExamApp.Domain.csproj": {
+                "projectPath": "C:\\Users\\Admin\\Documents\\English4U\\english4u-backend\\EnglishExamApp.Domain\\EnglishExamApp.Domain.csproj"
               }
             }
           }
@@ -44,10 +43,11 @@
           "auditLevel": "low",
           "auditMode": "direct"
         },
-        "SdkAnalysisLevel": "10.0.100"
+        "SdkAnalysisLevel": "10.0.300"
       },
       "frameworks": {
         "net9.0": {
+          "framework": "net9.0",
           "targetAlias": "net9.0",
           "dependencies": {
             "Microsoft.EntityFrameworkCore": {
@@ -73,15 +73,15 @@
           "downloadDependencies": [
             {
               "name": "Microsoft.AspNetCore.App.Ref",
-              "version": "[9.0.13, 9.0.13]"
+              "version": "[9.0.16, 9.0.16]"
             },
             {
               "name": "Microsoft.NETCore.App.Ref",
-              "version": "[9.0.13, 9.0.13]"
+              "version": "[9.0.16, 9.0.16]"
             },
             {
               "name": "Microsoft.WindowsDesktop.App.Ref",
-              "version": "[9.0.13, 9.0.13]"
+              "version": "[9.0.16, 9.0.16]"
             }
           ],
           "frameworkReferences": {
@@ -92,32 +92,31 @@
               "privateAssets": "all"
             }
           },
-          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.103/PortableRuntimeIdentifierGraph.json"
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.300/PortableRuntimeIdentifierGraph.json"
         }
       }
     },
-    "C:\\Users\\Hande\\OneDrive\\Documents\\DoAnTotNghiep\\English4skills\\english4u-backend\\EnglishExamApp.Domain\\EnglishExamApp.Domain.csproj": {
+    "C:\\Users\\Admin\\Documents\\English4U\\english4u-backend\\EnglishExamApp.Domain\\EnglishExamApp.Domain.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\Hande\\OneDrive\\Documents\\DoAnTotNghiep\\English4skills\\english4u-backend\\EnglishExamApp.Domain\\EnglishExamApp.Domain.csproj",
+        "projectUniqueName": "C:\\Users\\Admin\\Documents\\English4U\\english4u-backend\\EnglishExamApp.Domain\\EnglishExamApp.Domain.csproj",
         "projectName": "EnglishExamApp.Domain",
-        "projectPath": "C:\\Users\\Hande\\OneDrive\\Documents\\DoAnTotNghiep\\English4skills\\english4u-backend\\EnglishExamApp.Domain\\EnglishExamApp.Domain.csproj",
-        "packagesPath": "C:\\Users\\Hande\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\Hande\\OneDrive\\Documents\\DoAnTotNghiep\\English4skills\\english4u-backend\\EnglishExamApp.Domain\\obj\\",
+        "projectPath": "C:\\Users\\Admin\\Documents\\English4U\\english4u-backend\\EnglishExamApp.Domain\\EnglishExamApp.Domain.csproj",
+        "packagesPath": "C:\\Users\\Admin\\.nuget\\packages\\",
+        "outputPath": "C:\\Users\\Admin\\Documents\\English4U\\english4u-backend\\EnglishExamApp.Domain\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
-          "C:\\Users\\Hande\\AppData\\Roaming\\NuGet\\NuGet.Config",
-          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+          "C:\\Users\\Admin\\AppData\\Roaming\\NuGet\\NuGet.Config"
         ],
         "originalTargetFrameworks": [
           "net9.0"
         ],
         "sources": {
-          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
           "https://api.nuget.org/v3/index.json": {}
         },
         "frameworks": {
           "net9.0": {
+            "framework": "net9.0",
             "targetAlias": "net9.0",
             "projectReferences": {}
           }
@@ -132,10 +131,11 @@
           "auditLevel": "low",
           "auditMode": "direct"
         },
-        "SdkAnalysisLevel": "10.0.100"
+        "SdkAnalysisLevel": "10.0.300"
       },
       "frameworks": {
         "net9.0": {
+          "framework": "net9.0",
           "targetAlias": "net9.0",
           "imports": [
             "net461",
@@ -151,15 +151,15 @@
           "downloadDependencies": [
             {
               "name": "Microsoft.AspNetCore.App.Ref",
-              "version": "[9.0.13, 9.0.13]"
+              "version": "[9.0.16, 9.0.16]"
             },
             {
               "name": "Microsoft.NETCore.App.Ref",
-              "version": "[9.0.13, 9.0.13]"
+              "version": "[9.0.16, 9.0.16]"
             },
             {
               "name": "Microsoft.WindowsDesktop.App.Ref",
-              "version": "[9.0.13, 9.0.13]"
+              "version": "[9.0.16, 9.0.16]"
             }
           ],
           "frameworkReferences": {
@@ -167,36 +167,35 @@
               "privateAssets": "all"
             }
           },
-          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.103/PortableRuntimeIdentifierGraph.json"
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.300/PortableRuntimeIdentifierGraph.json"
         }
       }
     },
-    "C:\\Users\\Hande\\OneDrive\\Documents\\DoAnTotNghiep\\English4skills\\english4u-backend\\EnglishExamApp.Infrastructure\\EnglishExamApp.Infrastructure.csproj": {
+    "C:\\Users\\Admin\\Documents\\English4U\\english4u-backend\\EnglishExamApp.Infrastructure\\EnglishExamApp.Infrastructure.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\Hande\\OneDrive\\Documents\\DoAnTotNghiep\\English4skills\\english4u-backend\\EnglishExamApp.Infrastructure\\EnglishExamApp.Infrastructure.csproj",
+        "projectUniqueName": "C:\\Users\\Admin\\Documents\\English4U\\english4u-backend\\EnglishExamApp.Infrastructure\\EnglishExamApp.Infrastructure.csproj",
         "projectName": "EnglishExamApp.Infrastructure",
-        "projectPath": "C:\\Users\\Hande\\OneDrive\\Documents\\DoAnTotNghiep\\English4skills\\english4u-backend\\EnglishExamApp.Infrastructure\\EnglishExamApp.Infrastructure.csproj",
-        "packagesPath": "C:\\Users\\Hande\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\Hande\\OneDrive\\Documents\\DoAnTotNghiep\\English4skills\\english4u-backend\\EnglishExamApp.Infrastructure\\obj\\",
+        "projectPath": "C:\\Users\\Admin\\Documents\\English4U\\english4u-backend\\EnglishExamApp.Infrastructure\\EnglishExamApp.Infrastructure.csproj",
+        "packagesPath": "C:\\Users\\Admin\\.nuget\\packages\\",
+        "outputPath": "C:\\Users\\Admin\\Documents\\English4U\\english4u-backend\\EnglishExamApp.Infrastructure\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
-          "C:\\Users\\Hande\\AppData\\Roaming\\NuGet\\NuGet.Config",
-          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+          "C:\\Users\\Admin\\AppData\\Roaming\\NuGet\\NuGet.Config"
         ],
         "originalTargetFrameworks": [
           "net9.0"
         ],
         "sources": {
-          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
           "https://api.nuget.org/v3/index.json": {}
         },
         "frameworks": {
           "net9.0": {
+            "framework": "net9.0",
             "targetAlias": "net9.0",
             "projectReferences": {
-              "C:\\Users\\Hande\\OneDrive\\Documents\\DoAnTotNghiep\\English4skills\\english4u-backend\\EnglishExamApp.Application\\EnglishExamApp.Application.csproj": {
-                "projectPath": "C:\\Users\\Hande\\OneDrive\\Documents\\DoAnTotNghiep\\English4skills\\english4u-backend\\EnglishExamApp.Application\\EnglishExamApp.Application.csproj"
+              "C:\\Users\\Admin\\Documents\\English4U\\english4u-backend\\EnglishExamApp.Application\\EnglishExamApp.Application.csproj": {
+                "projectPath": "C:\\Users\\Admin\\Documents\\English4U\\english4u-backend\\EnglishExamApp.Application\\EnglishExamApp.Application.csproj"
               }
             }
           }
@@ -211,10 +210,11 @@
           "auditLevel": "low",
           "auditMode": "direct"
         },
-        "SdkAnalysisLevel": "10.0.100"
+        "SdkAnalysisLevel": "10.0.300"
       },
       "frameworks": {
         "net9.0": {
+          "framework": "net9.0",
           "targetAlias": "net9.0",
           "dependencies": {
             "Docnet.Core": {
@@ -254,15 +254,15 @@
           "downloadDependencies": [
             {
               "name": "Microsoft.AspNetCore.App.Ref",
-              "version": "[9.0.13, 9.0.13]"
+              "version": "[9.0.16, 9.0.16]"
             },
             {
               "name": "Microsoft.NETCore.App.Ref",
-              "version": "[9.0.13, 9.0.13]"
+              "version": "[9.0.16, 9.0.16]"
             },
             {
               "name": "Microsoft.WindowsDesktop.App.Ref",
-              "version": "[9.0.13, 9.0.13]"
+              "version": "[9.0.16, 9.0.16]"
             }
           ],
           "frameworkReferences": {
@@ -270,7 +270,7 @@
               "privateAssets": "all"
             }
           },
-          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.103/PortableRuntimeIdentifierGraph.json"
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.300/PortableRuntimeIdentifierGraph.json"
         }
       }
     }

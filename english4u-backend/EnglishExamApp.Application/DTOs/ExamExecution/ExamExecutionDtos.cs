@@ -246,7 +246,9 @@ public sealed record PracticeSessionListItemDto(
 public sealed record UploadPracticeSpeakingRecordingDto(
     Guid SpeakingQuestionId,
     string? AnswerText,
-    double? DurationSeconds = null);
+    double? DurationSeconds = null,
+    string? AudioUrl = null,
+    int? FileSizeKB = null);
 
 public sealed record PracticeSessionSpeakingUploadResultDto(
     Guid SpeakingQuestionId,

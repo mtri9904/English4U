@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+pydantic
+python-dotenv
+faster_whisper
+google-genai
+av
+silero_vad
+wordfreq
+lexicalrichness
+praat-parselmouth
+allosaurus
+python-multipart

@@ -83,7 +83,15 @@ export const sessionApi = {
     }): Promise<PracticeSessionSpeakingUploadResultDto> => {
         const formData = new FormData();
         formData.append('speakingQuestionId', data.speakingQuestionId);
-        formData.append('audio', data.audio);
+        if (data.audio) {
+            formData.append('audio', data.audio);
+        }
+        if (data.audioUrl != null) {
+            formData.append('audioUrl', data.audioUrl);
+        }
+        if (data.fileSizeKB != null) {
+            formData.append('fileSizeKB', String(data.fileSizeKB));
+        }
         if (data.answerText != null) {
             formData.append('answerText', data.answerText);
         }

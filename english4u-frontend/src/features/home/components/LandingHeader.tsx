@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
+import { isTokenExpired } from '@/apis/axios.instance'
 
 const NAV_LINKS = [
     { label: 'Trang chủ', href: '/' },
@@ -9,6 +10,7 @@ const NAV_LINKS = [
 
 export function LandingHeader() {
     const [scrolled, setScrolled] = useState(false)
+    const isLoggedIn = !isTokenExpired()
 
     useEffect(() => {
         const onScroll = () => setScrolled(window.scrollY > 20)
@@ -42,10 +44,21 @@ export function LandingHeader() {
                 </nav>
 
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
-                    <Link to="/login" style={{ background: 'none', border: 'none', padding: '6px 14px', fontSize: '0.9375rem', fontWeight: 500, color: '#2267e7ff', cursor: 'pointer', fontFamily: 'var(--font-sans)', borderRadius: 8, transition: 'color 0.2s', textDecoration: 'none' }}
-                    >Đăng nhập</Link>
-                    <Link to="/register" style={{ background: '#2267e7ff', border: 'none', padding: '6px 14px', fontSize: '0.9375rem', fontWeight: 500, color: '#fff', cursor: 'pointer', fontFamily: 'var(--font-sans)', borderRadius: 8, transition: 'color 0.2s', textDecoration: 'none' }}
-                    >Đăng ký</Link>
+                    {isLoggedIn ? (
+                        <Link
+                            to="/app"
+                            style={{ background: '#2267e7ff', border: 'none', padding: '6px 18px', fontSize: '0.9375rem', fontWeight: 600, color: '#fff', cursor: 'pointer', fontFamily: 'var(--font-sans)', borderRadius: 8, transition: 'all 0.2s', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                        >
+                            Vào học ngay 🚀
+                        </Link>
+                    ) : (
+                        <>
+                            <Link to="/login" style={{ background: 'none', border: 'none', padding: '6px 14px', fontSize: '0.9375rem', fontWeight: 500, color: '#2267e7ff', cursor: 'pointer', fontFamily: 'var(--font-sans)', borderRadius: 8, transition: 'color 0.2s', textDecoration: 'none' }}
+                            >Đăng nhập</Link>
+                            <Link to="/register" style={{ background: '#2267e7ff', border: 'none', padding: '6px 14px', fontSize: '0.9375rem', fontWeight: 500, color: '#fff', cursor: 'pointer', fontFamily: 'var(--font-sans)', borderRadius: 8, transition: 'color 0.2s', textDecoration: 'none' }}
+                            >Đăng ký</Link>
+                        </>
+                    )}
                 </div>
             </div>
         </header>

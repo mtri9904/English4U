@@ -33,6 +33,7 @@ import { SpeakingAvatarCanvas } from '../components/speaking/SpeakingAvatarCanva
 import { useSpeakingRecorder } from '../hooks/useSpeakingRecorder';
 import { useSpeakingPromptPlayback } from '../hooks/useSpeakingPromptPlayback';
 import type { SpeakingVisemeCue } from '../lib/speakingPlayback';
+import { uploadToCloudinary } from '@/shared/lib/cloudinary';
 
 const { Paragraph, Text, Title } = Typography;
 const { TextArea } = Input;
@@ -450,12 +451,16 @@ export const ClientSpeakingSessionPage = () => {
                     `speaking-${uploadSessionId}-${questionId}-${Date.now()}.webm`,
                     { type: lastRecording.mimeType || 'audio/webm' },
                 );
+                const audioUrl = await uploadToCloudinary(file, 'video');
+                const fileSizeKB = Math.round(file.size / 1024);
+
                 const result = await uploadSpeakingRecordingMutation.mutateAsync({
                     sessionId: uploadSessionId,
                     data: {
                         speakingQuestionId: questionId,
                         durationSeconds: lastRecording.durationSeconds,
-                        audio: file,
+                        audioUrl,
+                        fileSizeKB,
                     },
                 });
                 if (!isMountedRef.current || activeSessionIdRef.current !== uploadSessionId) {
@@ -901,69 +906,69 @@ export const ClientSpeakingSessionPage = () => {
                         <Col xs={24} xl={8} className="speaking-runner-sidebar-col">
                             <Card className="speaking-runner-sidebar-card">
                                 <Space direction="vertical" size={14} style={{ width: '100%' }}>
-                            <Title level={5} style={{ margin: 0 }}>
-                                Danh sách prompt
-                            </Title>
-                            <Paragraph style={{ margin: 0, color: '#64748b' }}>
-                                Mỗi lượt trả lời sẽ cho examiner nói trước, sau đó hệ thống tự chuyển sang ghi âm. Riêng Part 2 · Prompt 1 chỉ bắt đầu 60 giây chuẩn bị sau khi examiner đọc xong.
-                            </Paragraph>
+                                    <Title level={5} style={{ margin: 0 }}>
+                                        Danh sách prompt
+                                    </Title>
+                                    <Paragraph style={{ margin: 0, color: '#64748b' }}>
+                                        Mỗi lượt trả lời sẽ cho examiner nói trước, sau đó hệ thống tự chuyển sang ghi âm. Riêng Part 2 · Prompt 1 chỉ bắt đầu 60 giây chuẩn bị sau khi examiner đọc xong.
+                                    </Paragraph>
 
-                            <div className="speaking-runner-prompt-list">
-                            {promptEntries.map((entry) => {
-                                const hasResponse = hasPromptResponse(entry.question.id);
-                                const isActive = entry.question.id === activeQuestionId;
-                                const isLocked = lockedPart2QuestionIds.has(entry.question.id);
-                                const isUploading = uploadingQuestionIds.includes(entry.question.id) && !hasResolvedTranscriptOrAnalytics(entry.question.id);
+                                    <div className="speaking-runner-prompt-list">
+                                        {promptEntries.map((entry) => {
+                                            const hasResponse = hasPromptResponse(entry.question.id);
+                                            const isActive = entry.question.id === activeQuestionId;
+                                            const isLocked = lockedPart2QuestionIds.has(entry.question.id);
+                                            const isUploading = uploadingQuestionIds.includes(entry.question.id) && !hasResolvedTranscriptOrAnalytics(entry.question.id);
 
-                                return (
-                                    <Button
-                                        key={entry.question.id}
-                                        block
-                                        type={isActive ? 'primary' : 'default'}
-                                        disabled={isLocked || isRecording || isPreparingPromptPlayback || isPromptPlaying || !!queuedAutoRecordingQuestionId}
-                                        onClick={() => setSelectedQuestionId(entry.question.id)}
-                                        style={{
-                                            height: 'auto',
-                                            textAlign: 'left',
-                                            justifyContent: 'flex-start',
-                                            padding: 14,
-                                            borderRadius: 16,
-                                        }}
-                                    >
-                                        <Space direction="vertical" size={4} style={{ width: '100%' }}>
-                                            <Space wrap>
-                                                <Text strong style={{ color: isActive ? '#fff' : '#0f172a' }}>
-                                                    Part {entry.partNumber ?? '—'} · Prompt {entry.promptIndex}
-                                                </Text>
-                                                {isUploading ? (
-                                                    <Tag icon={<LoadingOutlined />} color="processing">
-                                                        Uploading
-                                                    </Tag>
-                                                ) : isLocked ? (
-                                                    <Tag color="default">
-                                                        Chờ prompt trước
-                                                    </Tag>
-                                                ) : hasResponse ? (
-                                                    <Tag icon={<CheckCircleOutlined />} color="success">
-                                                        Đã có phản hồi
-                                                    </Tag>
-                                                ) : (
-                                                    <Tag>Chưa trả lời</Tag>
-                                                )}
-                                            </Space>
-                                            <Text
-                                                style={{
-                                                    color: isActive ? 'rgba(255,255,255,0.88)' : '#475569',
-                                                    whiteSpace: 'normal',
-                                                }}
-                                            >
-                                                {entry.question.content}
-                                            </Text>
-                                        </Space>
-                                    </Button>
-                                );
-                            })}
-                            </div>
+                                            return (
+                                                <Button
+                                                    key={entry.question.id}
+                                                    block
+                                                    type={isActive ? 'primary' : 'default'}
+                                                    disabled={isLocked || isRecording || isPreparingPromptPlayback || isPromptPlaying || !!queuedAutoRecordingQuestionId}
+                                                    onClick={() => setSelectedQuestionId(entry.question.id)}
+                                                    style={{
+                                                        height: 'auto',
+                                                        textAlign: 'left',
+                                                        justifyContent: 'flex-start',
+                                                        padding: 14,
+                                                        borderRadius: 16,
+                                                    }}
+                                                >
+                                                    <Space direction="vertical" size={4} style={{ width: '100%' }}>
+                                                        <Space wrap>
+                                                            <Text strong style={{ color: isActive ? '#fff' : '#0f172a' }}>
+                                                                Part {entry.partNumber ?? '—'} · Prompt {entry.promptIndex}
+                                                            </Text>
+                                                            {isUploading ? (
+                                                                <Tag icon={<LoadingOutlined />} color="processing">
+                                                                    Uploading
+                                                                </Tag>
+                                                            ) : isLocked ? (
+                                                                <Tag color="default">
+                                                                    Chờ prompt trước
+                                                                </Tag>
+                                                            ) : hasResponse ? (
+                                                                <Tag icon={<CheckCircleOutlined />} color="success">
+                                                                    Đã có phản hồi
+                                                                </Tag>
+                                                            ) : (
+                                                                <Tag>Chưa trả lời</Tag>
+                                                            )}
+                                                        </Space>
+                                                        <Text
+                                                            style={{
+                                                                color: isActive ? 'rgba(255,255,255,0.88)' : '#475569',
+                                                                whiteSpace: 'normal',
+                                                            }}
+                                                        >
+                                                            {entry.question.content}
+                                                        </Text>
+                                                    </Space>
+                                                </Button>
+                                            );
+                                        })}
+                                    </div>
                                 </Space>
                             </Card>
                         </Col>
@@ -984,213 +989,213 @@ export const ClientSpeakingSessionPage = () => {
 
                                 <Card style={{ borderRadius: 20 }}>
                                     <Space direction="vertical" size={18} style={{ width: '100%' }}>
-                            <Space wrap style={{ justifyContent: 'space-between', width: '100%' }}>
-                                <Space wrap>
-                                    <Tag color="red">Part {activePrompt.partNumber ?? '—'}</Tag>
-                                    <Tag>{activePrompt.sectionTitle || 'Speaking section'}</Tag>
-                                    <Tag icon={<AudioOutlined />}>{activePrompt.promptIndex}</Tag>
-                                </Space>
-                                <Space wrap>
-                                    {preparationLimitSeconds > 0 ? (
-                                        <Tag color={!hasPreparationStarted || preparationRemainingSeconds > 0 ? 'gold' : 'green'}>
-                                            Prep {preparationRemainingSeconds}s
-                                        </Tag>
-                                    ) : null}
-                                    <Tag color={isRecording ? 'red' : 'default'}>
-                                        {isRecording ? `Recording ${recordingRemainingSeconds}s` : `Limit ${recordingLimitSeconds}s`}
-                                    </Tag>
-                                </Space>
-                            </Space>
-
-                            <div>
-                                <Title level={4} style={{ marginBottom: 8 }}>
-                                    {activePrompt.question.content}
-                                </Title>
-                                {activePrompt.partDescription ? (
-                                    <Paragraph style={{ marginBottom: 0, color: '#64748b' }}>
-                                        {activePrompt.partDescription}
-                                    </Paragraph>
-                                ) : null}
-                            </div>
-
-                            {preparationLimitSeconds > 0 ? (
-                                <Alert
-                                    type={!hasPreparationStarted || preparationRemainingSeconds > 0 ? 'info' : 'success'}
-                                    showIcon
-                                    message="Bước 3 · Part 2 preparation"
-                                    description={
-                                        !hasPreparationStarted
-                                            ? 'Bấm “Nghe examiner rồi trả lời” để examiner đọc cue card. Khi examiner đọc xong, hệ thống mới bắt đầu 60 giây chuẩn bị.'
-                                            : preparationRemainingSeconds > 0
-                                            ? `Đồng hồ chuẩn bị đang chạy. Bạn còn ${preparationRemainingSeconds} giây để đọc cue card và ghi nháp từ khóa.`
-                                            : 'Thời gian chuẩn bị đã hết. Bạn có thể bắt đầu ghi âm phần độc thoại bất cứ lúc nào.'
-                                    }
-                                />
-                            ) : null}
-
-                            {activeCueCardPoints.length > 0 ? (
-                                <Card size="small" style={{ borderRadius: 16, background: '#f8fafc' }}>
-                                    <Space direction="vertical" size={8} style={{ width: '100%' }}>
-                                        <Text strong>Cue card / talking points</Text>
-                                        {activeCueCardPoints.map((point) => (
-                                            <Text key={point} style={{ color: '#334155' }}>
-                                                • {point}
-                                            </Text>
-                                        ))}
-                                    </Space>
-                                </Card>
-                            ) : null}
-
-                            {activePrompt.partNumber === 2 ? (
-                                <div>
-                                    <Text strong style={{ display: 'block', marginBottom: 8 }}>
-                                        Textbox ghi nháp Part 2
-                                    </Text>
-                                    <TextArea
-                                        rows={3}
-                                        value={activeCueCardDraft}
-                                        onChange={(event) => setCueCardDrafts((current) => ({
-                                            ...current,
-                                            [activePrompt.partId]: event.target.value,
-                                        }))}
-                                        placeholder="Gõ nhanh từ khóa, ý chính hoặc ví dụ muốn triển khai trong 2 phút nói."
-                                    />
-                                </div>
-                            ) : null}
-
-                            <Space wrap>
-                                <Button
-                                    icon={<SoundOutlined />}
-                                    loading={isPreparingPromptPlayback && promptPlaybackQuestionId === activeQuestionId}
-                                    disabled={isRecording || isExaminerLeadingActivePrompt}
-                                    onClick={() => {
-                                        if (isPromptPlaying && promptPlaybackQuestionId === activeQuestionId) {
-                                            stopPromptPlayback();
-                                            return;
-                                        }
-
-                                        void handleReplayPrompt(activePrompt);
-                                    }}
-                                >
-                                    {isPromptPlaying && promptPlaybackQuestionId === activeQuestionId ? 'Dừng examiner' : 'Nghe lại examiner'}
-                                </Button>
-                                <Button
-                                    type={isRecording ? 'default' : 'primary'}
-                                    danger={isRecording}
-                                    disabled={!isRecording && (!systemCheckReady || isUploadingActivePrompt || isPreparationBlockingRecording)}
-                                    icon={isRecording ? <PauseCircleOutlined /> : <PlayCircleOutlined />}
-                                    onClick={() => {
-                                        void (isRecording ? handleStopRecording() : handleBeginResponseTurn());
-                                    }}
-                                    loading={isExaminerLeadingActivePrompt && (isPreparingPromptPlayback || isPromptPlaying)}
-                                >
-                                    {isRecording
-                                        ? 'Dừng ghi âm'
-                                        : isPreparationBlockingRecording
-                                            ? `Chờ hết prep (${preparationRemainingSeconds}s)`
-                                        : isPreparationReadyToRecord
-                                            ? 'Bắt đầu ghi âm'
-                                        : isExaminerLeadingActivePrompt
-                                            ? 'Examiner đang hỏi...'
-                                            : preparationLimitSeconds > 0 && !hasPreparationStarted
-                                                ? 'Nghe examiner để bắt đầu prep'
-                                            : 'Nghe examiner rồi trả lời'}
-                                </Button>
-                            </Space>
-
-                            <Row gutter={[12, 12]}>
-                                <Col xs={12} md={12}>
-                                    <Statistic title="Đang ghi" value={formatSeconds(elapsedSeconds)} />
-                                </Col>
-                                <Col xs={12} md={12}>
-                                    <Statistic title="Còn lại cho câu này" value={formatSeconds(recordingRemainingSeconds)} />
-                                </Col>
-                            </Row>
-
-                            {isExaminerLeadingActivePrompt ? (
-                                <Alert
-                                    type="info"
-                                    showIcon
-                                    message="Examiner đang đọc prompt"
-                                    description="Khi prompt kết thúc, microphone sẽ tự bật để bạn trả lời câu này."
-                                />
-                            ) : null}
-
-                            {isUploadingActivePrompt ? (
-                                <Alert
-                                    type="info"
-                                    showIcon
-                                    message="Đang tạo transcript cho câu trả lời"
-                                    description="Bản ghi vừa xong đang được lưu và nhận diện lời nói để hiện transcript cho câu này."
-                                />
-                            ) : null}
-
-                            <div>
-                                <Text strong style={{ display: 'block', marginBottom: 8 }}>
-                                    Transcript cho prompt này
-                                </Text>
-                                <Card size="small" style={{ borderRadius: 16, background: activeTranscriptText ? '#eefbf3' : '#f8fafc' }}>
-                                    <Paragraph style={{ whiteSpace: 'pre-wrap', margin: 0, color: activeTranscriptText ? '#0f172a' : '#64748b' }}>
-                                        {activeTranscriptText || 'Transcript sẽ xuất hiện ở đây ngay sau khi bạn dừng ghi âm và hệ thống nhận diện xong.'}
-                                    </Paragraph>
-                                </Card>
-                            </div>
-
-                            {activeSpeakingAnalytics ? (
-                                <Card size="small" style={{ borderRadius: 16, background: '#fffbeb' }}>
-                                    <Space direction="vertical" size={10} style={{ width: '100%' }}>
-                                        <Space wrap>
-                                            <Text strong>Speaking analytics từ backend</Text>
-                                            {activeSpeakingAnalytics.estimatedFluencyBand != null ? (
-                                                <Tag color="gold">Fluency ~ {activeSpeakingAnalytics.estimatedFluencyBand.toFixed(1)}</Tag>
-                                            ) : null}
-                                            <Tag color={getAnalyticsTagColor(activeSpeakingAnalytics.paceLabel)}>
-                                                {speakingPaceLabelMap[activeSpeakingAnalytics.paceLabel]}
-                                            </Tag>
-                                            <Tag color={getAnalyticsTagColor(activeSpeakingAnalytics.coverageLabel)}>
-                                                {speakingCoverageLabelMap[activeSpeakingAnalytics.coverageLabel]}
-                                            </Tag>
+                                        <Space wrap style={{ justifyContent: 'space-between', width: '100%' }}>
+                                            <Space wrap>
+                                                <Tag color="red">Part {activePrompt.partNumber ?? '—'}</Tag>
+                                                <Tag>{activePrompt.sectionTitle || 'Speaking section'}</Tag>
+                                                <Tag icon={<AudioOutlined />}>{activePrompt.promptIndex}</Tag>
+                                            </Space>
+                                            <Space wrap>
+                                                {preparationLimitSeconds > 0 ? (
+                                                    <Tag color={!hasPreparationStarted || preparationRemainingSeconds > 0 ? 'gold' : 'green'}>
+                                                        Prep {preparationRemainingSeconds}s
+                                                    </Tag>
+                                                ) : null}
+                                                <Tag color={isRecording ? 'red' : 'default'}>
+                                                    {isRecording ? `Recording ${recordingRemainingSeconds}s` : `Limit ${recordingLimitSeconds}s`}
+                                                </Tag>
+                                            </Space>
                                         </Space>
+
+                                        <div>
+                                            <Title level={4} style={{ marginBottom: 8 }}>
+                                                {activePrompt.question.content}
+                                            </Title>
+                                            {activePrompt.partDescription ? (
+                                                <Paragraph style={{ marginBottom: 0, color: '#64748b' }}>
+                                                    {activePrompt.partDescription}
+                                                </Paragraph>
+                                            ) : null}
+                                        </div>
+
+                                        {preparationLimitSeconds > 0 ? (
+                                            <Alert
+                                                type={!hasPreparationStarted || preparationRemainingSeconds > 0 ? 'info' : 'success'}
+                                                showIcon
+                                                message="Bước 3 · Part 2 preparation"
+                                                description={
+                                                    !hasPreparationStarted
+                                                        ? 'Bấm “Nghe examiner rồi trả lời” để examiner đọc cue card. Khi examiner đọc xong, hệ thống mới bắt đầu 60 giây chuẩn bị.'
+                                                        : preparationRemainingSeconds > 0
+                                                            ? `Đồng hồ chuẩn bị đang chạy. Bạn còn ${preparationRemainingSeconds} giây để đọc cue card và ghi nháp từ khóa.`
+                                                            : 'Thời gian chuẩn bị đã hết. Bạn có thể bắt đầu ghi âm phần độc thoại bất cứ lúc nào.'
+                                                }
+                                            />
+                                        ) : null}
+
+                                        {activeCueCardPoints.length > 0 ? (
+                                            <Card size="small" style={{ borderRadius: 16, background: '#f8fafc' }}>
+                                                <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                                                    <Text strong>Cue card / talking points</Text>
+                                                    {activeCueCardPoints.map((point) => (
+                                                        <Text key={point} style={{ color: '#334155' }}>
+                                                            • {point}
+                                                        </Text>
+                                                    ))}
+                                                </Space>
+                                            </Card>
+                                        ) : null}
+
+                                        {activePrompt.partNumber === 2 ? (
+                                            <div>
+                                                <Text strong style={{ display: 'block', marginBottom: 8 }}>
+                                                    Textbox ghi nháp Part 2
+                                                </Text>
+                                                <TextArea
+                                                    rows={3}
+                                                    value={activeCueCardDraft}
+                                                    onChange={(event) => setCueCardDrafts((current) => ({
+                                                        ...current,
+                                                        [activePrompt.partId]: event.target.value,
+                                                    }))}
+                                                    placeholder="Gõ nhanh từ khóa, ý chính hoặc ví dụ muốn triển khai trong 2 phút nói."
+                                                />
+                                            </div>
+                                        ) : null}
+
+                                        <Space wrap>
+                                            <Button
+                                                icon={<SoundOutlined />}
+                                                loading={isPreparingPromptPlayback && promptPlaybackQuestionId === activeQuestionId}
+                                                disabled={isRecording || isExaminerLeadingActivePrompt}
+                                                onClick={() => {
+                                                    if (isPromptPlaying && promptPlaybackQuestionId === activeQuestionId) {
+                                                        stopPromptPlayback();
+                                                        return;
+                                                    }
+
+                                                    void handleReplayPrompt(activePrompt);
+                                                }}
+                                            >
+                                                {isPromptPlaying && promptPlaybackQuestionId === activeQuestionId ? 'Dừng examiner' : 'Nghe lại examiner'}
+                                            </Button>
+                                            <Button
+                                                type={isRecording ? 'default' : 'primary'}
+                                                danger={isRecording}
+                                                disabled={!isRecording && (!systemCheckReady || isUploadingActivePrompt || isPreparationBlockingRecording)}
+                                                icon={isRecording ? <PauseCircleOutlined /> : <PlayCircleOutlined />}
+                                                onClick={() => {
+                                                    void (isRecording ? handleStopRecording() : handleBeginResponseTurn());
+                                                }}
+                                                loading={isExaminerLeadingActivePrompt && (isPreparingPromptPlayback || isPromptPlaying)}
+                                            >
+                                                {isRecording
+                                                    ? 'Dừng ghi âm'
+                                                    : isPreparationBlockingRecording
+                                                        ? `Chờ hết prep (${preparationRemainingSeconds}s)`
+                                                        : isPreparationReadyToRecord
+                                                            ? 'Bắt đầu ghi âm'
+                                                            : isExaminerLeadingActivePrompt
+                                                                ? 'Examiner đang hỏi...'
+                                                                : preparationLimitSeconds > 0 && !hasPreparationStarted
+                                                                    ? 'Nghe examiner để bắt đầu prep'
+                                                                    : 'Nghe examiner rồi trả lời'}
+                                            </Button>
+                                        </Space>
+
                                         <Row gutter={[12, 12]}>
-                                            <Col xs={12} md={6}>
-                                                <Statistic title="Word count" value={activeSpeakingAnalytics.wordCount} />
+                                            <Col xs={12} md={12}>
+                                                <Statistic title="Đang ghi" value={formatSeconds(elapsedSeconds)} />
                                             </Col>
-                                            <Col xs={12} md={6}>
-                                                <Statistic title="WPM" value={activeSpeakingAnalytics.wordsPerMinute ?? '—'} />
-                                            </Col>
-                                            <Col xs={12} md={6}>
-                                                <Statistic
-                                                    title="Coverage"
-                                                    value={activeSpeakingAnalytics.coverageRatio != null ? `${Math.round(activeSpeakingAnalytics.coverageRatio * 100)}%` : '—'}
-                                                />
-                                            </Col>
-                                            <Col xs={12} md={6}>
-                                                <Statistic
-                                                    title="Target"
-                                                    value={activeSpeakingAnalytics.targetDurationSeconds != null ? `${activeSpeakingAnalytics.targetDurationSeconds}s` : '—'}
-                                                />
+                                            <Col xs={12} md={12}>
+                                                <Statistic title="Còn lại cho câu này" value={formatSeconds(recordingRemainingSeconds)} />
                                             </Col>
                                         </Row>
-                                    </Space>
-                                </Card>
-                            ) : null}
 
-                            {(activeSavedAnswer?.feedbacks?.length ?? 0) > 0 ? (
-                                <Card size="small" style={{ borderRadius: 16 }}>
-                                    <Space direction="vertical" size={10} style={{ width: '100%' }}>
-                                        <Text strong>Feedback Speaking hiện có</Text>
-                                        {activeSavedAnswer!.feedbacks!.map((feedback) => (
+                                        {isExaminerLeadingActivePrompt ? (
                                             <Alert
-                                                key={`${activeQuestionId}-${feedback.criteria}`}
                                                 type="info"
                                                 showIcon
-                                                message={`${feedback.criteria} · Band ${feedback.bandScore.toFixed(1)}`}
-                                                description={feedback.comment || feedback.improvements || 'Chưa có nhận xét chi tiết.'}
+                                                message="Examiner đang đọc prompt"
+                                                description="Khi prompt kết thúc, microphone sẽ tự bật để bạn trả lời câu này."
                                             />
-                                        ))}
-                                    </Space>
-                                </Card>
-                            ) : null}
+                                        ) : null}
+
+                                        {isUploadingActivePrompt ? (
+                                            <Alert
+                                                type="info"
+                                                showIcon
+                                                message="Đang tạo transcript cho câu trả lời"
+                                                description="Bản ghi vừa xong đang được lưu và nhận diện lời nói để hiện transcript cho câu này."
+                                            />
+                                        ) : null}
+
+                                        <div>
+                                            <Text strong style={{ display: 'block', marginBottom: 8 }}>
+                                                Transcript cho prompt này
+                                            </Text>
+                                            <Card size="small" style={{ borderRadius: 16, background: activeTranscriptText ? '#eefbf3' : '#f8fafc' }}>
+                                                <Paragraph style={{ whiteSpace: 'pre-wrap', margin: 0, color: activeTranscriptText ? '#0f172a' : '#64748b' }}>
+                                                    {activeTranscriptText || 'Transcript sẽ xuất hiện ở đây ngay sau khi bạn dừng ghi âm và hệ thống nhận diện xong.'}
+                                                </Paragraph>
+                                            </Card>
+                                        </div>
+
+                                        {activeSpeakingAnalytics ? (
+                                            <Card size="small" style={{ borderRadius: 16, background: '#fffbeb' }}>
+                                                <Space direction="vertical" size={10} style={{ width: '100%' }}>
+                                                    <Space wrap>
+                                                        <Text strong>Speaking analytics từ backend</Text>
+                                                        {activeSpeakingAnalytics.estimatedFluencyBand != null ? (
+                                                            <Tag color="gold">Fluency ~ {activeSpeakingAnalytics.estimatedFluencyBand.toFixed(1)}</Tag>
+                                                        ) : null}
+                                                        <Tag color={getAnalyticsTagColor(activeSpeakingAnalytics.paceLabel)}>
+                                                            {speakingPaceLabelMap[activeSpeakingAnalytics.paceLabel]}
+                                                        </Tag>
+                                                        <Tag color={getAnalyticsTagColor(activeSpeakingAnalytics.coverageLabel)}>
+                                                            {speakingCoverageLabelMap[activeSpeakingAnalytics.coverageLabel]}
+                                                        </Tag>
+                                                    </Space>
+                                                    <Row gutter={[12, 12]}>
+                                                        <Col xs={12} md={6}>
+                                                            <Statistic title="Word count" value={activeSpeakingAnalytics.wordCount} />
+                                                        </Col>
+                                                        <Col xs={12} md={6}>
+                                                            <Statistic title="WPM" value={activeSpeakingAnalytics.wordsPerMinute ?? '—'} />
+                                                        </Col>
+                                                        <Col xs={12} md={6}>
+                                                            <Statistic
+                                                                title="Coverage"
+                                                                value={activeSpeakingAnalytics.coverageRatio != null ? `${Math.round(activeSpeakingAnalytics.coverageRatio * 100)}%` : '—'}
+                                                            />
+                                                        </Col>
+                                                        <Col xs={12} md={6}>
+                                                            <Statistic
+                                                                title="Target"
+                                                                value={activeSpeakingAnalytics.targetDurationSeconds != null ? `${activeSpeakingAnalytics.targetDurationSeconds}s` : '—'}
+                                                            />
+                                                        </Col>
+                                                    </Row>
+                                                </Space>
+                                            </Card>
+                                        ) : null}
+
+                                        {(activeSavedAnswer?.feedbacks?.length ?? 0) > 0 ? (
+                                            <Card size="small" style={{ borderRadius: 16 }}>
+                                                <Space direction="vertical" size={10} style={{ width: '100%' }}>
+                                                    <Text strong>Feedback Speaking hiện có</Text>
+                                                    {activeSavedAnswer!.feedbacks!.map((feedback) => (
+                                                        <Alert
+                                                            key={`${activeQuestionId}-${feedback.criteria}`}
+                                                            type="info"
+                                                            showIcon
+                                                            message={`${feedback.criteria} · Band ${feedback.bandScore.toFixed(1)}`}
+                                                            description={feedback.comment || feedback.improvements || 'Chưa có nhận xét chi tiết.'}
+                                                        />
+                                                    ))}
+                                                </Space>
+                                            </Card>
+                                        ) : null}
                                     </Space>
                                 </Card>
                             </Space>

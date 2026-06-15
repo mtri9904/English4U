@@ -16,6 +16,7 @@ import {
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useUserProfileQuery, userApi } from '@/features/admin/api/user.api';
+import { isTokenExpired } from '@/apis/axios.instance';
 import { useQueryClient } from '@tanstack/react-query';
 import {
     useClientNotificationStatsQuery,
@@ -74,7 +75,10 @@ export const ClientLayout: React.FC = () => {
 
     useEffect(() => {
         const token = localStorage.getItem('token');
-        if (!token) {
+        if (!token || isTokenExpired()) {
+            // Token không tồn tại hoặc đã hết hạn → clear và redirect
+            localStorage.removeItem('token');
+            localStorage.removeItem('userId');
             navigate('/login', { replace: true });
         }
     }, [navigate]);
@@ -86,6 +90,7 @@ export const ClientLayout: React.FC = () => {
             // Ignore offline update errors on logout flow.
         }
         localStorage.removeItem('token');
+        localStorage.removeItem('refreshToken');
         localStorage.removeItem('userId');
         queryClient.clear();
         navigate('/login');

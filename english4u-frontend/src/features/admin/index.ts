@@ -7,6 +7,6 @@ export { ExamEditorPage } from './pages/ExamEditorPage';
 export { AttemptManagementPage } from './pages/AttemptManagementPage';
 export { ProfilePage } from './pages/ProfilePage';
 export { NotificationManagementPage } from './pages/NotificationManagementPage';
-export { BillingManagementPage } from './pages/BillingManagementPage';
 export { AdminNotFoundPage } from './pages/AdminNotFoundPage';
 export { AdminExamAiGenerationPage } from './pages/AdminExamAiGenerationPage';
+export { GamificationPage } from './pages/GamificationPage';

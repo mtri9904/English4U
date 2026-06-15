@@ -13,7 +13,7 @@ public interface IExamExecutionService
     Task UpdatePracticeSessionAnswersAsync(Guid userId, Guid sessionId, UpdatePracticeSessionAnswersDto dto, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<PracticeSessionHighlightDto>> GetPracticeSessionHighlightsAsync(Guid userId, Guid sessionId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<PracticeSessionHighlightDto>> UpdatePracticeSessionHighlightsAsync(Guid userId, Guid sessionId, UpdatePracticeSessionHighlightsDto dto, CancellationToken cancellationToken = default);
-    Task<PracticeSessionSpeakingUploadResultDto> UploadSpeakingRecordingAsync(Guid userId, Guid sessionId, UploadPracticeSpeakingRecordingDto dto, Stream audioStream, string originalFileName, CancellationToken cancellationToken = default);
+    Task<PracticeSessionSpeakingUploadResultDto> UploadSpeakingRecordingAsync(Guid userId, Guid sessionId, UploadPracticeSpeakingRecordingDto dto, Stream? audioStream = null, string? originalFileName = null, CancellationToken cancellationToken = default);
     Task<PracticeSessionResultDto> SubmitReadingListeningAsync(Guid userId, Guid sessionId, CancellationToken cancellationToken = default);
     Task<PracticeSessionResultDto> SubmitWritingAsync(Guid userId, Guid sessionId, CancellationToken cancellationToken = default);
     Task<PracticeSessionResultDto> SubmitSpeakingAsync(Guid userId, Guid sessionId, CancellationToken cancellationToken = default);

@@ -156,6 +156,8 @@ public class PracticeController(
         [FromForm] Guid speakingQuestionId,
         [FromForm] string? answerText,
         [FromForm] double? durationSeconds,
+        [FromForm] string? audioUrl,
+        [FromForm] int? fileSizeKB,
         [FromForm(Name = "audio")] IFormFile? audio,
         CancellationToken cancellationToken)
     {
@@ -164,25 +166,41 @@ public class PracticeController(
             return TypedResults.Unauthorized();
         }
 
-        if (audio is null || audio.Length == 0)
+        if (string.IsNullOrEmpty(audioUrl) && (audio is null || audio.Length == 0))
         {
-            return TypedResults.BadRequest(new { message = "Audio file is required." });
+            return TypedResults.BadRequest(new { message = "Audio file or audio URL is required." });
         }
 
         try
         {
-            await using var stream = audio.OpenReadStream();
-            var result = await examExecutionService.UploadSpeakingRecordingAsync(
-                userId,
-                sessionId,
-                new UploadPracticeSpeakingRecordingDto(
-                    speakingQuestionId,
-                    answerText,
-                    durationSeconds),
-                stream,
-                audio.FileName,
-                cancellationToken);
-            return TypedResults.Ok(result);
+            var dto = new UploadPracticeSpeakingRecordingDto(
+                speakingQuestionId,
+                answerText,
+                durationSeconds,
+                audioUrl,
+                fileSizeKB);
+
+            if (audio is not null && audio.Length > 0)
+            {
+                await using var stream = audio.OpenReadStream();
+                var result = await examExecutionService.UploadSpeakingRecordingAsync(
+                    userId,
+                    sessionId,
+                    dto,
+                    stream,
+                    audio.FileName,
+                    cancellationToken);
+                return TypedResults.Ok(result);
+            }
+            else
+            {
+                var result = await examExecutionService.UploadSpeakingRecordingAsync(
+                    userId,
+                    sessionId,
+                    dto,
+                    cancellationToken: cancellationToken);
+                return TypedResults.Ok(result);
+            }
         }
         catch (InvalidOperationException ex)
         {

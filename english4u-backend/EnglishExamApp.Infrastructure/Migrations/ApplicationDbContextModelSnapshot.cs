@@ -969,6 +969,12 @@ namespace EnglishExamApp.Infrastructure.Migrations
                     b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<int>("DailyStreakCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0)
+                        .HasColumnName("dailyStreakCount");
+
                     b.Property<string>("Department")
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)")
@@ -991,12 +997,6 @@ namespace EnglishExamApp.Infrastructure.Migrations
                         .HasDefaultValue(0)
                         .HasColumnName("experiencePoints");
 
-                    b.Property<int>("DailyStreakCount")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int")
-                        .HasDefaultValue(0)
-                        .HasColumnName("dailyStreakCount");
-
                     b.Property<bool>("IsActive")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bit")
@@ -1015,13 +1015,13 @@ namespace EnglishExamApp.Infrastructure.Migrations
                         .HasDefaultValue(false)
                         .HasColumnName("IsOnline");
 
-                    b.Property<DateTime?>("LastLoginAt")
-                        .HasColumnType("datetime2")
-                        .HasColumnName("LastLoginAt");
-
                     b.Property<DateTime?>("LastActivityAt")
                         .HasColumnType("datetime2")
                         .HasColumnName("lastActivityAt");
+
+                    b.Property<DateTime?>("LastLoginAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("LastLoginAt");
 
                     b.Property<DateTime?>("LastSeenAt")
                         .HasColumnType("datetime2")
@@ -1060,6 +1060,15 @@ namespace EnglishExamApp.Infrastructure.Migrations
                         .HasColumnType("nvarchar(50)")
                         .HasDefaultValue("local")
                         .HasColumnName("Provider");
+
+                    b.Property<string>("RefreshToken")
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)")
+                        .HasColumnName("RefreshToken");
+
+                    b.Property<DateTime?>("RefreshTokenExpiry")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("RefreshTokenExpiry");
 
                     b.Property<string>("ResetPasswordToken")
                         .HasColumnType("nvarchar(max)")
@@ -1100,11 +1109,6 @@ namespace EnglishExamApp.Infrastructure.Migrations
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("questionId");
 
-                    b.Property<Guid?>("SpeakingQuestionId")
-                        .HasMaxLength(36)
-                        .HasColumnType("uniqueidentifier")
-                        .HasColumnName("speakingQuestionId");
-
                     b.Property<double>("ScoreEarned")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("float")
@@ -1115,6 +1119,11 @@ namespace EnglishExamApp.Infrastructure.Migrations
                         .HasMaxLength(36)
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("sessionId");
+
+                    b.Property<Guid?>("SpeakingQuestionId")
+                        .HasMaxLength(36)
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("speakingQuestionId");
 
                     b.Property<DateTime>("SubmittedAt")
                         .ValueGeneratedOnAdd()
@@ -1131,9 +1140,9 @@ namespace EnglishExamApp.Infrastructure.Migrations
 
                     b.HasIndex("QuestionId");
 
-                    b.HasIndex("SpeakingQuestionId");
-
                     b.HasIndex("SessionId");
+
+                    b.HasIndex("SpeakingQuestionId");
 
                     b.HasIndex("WritingTaskId");
 
@@ -1153,15 +1162,15 @@ namespace EnglishExamApp.Infrastructure.Migrations
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("answerId");
 
+                    b.Property<string>("AudioQualityData")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("audioQualityData");
+
                     b.Property<string>("AudioUrl")
                         .IsRequired()
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)")
                         .HasColumnName("audioUrl");
-
-                    b.Property<string>("AudioQualityData")
-                        .HasColumnType("nvarchar(max)")
-                        .HasColumnName("audioQualityData");
 
                     b.Property<double?>("DurationSeconds")
                         .HasColumnType("float")
@@ -1540,16 +1549,16 @@ namespace EnglishExamApp.Infrastructure.Migrations
                         .HasForeignKey("QuestionId")
                         .OnDelete(DeleteBehavior.NoAction);
 
-                    b.HasOne("EnglishExamApp.Domain.Entities.SpeakingQuestion", "SpeakingQuestion")
-                        .WithMany("UserAnswers")
-                        .HasForeignKey("SpeakingQuestionId")
-                        .OnDelete(DeleteBehavior.NoAction);
-
                     b.HasOne("EnglishExamApp.Domain.Entities.ExamSession", "Session")
                         .WithMany("UserAnswers")
                         .HasForeignKey("SessionId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.HasOne("EnglishExamApp.Domain.Entities.SpeakingQuestion", "SpeakingQuestion")
+                        .WithMany("UserAnswers")
+                        .HasForeignKey("SpeakingQuestionId")
+                        .OnDelete(DeleteBehavior.NoAction);
 
                     b.HasOne("EnglishExamApp.Domain.Entities.WritingTask", "WritingTask")
                         .WithMany("UserAnswers")
@@ -1558,9 +1567,9 @@ namespace EnglishExamApp.Infrastructure.Migrations
 
                     b.Navigation("Question");
 
-                    b.Navigation("SpeakingQuestion");
-
                     b.Navigation("Session");
+
+                    b.Navigation("SpeakingQuestion");
 
                     b.Navigation("WritingTask");
                 });

@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { isTokenExpired } from '@/apis/axios.instance'
 
 export function HeroSection() {
     const [offsetY, setOffsetY] = useState(0)
@@ -126,11 +128,20 @@ function FloatingCard({ style, icon, title, value, color, accent, small }: Float
 
 function RocketButton() {
     const [isAnimating, setIsAnimating] = useState(false)
+    const navigate = useNavigate()
 
     const handleClick = () => {
         if (isAnimating) return;
         setIsAnimating(true);
-        setTimeout(() => setIsAnimating(false), 1500);
+        setTimeout(() => {
+            setIsAnimating(false);
+            // Nếu đã đăng nhập và token còn hạn → vào trang học luôn
+            if (!isTokenExpired()) {
+                navigate('/app');
+            } else {
+                navigate('/login');
+            }
+        }, 800);
     }
 
     return (

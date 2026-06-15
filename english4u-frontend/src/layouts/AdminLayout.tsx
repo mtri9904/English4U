@@ -16,6 +16,7 @@ import {
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useUserProfileQuery, userApi } from '@/features/admin/api/user.api';
+import { isTokenExpired } from '@/apis/axios.instance';
 import { useQueryClient } from '@tanstack/react-query';
 import {
     useAdminNotificationStatsQuery,
@@ -63,9 +64,12 @@ export const AdminLayout: React.FC = () => {
     // Route Guard logic
     useEffect(() => {
         const token = localStorage.getItem('token');
-        if (!token) {
+        if (!token || isTokenExpired()) {
+            // Token không tồn tại hoặc đã hết hạn → clear và redirect
+            localStorage.removeItem('token');
+            localStorage.removeItem('userId');
             pdfGenerationJobStore.clear();
-            message.warning('Vui lòng đăng nhập để truy cập CMS!');
+            message.warning('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại!');
             navigate('/admin/login', { replace: true });
         }
     }, [navigate]);
@@ -81,6 +85,7 @@ export const AdminLayout: React.FC = () => {
         }
         pdfGenerationJobStore.clear();
         localStorage.removeItem('token');
+        localStorage.removeItem('refreshToken');
         localStorage.removeItem('userId');
         queryClient.clear();
         navigate('/admin/login');
@@ -217,11 +222,6 @@ export const AdminLayout: React.FC = () => {
             key: '/admin/gamification',
             icon: <TrophyOutlined />,
             label: 'Thành tích & Cấp độ',
-        },
-        {
-            key: '/admin/billing',
-            icon: <CreditCardOutlined />,
-            label: 'Thanh toán & Gói',
         },
         {
             key: '/admin/notifications',

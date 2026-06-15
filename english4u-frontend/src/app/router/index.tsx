@@ -17,8 +17,8 @@ import {
     AttemptManagementPage,
     ProfilePage,
     NotificationManagementPage,
-    BillingManagementPage,
     AdminNotFoundPage,
+    GamificationPage,
 } from '@/features/admin';
 import { AdminLayout } from '@/layouts/AdminLayout';
 import {
@@ -117,16 +117,16 @@ export const appRouter = createBrowserRouter([
                 element: <ExamEditorPage />,
             },
             {
+                path: 'gamification',
+                element: <GamificationPage />,
+            },
+            {
                 path: 'profile',
                 element: <ProfilePage />,
             },
             {
                 path: 'notifications',
                 element: <NotificationManagementPage />,
-            },
-            {
-                path: 'billing',
-                element: <BillingManagementPage />,
             },
             {
                 path: '*',

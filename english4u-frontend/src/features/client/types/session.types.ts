@@ -267,7 +267,9 @@ export interface UploadPracticeSpeakingRecordingDto {
     speakingQuestionId: string;
     answerText?: string | null;
     durationSeconds?: number | null;
-    audio: File;
+    audioUrl?: string | null;
+    fileSizeKB?: number | null;
+    audio?: File;
 }
 
 export interface PracticeSessionSpeakingUploadResultDto {

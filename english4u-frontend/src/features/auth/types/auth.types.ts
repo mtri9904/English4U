@@ -18,8 +18,13 @@ export interface RegisterRequest {
 
 export interface AuthResponse {
     token: string;
+    refreshToken: string;
     userId: string;
     email: string;
     displayName: string;
     role: string;
+}
+
+export interface RefreshRequest {
+    refreshToken: string;
 }

@@ -25,3 +25,15 @@ C:\Users\Hande\OneDrive\Documents\DoAnTotNghiep\English4skills\english4u-backend
 C:\Users\Hande\OneDrive\Documents\DoAnTotNghiep\English4skills\english4u-backend\EnglishExamApp.Domain\obj\Debug\net9.0\refint\EnglishExamApp.Domain.dll
 C:\Users\Hande\OneDrive\Documents\DoAnTotNghiep\English4skills\english4u-backend\EnglishExamApp.Domain\obj\Debug\net9.0\EnglishExamApp.Domain.pdb
 C:\Users\Hande\OneDrive\Documents\DoAnTotNghiep\English4skills\english4u-backend\EnglishExamApp.Domain\obj\Debug\net9.0\ref\EnglishExamApp.Domain.dll
+C:\Users\Admin\Documents\ENGLISH4U\english4u-backend\EnglishExamApp.Domain\bin\Debug\net9.0\EnglishExamApp.Domain.deps.json
+C:\Users\Admin\Documents\ENGLISH4U\english4u-backend\EnglishExamApp.Domain\bin\Debug\net9.0\EnglishExamApp.Domain.dll
+C:\Users\Admin\Documents\ENGLISH4U\english4u-backend\EnglishExamApp.Domain\bin\Debug\net9.0\EnglishExamApp.Domain.pdb
+C:\Users\Admin\Documents\ENGLISH4U\english4u-backend\EnglishExamApp.Domain\obj\Debug\net9.0\EnglishExamApp.Domain.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\Admin\Documents\ENGLISH4U\english4u-backend\EnglishExamApp.Domain\obj\Debug\net9.0\EnglishExamApp.Domain.AssemblyInfoInputs.cache
+C:\Users\Admin\Documents\ENGLISH4U\english4u-backend\EnglishExamApp.Domain\obj\Debug\net9.0\EnglishExamApp.Domain.AssemblyInfo.cs
+C:\Users\Admin\Documents\ENGLISH4U\english4u-backend\EnglishExamApp.Domain\obj\Debug\net9.0\EnglishExamApp.Domain.csproj.CoreCompileInputs.cache
+C:\Users\Admin\Documents\ENGLISH4U\english4u-backend\EnglishExamApp.Domain\obj\Debug\net9.0\EnglishExamApp.Domain.sourcelink.json
+C:\Users\Admin\Documents\ENGLISH4U\english4u-backend\EnglishExamApp.Domain\obj\Debug\net9.0\EnglishExamApp.Domain.dll
+C:\Users\Admin\Documents\ENGLISH4U\english4u-backend\EnglishExamApp.Domain\obj\Debug\net9.0\refint\EnglishExamApp.Domain.dll
+C:\Users\Admin\Documents\ENGLISH4U\english4u-backend\EnglishExamApp.Domain\obj\Debug\net9.0\EnglishExamApp.Domain.pdb
+C:\Users\Admin\Documents\ENGLISH4U\english4u-backend\EnglishExamApp.Domain\obj\Debug\net9.0\ref\EnglishExamApp.Domain.dll

@@ -64,6 +64,8 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             entity.Property(e => e.ActivationToken).HasColumnName("ActivationToken");
             entity.Property(e => e.ResetPasswordToken).HasColumnName("ResetPasswordToken");
             entity.Property(e => e.TokenExpiry).HasColumnName("TokenExpiry");
+            entity.Property(e => e.RefreshToken).HasColumnName("RefreshToken").HasMaxLength(512);
+            entity.Property(e => e.RefreshTokenExpiry).HasColumnName("RefreshTokenExpiry");
             entity.Property(e => e.ExperiencePoints).HasColumnName("experiencePoints").HasDefaultValue(0);
             entity.Property(e => e.DailyStreakCount).HasColumnName("dailyStreakCount").HasDefaultValue(0);
             entity.Property(e => e.LongestStreakCount).HasColumnName("longestStreakCount").HasDefaultValue(0);

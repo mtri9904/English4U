@@ -27,12 +27,14 @@ public class AuthController(
 
     public sealed record AuthResponseDto(
         string Token,
+        string RefreshToken,
         string UserId,
         string Email,
         string? DisplayName,
         string Role);
 
     public sealed record GoogleLoginRequest(string IdToken);
+    public sealed record RefreshRequest(string RefreshToken);
 
     [HttpPost("google")]
     public async Task<IResult> GoogleLogin([FromBody] GoogleLoginRequest request, CancellationToken cancellationToken)
@@ -91,7 +93,7 @@ public class AuthController(
         await userPresenceService.MarkLoggedInAsync(user, cancellationToken);
 
         var roleName = ResolvePrimaryRoleName(user);
-        return TypedResults.Ok(BuildAuthResponse(user, roleName));
+        return TypedResults.Ok(await BuildAuthResponseAsync(user, roleName, cancellationToken));
     }
 
     [HttpPost("register")]
@@ -237,7 +239,7 @@ public class AuthController(
 
         await userPresenceService.MarkLoggedInAsync(user, cancellationToken);
 
-        return TypedResults.Ok(BuildAuthResponse(user, roleName));
+        return TypedResults.Ok(await BuildAuthResponseAsync(user, roleName, cancellationToken));
     }
 
     [HttpPost("seed-admin")]
@@ -290,6 +292,88 @@ public class AuthController(
         return TypedResults.Ok(new { message = "Seeding successful. Added Admin, Student, Teacher, and ContentCreator roles." });
     }
 
+    [HttpPost("refresh")]
+    public async Task<IResult> Refresh([FromBody] RefreshRequest request, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.RefreshToken))
+            return TypedResults.BadRequest(new { message = "Refresh token không hợp lệ." });
+
+        var user = await context.Users
+            .Include(u => u.UserRoles)
+                .ThenInclude(ur => ur.Role)
+            .FirstOrDefaultAsync(u => u.RefreshToken == request.RefreshToken, cancellationToken);
+
+        if (user is null)
+            return TypedResults.Unauthorized();
+
+        if (user.RefreshTokenExpiry is null || user.RefreshTokenExpiry < DateTime.UtcNow)
+            return TypedResults.Unauthorized();
+
+        if (!user.IsActive)
+            return TypedResults.BadRequest(new { message = "Tài khoản đã bị khóa." });
+
+        var roleName = ResolvePrimaryRoleName(user);
+        return TypedResults.Ok(await BuildAuthResponseAsync(user, roleName, cancellationToken));
+    }
+
+    [HttpPost("revoke")]
+    [Microsoft.AspNetCore.Authorization.Authorize]
+    public async Task<IResult> Revoke(CancellationToken cancellationToken)
+    {
+        var userIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                       ?? User.FindFirst("sub")?.Value;
+
+        if (!Guid.TryParse(userIdClaim, out var userId))
+            return TypedResults.Unauthorized();
+
+        var user = await context.Users.FindAsync([userId], cancellationToken);
+        if (user is null)
+            return TypedResults.NotFound();
+
+        user.RefreshToken = null;
+        user.RefreshTokenExpiry = null;
+        user.UpdatedAt = DateTime.UtcNow;
+        await context.SaveChangesAsync(cancellationToken);
+
+        return TypedResults.Ok(new { message = "Đã đăng xuất thành công." });
+    }
+
+    private async Task<AuthResponseDto> BuildAuthResponseAsync(
+        Domain.Entities.User user,
+        string roleName,
+        CancellationToken cancellationToken)
+    {
+        var accessToken = jwtTokenService.GenerateToken(user.Id, user.Email, roleName);
+        var refreshToken = jwtTokenService.GenerateRefreshToken();
+        var refreshExpireDays = int.TryParse(configuration["Jwt:RefreshTokenExpireDays"], out var d) ? d : 30;
+
+        user.RefreshToken = refreshToken;
+        user.RefreshTokenExpiry = DateTime.UtcNow.AddDays(refreshExpireDays);
+        user.UpdatedAt = DateTime.UtcNow;
+        await context.SaveChangesAsync(cancellationToken);
+
+        return new AuthResponseDto(
+            Token: accessToken,
+            RefreshToken: refreshToken,
+            UserId: user.Id.ToString(),
+            Email: user.Email,
+            DisplayName: user.DisplayName,
+            Role: roleName);
+    }
+
+    private AuthResponseDto BuildAuthResponse(Domain.Entities.User user, string roleName)
+    {
+        var token = jwtTokenService.GenerateToken(user.Id, user.Email, roleName);
+
+        return new AuthResponseDto(
+            Token: token,
+            RefreshToken: string.Empty,
+            UserId: user.Id.ToString(),
+            Email: user.Email,
+            DisplayName: user.DisplayName,
+            Role: roleName);
+    }
+
     private async Task<Domain.Entities.Role> GetOrCreateRoleAsync(
         string roleName,
         CancellationToken cancellationToken)
@@ -308,18 +392,6 @@ public class AuthController(
         context.Roles.Add(role);
 
         return role;
-    }
-
-    private AuthResponseDto BuildAuthResponse(Domain.Entities.User user, string roleName)
-    {
-        var token = jwtTokenService.GenerateToken(user.Id, user.Email, roleName);
-
-        return new AuthResponseDto(
-            Token: token,
-            UserId: user.Id.ToString(),
-            Email: user.Email,
-            DisplayName: user.DisplayName,
-            Role: roleName);
     }
 
     private static string ResolvePrimaryRoleName(Domain.Entities.User user) =>

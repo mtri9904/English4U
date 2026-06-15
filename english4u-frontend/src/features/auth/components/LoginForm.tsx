@@ -33,6 +33,7 @@ export function LoginForm() {
             {
                 onSuccess: (data) => {
                     localStorage.setItem('token', data.token)
+                    localStorage.setItem('refreshToken', data.refreshToken)
                     localStorage.setItem('userId', data.userId)
                     message.success('Đăng nhập thành công!')
                     navigate('/app')

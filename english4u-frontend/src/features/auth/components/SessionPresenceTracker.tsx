@@ -199,6 +199,7 @@ export const SessionPresenceTracker = () => {
             removeCurrentTab();
             clearLeaderLeaseIfCurrent();
             localStorage.removeItem('token');
+            localStorage.removeItem('refreshToken');
             localStorage.removeItem('userId');
             setForcedLogoutReason(SESSION_CONFLICT_MESSAGE);
             const loginPath = window.location.pathname.startsWith('/admin') ? '/admin/login' : '/login';

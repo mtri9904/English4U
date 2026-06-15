@@ -92,7 +92,7 @@ const { Dragger } = Upload;
 export const ExamManagement = () => {
     const navigate = useNavigate();
     const [searchText, setSearchText] = useState('');
-    const [filterType, setFilterType] = useState<string>('ALL');
+    const [filterType, setFilterType] = useState<string>('IELTS');
     const [filterSkill, setFilterSkill] = useState<string>('ALL');
     const [publishFilter, setPublishFilter] = useState<PublishFilter>('ALL');
     const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
@@ -156,11 +156,11 @@ export const ExamManagement = () => {
     }, [exams, filterSkill, filterType, publishFilter, searchText]);
 
     const hasActiveFilter =
-        searchText.trim().length > 0 || filterType !== 'ALL' || filterSkill !== 'ALL' || publishFilter !== 'ALL';
+        searchText.trim().length > 0 || filterType !== 'IELTS' || filterSkill !== 'ALL' || publishFilter !== 'ALL';
 
     const resetFilters = () => {
         setSearchText('');
-        setFilterType('ALL');
+        setFilterType('IELTS');
         setFilterSkill('ALL');
         setPublishFilter('ALL');
     };
@@ -610,16 +610,7 @@ export const ExamManagement = () => {
                             placeholder="Tìm theo tên đề hoặc mô tả..."
                             style={{ minWidth: 250, flex: 2, borderRadius: 10 }}
                         />
-                        <Select
-                            value={filterType}
-                            onChange={setFilterType}
-                            style={{ minWidth: 150, flex: 1 }}
-                            options={[
-                                { value: 'ALL', label: 'Tất cả loại' },
-                                { value: 'IELTS', label: 'IELTS' },
-                                { value: 'TOEIC', label: 'TOEIC' },
-                            ]}
-                        />
+
                         <Select
                             value={filterSkill}
                             onChange={setFilterSkill}

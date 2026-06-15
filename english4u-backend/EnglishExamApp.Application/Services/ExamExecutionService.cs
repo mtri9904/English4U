@@ -554,8 +554,8 @@ public sealed partial class ExamExecutionService(
         Guid userId,
         Guid sessionId,
         UploadPracticeSpeakingRecordingDto dto,
-        Stream audioStream,
-        string originalFileName,
+        Stream? audioStream = null,
+        string? originalFileName = null,
         CancellationToken cancellationToken = default)
     {
         if (dto.SpeakingQuestionId == Guid.Empty)
@@ -583,12 +583,31 @@ public sealed partial class ExamExecutionService(
                 cancellationToken)
             ?? throw new InvalidOperationException("Speaking question not found in this session.");
 
-        var storedMedia = await speakingMediaStorageService.SaveAsync(
-            sessionId,
-            dto.SpeakingQuestionId,
-            originalFileName,
-            audioStream,
-            cancellationToken);
+        string finalAudioUrl;
+        int finalFileSizeKB;
+
+        if (!string.IsNullOrEmpty(dto.AudioUrl))
+        {
+            finalAudioUrl = dto.AudioUrl;
+            finalFileSizeKB = dto.FileSizeKB ?? 0;
+        }
+        else
+        {
+            if (audioStream == null || string.IsNullOrEmpty(originalFileName))
+            {
+                throw new InvalidOperationException("Audio stream and original file name are required when audioUrl is not provided.");
+            }
+
+            var storedMedia = await speakingMediaStorageService.SaveAsync(
+                sessionId,
+                dto.SpeakingQuestionId,
+                originalFileName,
+                audioStream,
+                cancellationToken);
+
+            finalAudioUrl = storedMedia.AudioUrl;
+            finalFileSizeKB = storedMedia.FileSizeKB;
+        }
 
         var normalizedAnswer = string.IsNullOrWhiteSpace(dto.AnswerText) ? null : dto.AnswerText.Trim();
         var answer = session.UserAnswers
@@ -630,9 +649,9 @@ public sealed partial class ExamExecutionService(
             context.UserAudioRecords.Add(audioRecord);
         }
 
-        audioRecord.AudioUrl = storedMedia.AudioUrl;
+        audioRecord.AudioUrl = finalAudioUrl;
         audioRecord.DurationSeconds = dto.DurationSeconds;
-        audioRecord.FileSizeKB = storedMedia.FileSizeKB;
+        audioRecord.FileSizeKB = finalFileSizeKB;
 
         if (audioRecord.SpeechTranscripts.Count > 0)
         {
@@ -646,7 +665,7 @@ public sealed partial class ExamExecutionService(
         try
         {
             var transcript = await aiIntegrationService.GenerateListeningTranscriptAsync(
-                new GenerateListeningTranscriptRequestDto(storedMedia.AudioUrl, "en"),
+                new GenerateListeningTranscriptRequestDto(finalAudioUrl, "en"),
                 cancellationToken);
             transcriptText = string.IsNullOrWhiteSpace(transcript.TranscriptText) ? null : transcript.TranscriptText.Trim();
             transcriptSegmentCount = transcript.SegmentCount;
@@ -683,8 +702,8 @@ public sealed partial class ExamExecutionService(
 
         return new PracticeSessionSpeakingUploadResultDto(
             speakingQuestion.Id,
-            storedMedia.AudioUrl,
-            storedMedia.FileSizeKB,
+            finalAudioUrl,
+            finalFileSizeKB,
             dto.DurationSeconds,
             transcriptText,
             transcriptSegmentCount,

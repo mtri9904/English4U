@@ -3,6 +3,7 @@ setlocal
 set "ASPNETCORE_ENVIRONMENT=Development"
 set "DOTNET_ENVIRONMENT=Development"
 set "ASPNETCORE_URLS=http://localhost:5000"
+set "DOTNET_ROLL_FORWARD=Major"
 echo [*] Su dung Gemma API key tu cau hinh backend (appsettings/env cua backend).
 
 set "DOTNET_EF=%USERPROFILE%\.dotnet\tools\dotnet-ef.exe"

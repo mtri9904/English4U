@@ -11,15 +11,13 @@ export const MainLayout: React.FC = () => {
                 <div className="h-16 flex items-center justify-center font-bold text-xl text-blue-600 border-b border-gray-200">
                     English4U
                 </div>
-                {/* Sidebar Menu goes here */}
             </Sider>
             <Layout>
                 <Header className="bg-white px-6 flex items-center border-b border-gray-200 h-16">
                     <div className="flex-1"></div>
-                    {/* Header Right goes here (User profile, notifications) */}
                 </Header>
                 <Content className="p-6 bg-gray-50 overflow-auto">
-                    <Outlet /> {/* Renders child routes */}
+                    <Outlet />
                 </Content>
             </Layout>
         </Layout>

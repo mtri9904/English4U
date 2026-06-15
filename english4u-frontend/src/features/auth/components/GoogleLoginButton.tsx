@@ -24,6 +24,7 @@ export function GoogleLoginButton({ requiredRole, redirectTo = '/' }: GoogleLogi
                         return;
                     }
                     localStorage.setItem('token', data.token);
+                    localStorage.setItem('refreshToken', data.refreshToken);
                     localStorage.setItem('userId', data.userId);
                     message.success('Đăng nhập Google thành công!');
                     navigate(redirectTo);

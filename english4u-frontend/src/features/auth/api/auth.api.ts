@@ -1,6 +1,6 @@
 import { axiosInstance } from '@/apis/axios.instance';
 import { useMutation } from '@tanstack/react-query';
-import { LoginRequest, RegisterRequest, AuthResponse } from '../types';
+import { LoginRequest, RegisterRequest, AuthResponse, RefreshRequest } from '../types';
 
 export const authApi = {
     login: async (data: LoginRequest): Promise<AuthResponse> => {
@@ -26,6 +26,13 @@ export const authApi = {
     },
     resetPassword: async (data: any): Promise<void> => {
         await axiosInstance.post('auth/reset-password', data);
+    },
+    refreshToken: async (data: RefreshRequest): Promise<AuthResponse> => {
+        const response = await axiosInstance.post<AuthResponse>('auth/refresh', data);
+        return response.data;
+    },
+    revokeToken: async (): Promise<void> => {
+        await axiosInstance.post('auth/revoke');
     },
 };
 
@@ -68,5 +75,11 @@ export const useResetPasswordMutation = () => {
 export const useGoogleLoginMutation = () => {
     return useMutation({
         mutationFn: authApi.googleLogin,
+    });
+};
+
+export const useRefreshTokenMutation = () => {
+    return useMutation({
+        mutationFn: authApi.refreshToken,
     });
 };
