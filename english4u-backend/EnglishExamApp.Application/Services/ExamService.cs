@@ -284,6 +284,7 @@ public class ExamService(
         try
         {
             var exam = await context.Exams
+                .AsSplitQuery()
                 .Include(e => e.ExamSections)
                     .ThenInclude(s => s.ReadingPassages)
                         .ThenInclude(p => p.QuestionGroups)

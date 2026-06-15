@@ -55,6 +55,7 @@ public sealed partial class ExamExecutionService(
     public async Task<SubmitExamResultDto> SubmitExamAsync(Guid sessionId, CancellationToken cancellationToken = default)
     {
         var session = await context.ExamSessions
+            .AsSplitQuery()
             .Include(item => item.Exam)
             .Include(item => item.ScoringResults)
             .Include(item => item.UserAnswers)
@@ -714,6 +715,7 @@ public sealed partial class ExamExecutionService(
     public async Task<PracticeSessionResultDto> SubmitReadingListeningAsync(Guid userId, Guid sessionId, CancellationToken cancellationToken = default)
     {
         var session = await context.ExamSessions
+            .AsSplitQuery()
             .Include(item => item.Exam)
             .Include(item => item.UserAnswers)
                 .ThenInclude(answer => answer.Question)

@@ -24,6 +24,7 @@ public class UserService(IApplicationDbContext context) : IUserService
     public async Task<PagedResult<UserOverviewDto>> GetPagedUsersAsync(UserPagedRequest request, CancellationToken cancellationToken = default)
     {
         var query = context.Users.AsNoTracking()
+            .AsSplitQuery()
             .Include(u => u.UserRoles).ThenInclude(ur => ur.Role)
             .Include(u => u.UserSubscriptions).ThenInclude(us => us.Subscription)
             .Include(u => u.ExamSessions).ThenInclude(es => es.ScoringResults)
@@ -99,6 +100,7 @@ public class UserService(IApplicationDbContext context) : IUserService
     {
         var user = await context.Users
             .AsNoTracking()
+            .AsSplitQuery()
             .Include(u => u.UserRoles).ThenInclude(ur => ur.Role)
             .Include(u => u.UserSubscriptions).ThenInclude(us => us.Subscription)
             .Include(u => u.ExamSessions).ThenInclude(es => es.ScoringResults)
