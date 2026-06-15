@@ -1,0 +1,12 @@
+export { AdminLoginPage } from './pages/AdminLoginPage';
+export { AdminDashboard } from './pages/AdminDashboard';
+export { StudentManagementPage } from './pages/StudentManagementPage';
+export { ExamManagement } from './pages/ExamManagement';
+export { ExamDetailPage } from './pages/ExamDetailPage';
+export { ExamEditorPage } from './pages/ExamEditorPage';
+export { AttemptManagementPage } from './pages/AttemptManagementPage';
+export { ProfilePage } from './pages/ProfilePage';
+export { NotificationManagementPage } from './pages/NotificationManagementPage';
+export { AdminNotFoundPage } from './pages/AdminNotFoundPage';
+export { AdminExamAiGenerationPage } from './pages/AdminExamAiGenerationPage';
+export { GamificationPage } from './pages/GamificationPage';
