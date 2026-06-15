@@ -3,17 +3,19 @@ FROM continuumio/miniconda3:latest
 
 WORKDIR /code
 
-# Install system dependencies (ffmpeg, libsndfile1 for audio, git)
+# Install system dependencies (ffmpeg, libsndfile1 for audio, git, build-essential for C++ compilation)
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     libsndfile1 \
     git \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Montreal Forced Aligner (MFA) via Conda
 RUN conda install -y -c conda-forge montreal-forced-aligner
 
 # Pre-download English acoustic model and dictionary for MFA
+ENV MFA_ROOT_DIR=/code/mfa_models
 RUN mfa model download acoustic english_mfa
 RUN mfa model download dictionary english_mfa
 

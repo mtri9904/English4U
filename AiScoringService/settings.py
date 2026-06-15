@@ -9,7 +9,14 @@ load_dotenv()
 
 SERVICE_ROOT = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(SERVICE_ROOT)
-DEFAULT_HF_HOME = os.path.join(PROJECT_ROOT, ".runtime", "huggingface")
+
+if "SPACE_ID" in os.environ:
+    DEFAULT_HF_HOME = "/tmp/huggingface"
+    DEFAULT_SPEAKING_MFA_ROOT_DIR = "/tmp/mfa"
+else:
+    DEFAULT_HF_HOME = os.path.join(PROJECT_ROOT, ".runtime", "huggingface")
+    DEFAULT_SPEAKING_MFA_ROOT_DIR = os.path.join(PROJECT_ROOT, ".runtime", "mfa")
+
 os.environ.setdefault("HF_HOME", DEFAULT_HF_HOME)
 os.environ.setdefault("HUGGINGFACE_HUB_CACHE", os.path.join(DEFAULT_HF_HOME, "hub"))
 
@@ -145,7 +152,7 @@ DEFAULT_SPEAKING_MFA_BINARY = os.path.join(
     "Scripts",
     "mfa.exe",
 )
-DEFAULT_SPEAKING_MFA_ROOT_DIR = os.path.join(PROJECT_ROOT, ".runtime", "mfa")
+
 SPEAKING_MFA_BINARY = (
     os.getenv("SPEAKING_MFA_BINARY", DEFAULT_SPEAKING_MFA_BINARY).strip()
     or DEFAULT_SPEAKING_MFA_BINARY
