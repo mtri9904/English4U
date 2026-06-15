@@ -276,6 +276,7 @@ public class AuthController(
             PasswordHash = passwordHasher.HashPassword(seedAdminPassword),
             DisplayName = "System Admin",
             IsActive = true,
+            IsEmailConfirmed = true,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };

@@ -137,13 +137,23 @@ using (var scope = app.Services.CreateScope())
         logger.LogInformation("Applying pending database migrations...");
         dbContext.Database.Migrate();
         logger.LogInformation("Database migrations applied successfully.");
+
+        // Automatically activate admin account if it exists but is not confirmed
+        var admin = dbContext.Users.FirstOrDefault(u => u.Email == "admin@english4u.com");
+        if (admin != null && !admin.IsEmailConfirmed)
+        {
+            admin.IsEmailConfirmed = true;
+            dbContext.SaveChanges();
+            logger.LogInformation("Admin account auto-activated on startup.");
+        }
     }
     catch (Exception ex)
     {
-        logger.LogError(ex, "Failed to apply database migrations at startup.");
+        logger.LogError(ex, "Failed to apply database migrations or verify admin activation at startup.");
         throw;
     }
 }
+
 
 if (app.Environment.IsDevelopment())
 {
