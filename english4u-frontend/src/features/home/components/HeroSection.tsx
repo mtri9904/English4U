@@ -60,10 +60,6 @@ export function HeroSection() {
     )
 }
 
-function PlayIcon() {
-    return <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.5" /><path d="M6.5 5.5l4 2.5-4 2.5V5.5z" fill="currentColor" /></svg>
-}
-
 function AITutorIllustration() {
     return (
         <div style={{ position: 'relative', width: 480, height: 480 }}>

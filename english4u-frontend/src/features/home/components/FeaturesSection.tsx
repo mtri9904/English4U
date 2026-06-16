@@ -7,10 +7,51 @@ interface Skill {
 }
 
 const SKILLS: Skill[] = [
-    { id: 'listening', icon: '🎧', title: 'Listening', description: 'Luyện nghe với các bản thu IELTS, podcast và audio đời thực. AI tự động phát hiện các lỗ hổng nghe hiểu của bạn.', color: '#137dc5', bg: 'rgba(19,125,197,0.08)', progress: 78, tag: 'IELTS Band 7+', features: ['Bản thu thực tế', 'Kiểm soát tốc độ', 'Bài tập điền từ'] },
-    { id: 'speaking', icon: '🎙️', title: 'Speaking', description: 'Giao tiếp trực tiếp với AI và nhận điểm phát âm lập tức. Phân tích sóng âm giúp bạn hoàn thiện ngữ điệu chuẩn xác.', color: '#7c3aed', bg: 'rgba(124,58,237,0.08)', progress: 65, tag: 'Phát âm AI', features: ['Chấm điểm thời gian thực', 'Phản hồi qua sóng âm', 'Luyện tập ngữ điệu'], animated: true },
-    { id: 'reading', icon: '📖', title: 'Reading', description: 'Bài đọc thích ứng từ trình độ C1 đến IELTS Academic. Hệ thống tự động đo lường tốc độ đọc hiểu qua từng cấp độ.', color: '#0891b2', bg: 'rgba(8,145,178,0.08)', progress: 82, tag: 'Cấp độ thích ứng', features: ['Bài đọc chuẩn IELTS', 'Đo tốc độ đọc', 'Kho từ vựng'] },
-    { id: 'writing', icon: '✏️', title: 'Writing', description: 'Nộp bài luận và nhận điểm chuẩn IELTS kèm nhận xét chi tiết về ngữ pháp, từ vựng và tính mạch lạc chỉ trong vài giây.', color: '#c2410c', bg: 'rgba(194,65,12,0.08)', progress: 71, tag: 'Phản hồi tức thì', features: ['Chấm điểm bằng AI', 'Sửa lỗi ngữ pháp', 'Cấu trúc bài luận'] },
+    { 
+        id: 'listening', 
+        icon: '🎧', 
+        title: 'Listening', 
+        description: 'Luyện đề thi IELTS Listening trọn vẹn với audio liền mạch cho toàn bài thi. Giao diện phòng thi thật giúp nâng cao kỹ năng nghe hiểu và điền từ.', 
+        color: '#137dc5', 
+        bg: 'rgba(19,125,197,0.08)', 
+        progress: 78, 
+        tag: 'IELTS Band 7+', 
+        features: ['Audio toàn bài liền mạch', 'Giao diện phòng thi thật', 'Chấm điểm tự động ngay'] 
+    },
+    { 
+        id: 'speaking', 
+        icon: '🎙️', 
+        title: 'Speaking', 
+        description: 'Luyện thi IELTS Speaking trực tiếp cùng 3D Avatar Examiner tương tác thời gian thực. Hệ thống AI phân tích giọng nói và chấm điểm theo 4 tiêu chí chuẩn IELTS.', 
+        color: '#7c3aed', 
+        bg: 'rgba(124,58,237,0.08)', 
+        progress: 65, 
+        tag: '3D Examiner AI', 
+        features: ['3D Avatar tương tác trực quan', 'Chấm 4 tiêu chuẩn IELTS', 'Phân tích lỗi phát âm & ngắt nghỉ'], 
+        animated: true 
+    },
+    { 
+        id: 'reading', 
+        icon: '📖', 
+        title: 'Reading', 
+        description: 'Đọc và trả lời câu hỏi trực tiếp trên giao diện split-screen chia đôi màn hình. Dễ dàng điều hướng và quản lý thời gian giữa 3 passage của đề thi.', 
+        color: '#0891b2', 
+        bg: 'rgba(8,145,178,0.08)', 
+        progress: 82, 
+        tag: '3 Passages', 
+        features: ['Giao diện split-screen tiện lợi', 'Đủ 3 passage chuẩn Academic', 'Chấm điểm và hiển thị đáp án ngay'] 
+    },
+    { 
+        id: 'writing', 
+        icon: '✏️', 
+        title: 'Writing', 
+        description: 'Viết luận và nộp bài để nhận phản hồi chi tiết từ AI Review Copilot. Nhận gợi ý sửa lỗi ngữ pháp, từ vựng và tối ưu cấu trúc bài viết chỉ sau vài giây.', 
+        color: '#c2410c', 
+        bg: 'rgba(194,65,12,0.08)', 
+        progress: 71, 
+        tag: 'AI Copilot', 
+        features: ['AI Review Copilot phân tích', 'Sửa lỗi ngữ pháp & từ vựng', 'Phân tích tiêu chí IELTS Writing'] 
+    },
 ]
 
 export function FeaturesSection() {
@@ -25,7 +66,7 @@ export function FeaturesSection() {
                             Mọi thứ bạn cần để đạt<span style={{ color: 'var(--color-primary)' }}> Band 7+</span>
                         </h2>
                         <p style={{ fontSize: '1.0625rem', color: 'var(--color-text-secondary)', maxWidth: 520, margin: '0 auto', lineHeight: 1.7 }}>
-                            Các mô-đun tích hợp sức mạnh AI bao quát mọi cấu phần của bài thi IELTS & TOEFL, phân bổ độ khó theo đúng trình độ hiện tại của bạn.
+                            Các mô-đun tích hợp sức mạnh AI bao quát mọi cấu phần của bài thi IELTS, tối ưu hóa quá trình ôn tập và luyện thi của bạn.
                         </p>
                     </div>
                 </FadeIn>
@@ -43,15 +84,30 @@ function SkillCard({ skill }: { skill: Skill }) {
     const [hovered, setHovered] = useState(false)
     return (
         <div onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
-            style={{ background: 'rgba(255,255,255,0.8)', border: `1.5px solid ${hovered ? skill.color + '40' : 'var(--color-border)'}`, borderRadius: 20, padding: 28, cursor: 'default', transition: 'all 0.3s cubic-bezier(0.4,0,0.2,1)', boxShadow: hovered ? '0 20px 48px rgba(13,27,42,0.12)' : 'var(--shadow-sm)', transform: hovered ? 'translateY(-4px)' : 'translateY(0)', position: 'relative', overflow: 'hidden' }}>
+            style={{ 
+                height: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                background: 'rgba(255,255,255,0.8)', 
+                border: `1.5px solid ${hovered ? skill.color + '40' : 'var(--color-border)'}`, 
+                borderRadius: 20, 
+                padding: 28, 
+                cursor: 'default', 
+                transition: 'all 0.3s cubic-bezier(0.4,0,0.2,1)', 
+                boxShadow: hovered ? '0 20px 48px rgba(13,27,42,0.12)' : 'var(--shadow-sm)', 
+                transform: hovered ? 'translateY(-4px)' : 'translateY(0)', 
+                position: 'relative', 
+                overflow: 'hidden' 
+            }}
+        >
             <div style={{ position: 'absolute', top: 0, right: 0, width: 120, height: 120, background: `radial-gradient(ellipse at 80% 20%, ${skill.color}14 0%, transparent 70%)`, borderRadius: '0 20px 0 0', opacity: hovered ? 1 : 0.5, transition: 'opacity 0.3s' }} />
-            <div style={{ position: 'relative' }}>
+            <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', height: '100%', flex: 1 }}>
                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20 }}>
                     <div style={{ width: 52, height: 52, borderRadius: 14, background: skill.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, transition: 'transform 0.2s', transform: hovered ? 'scale(1.1) rotate(-5deg)' : 'scale(1)' }}>{skill.icon}</div>
                     <Badge variant="neutral">{skill.tag}</Badge>
                 </div>
                 <h3 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.375rem', fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: 10 }}>{skill.title}</h3>
-                <p style={{ fontSize: '0.9rem', color: 'var(--color-text-secondary)', lineHeight: 1.7, marginBottom: 20 }}>{skill.description}</p>
+                <p style={{ fontSize: '0.9rem', color: 'var(--color-text-secondary)', lineHeight: 1.7, marginBottom: 20, flexGrow: 1 }}>{skill.description}</p>
                 {skill.animated ? <SpeakingWave color={skill.color} active={hovered} /> : (
                     <div style={{ marginBottom: 20 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, fontSize: '0.75rem', color: 'var(--color-text-muted)', fontWeight: 500 }}>
@@ -60,7 +116,7 @@ function SkillCard({ skill }: { skill: Skill }) {
                         <ProgressBar value={skill.progress} variant="primary" size="sm" />
                     </div>
                 )}
-                <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6, marginTop: 'auto', padding: 0 }}>
                     {skill.features.map((f) => (
                         <li key={f} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8125rem', color: 'var(--color-text-secondary)', fontWeight: 500 }}>
                             <span style={{ width: 16, height: 16, borderRadius: '50%', background: skill.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: skill.color, fontSize: 9, fontWeight: 800, flexShrink: 0 }}>✓</span>
@@ -96,7 +152,7 @@ export function FadeIn({ children, delay = 0 }: { children: React.ReactNode; del
         return () => obs.disconnect()
     }, [])
     return (
-        <div ref={ref} style={{ opacity: visible ? 1 : 0, transform: visible ? 'translateY(0)' : 'translateY(24px)', transition: `opacity 0.6s ease ${delay}ms, transform 0.6s cubic-bezier(0.4,0,0.2,1) ${delay}ms` }}>
+        <div ref={ref} style={{ height: '100%', opacity: visible ? 1 : 0, transform: visible ? 'translateY(0)' : 'translateY(24px)', transition: `opacity 0.6s ease ${delay}ms, transform 0.6s cubic-bezier(0.4,0,0.2,1) ${delay}ms` }}>
             {children}
         </div>
     )

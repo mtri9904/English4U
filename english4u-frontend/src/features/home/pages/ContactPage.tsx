@@ -4,24 +4,24 @@ import { MapPin, Phone, Mail, Send } from 'lucide-react'
 
 const FAQ_LIST = [
     {
-        question: 'Làm thế nào để đăng ký kiểm tra trình độ đầu vào?',
-        answer: 'Bạn có thể thực hiện bài kiểm tra đầu vào trực tuyến ngay trên nền tảng của chúng tôi thông qua mục "Kiểm tra trình độ". Bài thi bao gồm 4 kỹ năng được mô phỏng theo chuẩn IELTS thực tế và có kết quả ngay sau khi hoàn thành đối với các phần trắc nghiệm. Kết quả Speaking/Writing sẽ được giáo viên chấm và gửi lại trong vòng 24 giờ.'
+        question: 'Hệ thống AI chấm điểm Speaking và Writing hoạt động như thế nào?',
+        answer: 'English4U tích hợp hệ thống AI tiên tiến. Đối với Speaking, hệ thống tự động phân tích và chấm điểm giọng nói của bạn theo 4 tiêu chí IELTS (Phát âm, Độ trôi chảy, Từ vựng, Ngữ pháp) dựa trên bản ghi âm câu trả lời. Đối với Writing, hệ thống tích hợp AI Review Copilot cung cấp báo cáo chi tiết và gợi ý sửa lỗi ngữ pháp ngay lập tức.'
     },
     {
-        question: 'Hệ thống AI chấm Speaking hoạt động chính xác đến mức nào?',
-        answer: 'Công nghệ AI của English4U sử dụng mô hình Deep Learning được huấn luyện trên hàng triệu mẫu giọng nói của các thí sinh đạt điểm cao. Độ chính xác tương đương 95% so với giám khảo thật về các tiêu chí: Phát âm (Pronunciation), Độ lưu loát (Fluency) và Từ vựng (Vocabulary). Đây là công cụ đắc lực để luyện tập hàng ngày trước khi thi thật.'
+        question: 'Kết quả thi thử IELTS trên trình giả lập Exam Simulator có được chấm điểm ngay không?',
+        answer: 'Các phần thi trắc nghiệm (Reading và Listening) sẽ được chấm điểm tự động và trả kết quả ngay lập tức khi bạn nhấn "Submit Test". Phần thi Speaking và Writing sẽ được hệ thống AI phân tích và trả kết quả band score chi tiết chỉ sau vài giây.'
     },
     {
-        question: 'Tôi có thể thanh toán học phí qua những hình thức nào?',
-        answer: 'English4U hỗ trợ đa dạng các hình thức thanh toán bảo mật: Chuyển khoản ngân hàng trực tiếp, Thanh toán qua thẻ tín dụng/ghi nợ quốc tế (Visa/Mastercard), Ví điện tử (Momo, VNPay) và đặc biệt là chương trình trả góp học phí lãi suất 0% thông qua các ngân hàng đối tác liên kết.'
+        question: 'Tính năng "Sinh đề thi AI" (AI Exam Generator) hoạt động ra sao?',
+        answer: 'Bạn có thể tải lên tài liệu học tập cá nhân (PDF, Word) hoặc nhập một chủ đề bất kỳ. Hệ thống sẽ tự động chạy qua AI QA Pipeline để thiết lập đề thi IELTS chuẩn format. Đề thi sau đó được kiểm định qua Validator Agent độc lập để cam kết độ chính xác 100% của đáp án.'
     },
     {
-        question: 'Lỗi không nghe được âm thanh trong phần thi Mock Test phải xử lý thế nào?',
-        answer: 'Đầu tiên, hãy kiểm tra quyền truy cập microphone/audio trên trình duyệt web. Chúng tôi khuyên dùng Google Chrome phiên bản mới nhất để có trải nghiệm tốt nhất. Nếu vẫn gặp sự cố, bạn hãy xóa cache trình duyệt hoặc liên hệ ngay hotline hỗ trợ kỹ thuật 1900 6789 để kỹ thuật viên hỗ trợ điều khiển từ xa qua UltraView/AnyDesk.'
+        question: 'Tôi có thể sử dụng English4U miễn phí không?',
+        answer: 'Có, tất cả các tính năng trên English4U (luyện thi thử IELTS Academic, giả lập phòng thi, chấm điểm Speaking & Writing) đều được cung cấp hoàn toàn miễn phí mà không giới hạn lượt sử dụng hay yêu cầu trả phí.'
     },
     {
-        question: 'Lộ trình học cá nhân hóa được xây dựng như thế nào?',
-        answer: 'Dựa trên kết quả bài test đầu vào và mục tiêu điểm số (Target Band) của bạn, thuật toán thông minh sẽ tự động phân tích các điểm yếu (ví dụ: yếu phần Matching Headings trong Reading). Hệ thống sẽ ưu tiên đề xuất các bài học và bài tập chuyên sâu vào phần đó, giúp bạn tối ưu thời gian học tập và đạt mục tiêu nhanh nhất.'
+        question: 'Tôi cần làm gì nếu gặp sự cố âm thanh hoặc micro khi thi thử?',
+        answer: 'Hãy đảm bảo bạn đã cấp quyền truy cập Microphone cho trình duyệt khi bắt đầu phần thi Speaking và kiểm tra thiết bị phát âm thanh trong phần thi Listening. Chúng tôi khuyến nghị sử dụng Google Chrome để đạt độ ổn định tốt nhất. Nếu cần hỗ trợ thêm, hãy gửi lời nhắn ở biểu mẫu bên dưới.'
     },
 ]
 

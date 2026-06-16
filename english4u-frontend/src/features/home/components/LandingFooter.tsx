@@ -2,7 +2,7 @@ import { Button } from '@/shared/ui/Button'
 
 const FOOTER_LINKS = {
     'Sản phẩm': ['Khóa học', 'Thi thử', 'Flashcards', 'Luyện Nói AI', 'Bảng xếp hạng'],
-    'Tài nguyên': ['Blog', 'Hướng dẫn IELTS', 'Mẹo TOEFL', 'Danh sách Từ vựng', 'Sổ tay Ngữ pháp'],
+    'Tài nguyên': ['Blog', 'Hướng dẫn IELTS', 'Mẹo IELTS', 'Danh sách Từ vựng', 'Sổ tay Ngữ pháp'],
     'Công ty': ['Về chúng tôi', 'Tuyển dụng', 'Báo chí', 'Chính sách Bảo mật', 'Điều khoản Dịch vụ'],
 }
 
