@@ -15,24 +15,29 @@ export const authApi = {
         const response = await axiosInstance.post<AuthResponse>('auth/google', { idToken });
         return response.data;
     },
-    verifyEmail: async (token: string): Promise<void> => {
-        await axiosInstance.get(`auth/verify-email`, { params: { token } });
+    verifyEmail: async (token: string): Promise<any> => {
+        const response = await axiosInstance.get(`auth/verify-email`, { params: { token } });
+        return response.data;
     },
-    verifyOtp: async (data: { email: string; otp: string }): Promise<void> => {
-        await axiosInstance.post('auth/verify-otp', data);
+    verifyOtp: async (data: { email: string; otp: string }): Promise<any> => {
+        const response = await axiosInstance.post('auth/verify-otp', data);
+        return response.data;
     },
-    forgotPassword: async (email: string): Promise<void> => {
-        await axiosInstance.post('auth/forgot-password', { email });
+    forgotPassword: async (email: string): Promise<any> => {
+        const response = await axiosInstance.post('auth/forgot-password', { email });
+        return response.data;
     },
-    resetPassword: async (data: any): Promise<void> => {
-        await axiosInstance.post('auth/reset-password', data);
+    resetPassword: async (data: any): Promise<any> => {
+        const response = await axiosInstance.post('auth/reset-password', data);
+        return response.data;
     },
     refreshToken: async (data: RefreshRequest): Promise<AuthResponse> => {
         const response = await axiosInstance.post<AuthResponse>('auth/refresh', data);
         return response.data;
     },
-    revokeToken: async (): Promise<void> => {
-        await axiosInstance.post('auth/revoke');
+    revokeToken: async (): Promise<any> => {
+        const response = await axiosInstance.post('auth/revoke');
+        return response.data;
     },
 };
 

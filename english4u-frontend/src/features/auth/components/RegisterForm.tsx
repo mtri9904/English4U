@@ -50,11 +50,10 @@ export function RegisterForm() {
 
         verifyOtpMutation.mutate({ email: formData.email, otp }, {
             onSuccess: (data: any) => {
-                message.success(data.message || 'Kích hoạt tài khoản thành công!')
+                message.success(data?.message || 'Kích hoạt tài khoản thành công!')
                 setIsRegistered(true)
                 setIsVerifying(false)
 
-                // Tự động quay về trang đăng nhập sau 2 giây
                 setTimeout(() => {
                     navigate('/login')
                 }, 2500)

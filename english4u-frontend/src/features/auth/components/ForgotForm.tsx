@@ -18,7 +18,7 @@ export function ForgotForm() {
 
         forgotMutation.mutate(email, {
             onSuccess: (data: any) => {
-                message.success(data.message || 'Link reset mật khẩu đã được gửi.')
+                message.success(data?.message || 'Link reset mật khẩu đã được gửi.')
                 setIsSent(true)
             },
             onError: (error: any) => {
