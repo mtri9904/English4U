@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, type FC } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowLeftOutlined, AudioOutlined, ReloadOutlined, SendOutlined, RobotOutlined, BulbOutlined } from '@ant-design/icons';
-import { Alert, Button, Card, Empty, Row, Col, Space, Statistic, Tag, Typography } from 'antd';
+import { Alert, Button, Card, Divider, Empty, Row, Col, Space, Statistic, Tag, Typography } from 'antd';
 import type { PracticeSessionDto, PracticeSessionResultDto, PracticeSessionSpeakingAnalyticsDto } from '../../types/session.types';
 import { getSkillLabel } from '../../lib/sessionRouting';
 import { countSpokenWords, estimateWordsPerMinute } from '../../lib/speakingPlayback';
@@ -89,6 +89,80 @@ const getAudioQualityColor = (label?: string | null) => {
             return 'error';
         default:
             return 'default';
+    }
+};
+
+const audioQualityLabelMap: Record<string, string> = {
+    usable: 'Âm thanh tốt',
+    usable_with_warnings: 'Có tạp âm nhẹ',
+    technical_low_confidence: 'Không rõ tiếng',
+    empty: 'Không phát hiện giọng nói',
+};
+
+const criteriaNameMap: Record<string, string> = {
+    'Fluency and Coherence': 'Độ trôi chảy & Mạch lạc',
+    'Grammatical Range and Accuracy': 'Sử dụng Ngữ pháp',
+    'Lexical Resource': 'Vốn từ vựng',
+    'Pronunciation': 'Phát âm',
+};
+
+const formatEvidenceItem = (item: string): string | null => {
+    const parts = item.split('=');
+    if (parts.length < 2) {
+        if (item.includes('pauses=')) {
+            const pausesMatch = item.match(/pauses=(\d+)/);
+            const longPausesMatch = item.match(/long_pauses=(\d+)/);
+            const totalPauseMatch = item.match(/total_pause=([\d.]+s?)/);
+            const pauses = pausesMatch ? pausesMatch[1] : '0';
+            const longPauses = longPausesMatch ? longPausesMatch[1] : '0';
+            const totalPause = totalPauseMatch ? totalPauseMatch[1] : '0s';
+            return `Ngắt quãng: ${pauses} lần (Dừng dài: ${longPauses}, Tổng dừng: ${totalPause})`;
+        }
+        return null;
+    }
+
+    const key = parts[0].trim();
+    const value = parts.slice(1).join('=').trim();
+
+    switch (key) {
+        case 'word_count':
+            return `Số từ: ${value}`;
+        case 'wpm':
+            return `Tốc độ: ${value} từ/phút`;
+        case 'speech_ratio':
+            return `Tỷ lệ nói: ${value}`;
+        case 'sentence_units':
+            return `Số câu: ${value}`;
+        case 'avg_words_per_unit':
+            return `Số từ TB/câu: ${value}`;
+        case 'connector_count':
+            return `Từ nối đã dùng: ${value}`;
+        case 'complex_sentence_ratio':
+            return `Tỷ lệ câu phức: ${value}`;
+        case 'grammar_complexity_score': {
+            const num = parseFloat(value);
+            return isNaN(num) ? `Độ phức tạp ngữ pháp: ${value}` : `Độ phức tạp ngữ pháp: ${Math.round(num * 100)}%`;
+        }
+        case 'tense_marker_variety':
+            return `Độ đa dạng thì: ${value}/12`;
+        case 'filler_ratio':
+            return `Tỷ lệ từ đệm (uh/um): ${value}`;
+        case 'subordinate_clause_markers':
+            return `Mệnh đề phụ thuộc: ${value}`;
+        case 'modal_verbs':
+            return `Động từ khuyết thiếu: ${value}`;
+        case 'unique_word_ratio':
+            return `Từ vựng đa dạng: ${value}`;
+        case 'repetition_ratio':
+            return `Tỷ lệ lặp từ: ${value}`;
+        case 'lexical_density':
+            return `Mật độ từ thực (lexical): ${value}`;
+        case 'asr_confidence':
+            return `Độ chuẩn phát âm: ${value}`;
+        case 'low_confidence_word_ratio':
+            return `Phát âm chưa chuẩn: ${value}`;
+        default:
+            return null;
     }
 };
 
@@ -459,71 +533,125 @@ export const SpeakingSessionReview: FC<SpeakingSessionReviewProps> = ({
 
                                     <Row gutter={[12, 12]}>
                                         <Col xs={12} md={8}>
-                                            <Statistic title="Duration" value={answer?.durationSeconds != null ? `${answer.durationSeconds.toFixed(1)}s` : '—'} />
+                                            <Statistic title="Thời lượng ghi âm" value={answer?.durationSeconds != null ? `${answer.durationSeconds.toFixed(1)}s` : '—'} />
                                         </Col>
                                         <Col xs={12} md={8}>
-                                            <Statistic title="Từ đã nhận diện" value={wordCount || '—'} />
+                                            <Statistic title="Tổng số từ phát âm" value={wordCount || '—'} />
                                         </Col>
                                         <Col xs={12} md={8}>
-                                            <Statistic title="Ước tính WPM" value={estimatedWpm ?? '—'} />
+                                            <Statistic title="Tốc độ nói (WPM)" value={estimatedWpm ?? '—'} />
                                         </Col>
                                     </Row>
 
                                     {speakingAnalytics ? (
-                                        <Card size="small" style={{ borderRadius: 16, background: '#fffbeb' }}>
-                                            <Space direction="vertical" size={8} style={{ width: '100%' }}>
-                                                <Space wrap>
-                                                    <Text strong>Audio evidence</Text>
-                                                    {speakingAnalytics.estimatedFluencyBand != null ? (
-                                                        <Tag color="gold">Fluency ~ {speakingAnalytics.estimatedFluencyBand.toFixed(1)}</Tag>
-                                                    ) : null}
-                                                    <Tag color={getAnalyticsTagColor(speakingAnalytics.paceLabel)}>
-                                                        {speakingPaceLabelMap[speakingAnalytics.paceLabel]}
-                                                    </Tag>
-                                                    <Tag color={getAnalyticsTagColor(speakingAnalytics.coverageLabel)}>
-                                                        {speakingCoverageLabelMap[speakingAnalytics.coverageLabel]}
-                                                    </Tag>
-                                                    {speakingAnalytics.audioQualityLabel ? (
-                                                        <Tag color={getAudioQualityColor(speakingAnalytics.audioQualityLabel)}>
-                                                            QA: {speakingAnalytics.audioQualityLabel}
-                                                        </Tag>
-                                                    ) : null}
-                                                    {speakingAnalytics.meanWordConfidence != null ? (
-                                                        <Tag>ASR {formatPercent(speakingAnalytics.meanWordConfidence)}</Tag>
-                                                    ) : null}
-                                                    {speakingAnalytics.speechRatio != null ? (
-                                                        <Tag>Speech {formatPercent(speakingAnalytics.speechRatio)}</Tag>
-                                                    ) : null}
-                                                    {speakingAnalytics.pauseCount != null ? (
-                                                        <Tag>Pause {speakingAnalytics.pauseCount}</Tag>
-                                                    ) : null}
-                                                    {speakingAnalytics.longPauseCount != null ? (
-                                                        <Tag>Long pause {speakingAnalytics.longPauseCount}</Tag>
-                                                    ) : null}
-                                                </Space>
-                                                <Paragraph style={{ margin: 0, color: '#475569' }}>
-                                                    {speakingAnalytics.targetDurationSeconds != null
-                                                        ? `Mục tiêu prompt này khoảng ${speakingAnalytics.targetDurationSeconds} giây. Coverage hiện tại ${speakingAnalytics.coverageRatio != null ? `${Math.round(speakingAnalytics.coverageRatio * 100)}%` : '—'}.`
-                                                        : 'Chưa có target duration cho prompt này.'}
-                                                    {speakingAnalytics.totalPauseSeconds != null
-                                                        ? ` Tổng pause đo được khoảng ${speakingAnalytics.totalPauseSeconds.toFixed(1)} giây.`
-                                                        : ''}
-                                                </Paragraph>
-                                                {(speakingAnalytics.audioQualityWarnings?.length ?? 0) > 0 ? (
-                                                    <Paragraph style={{ margin: 0, color: '#92400e' }}>
-                                                        QA warning: {speakingAnalytics.audioQualityWarnings!.join('; ')}
+                                        <Card 
+                                            size="small" 
+                                            style={{ 
+                                                borderRadius: 16, 
+                                                background: 'linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%)',
+                                                border: '1px solid #e9d5ff',
+                                                boxShadow: '0 4px 15px rgba(168, 85, 247, 0.04)'
+                                            }}
+                                        >
+                                            <Space direction="vertical" size={12} style={{ width: '100%', padding: '4px' }}>
+                                                <div>
+                                                    <Text strong style={{ color: '#7e22ce', fontSize: '0.92rem', display: 'block', marginBottom: 10 }}>
+                                                        Phân Tích Chi Tiết Phát Âm & Độ Trôi Chảy từ AI
+                                                    </Text>
+                                                    <Row gutter={[16, 12]}>
+                                                        <Col xs={24} sm={12}>
+                                                            <Space direction="vertical" size={6} style={{ width: '100%' }}>
+                                                                <div>
+                                                                    <Text type="secondary" style={{ fontSize: '0.78rem' }}>Chất lượng ghi âm: </Text>
+                                                                    <Tag color={getAudioQualityColor(speakingAnalytics.audioQualityLabel)} style={{ borderRadius: 6 }}>
+                                                                        {audioQualityLabelMap[speakingAnalytics.audioQualityLabel ?? ''] || speakingAnalytics.audioQualityLabel || '—'}
+                                                                    </Tag>
+                                                                </div>
+                                                                {speakingAnalytics.meanWordConfidence != null ? (
+                                                                    <div>
+                                                                        <Text type="secondary" style={{ fontSize: '0.78rem' }}>Độ rõ ràng của phát âm: </Text>
+                                                                        <Text strong style={{ color: '#111827' }}>{formatPercent(speakingAnalytics.meanWordConfidence)}</Text>
+                                                                    </div>
+                                                                ) : null}
+                                                                {speakingAnalytics.speechRatio != null ? (
+                                                                    <div>
+                                                                        <Text type="secondary" style={{ fontSize: '0.78rem' }}>Tỷ lệ nói liên tục: </Text>
+                                                                        <Text strong style={{ color: '#111827' }}>{formatPercent(speakingAnalytics.speechRatio)}</Text>
+                                                                    </div>
+                                                                ) : null}
+                                                            </Space>
+                                                        </Col>
+                                                        <Col xs={24} sm={12}>
+                                                            <Space direction="vertical" size={6} style={{ width: '100%' }}>
+                                                                <div>
+                                                                    <Text type="secondary" style={{ fontSize: '0.78rem' }}>Tốc độ nói: </Text>
+                                                                    <Tag color={getAnalyticsTagColor(speakingAnalytics.paceLabel)} style={{ borderRadius: 6 }}>
+                                                                        {speakingAnalytics.paceLabel ? speakingPaceLabelMap[speakingAnalytics.paceLabel] : 'Chưa rõ'}
+                                                                    </Tag>
+                                                                </div>
+                                                                <div>
+                                                                    <Text type="secondary" style={{ fontSize: '0.78rem' }}>Độ dài câu trả lời: </Text>
+                                                                    <Tag color={getAnalyticsTagColor(speakingAnalytics.coverageLabel)} style={{ borderRadius: 6 }}>
+                                                                        {speakingAnalytics.coverageLabel ? speakingCoverageLabelMap[speakingAnalytics.coverageLabel] : 'Chưa rõ'}
+                                                                    </Tag>
+                                                                </div>
+                                                                {speakingAnalytics.estimatedFluencyBand != null ? (
+                                                                    <div>
+                                                                        <Text type="secondary" style={{ fontSize: '0.78rem' }}>Điểm trôi chảy ước tính: </Text>
+                                                                        <Tag color="purple" style={{ borderRadius: 6, fontWeight: 700 }}>Band {speakingAnalytics.estimatedFluencyBand.toFixed(1)}</Tag>
+                                                                    </div>
+                                                                ) : null}
+                                                            </Space>
+                                                        </Col>
+                                                    </Row>
+                                                </div>
+
+                                                <Divider style={{ margin: '6px 0', borderColor: '#e9d5ff' }} />
+
+                                                <div>
+                                                    <Text type="secondary" style={{ fontSize: '0.8rem', display: 'block', marginBottom: 4 }}>
+                                                        Nhịp điệu nói & Ngắt quãng:
+                                                    </Text>
+                                                    <Paragraph style={{ margin: 0, color: '#475569', fontSize: '0.82rem', lineHeight: 1.45 }}>
+                                                        {speakingAnalytics.targetDurationSeconds != null
+                                                            ? `Độ dài mục tiêu là khoảng ${speakingAnalytics.targetDurationSeconds} giây (Bài của bạn đã đạt ${speakingAnalytics.coverageRatio != null ? `${Math.round(speakingAnalytics.coverageRatio * 100)}%` : '—'} mục tiêu).`
+                                                            : 'Chưa xác định thời lượng mục tiêu.'}
+                                                        {speakingAnalytics.pauseCount != null || speakingAnalytics.totalPauseSeconds != null ? (
+                                                            <span>
+                                                                {` Đo được tổng cộng ${speakingAnalytics.pauseCount ?? 0} lần ngắt quãng`}
+                                                                {speakingAnalytics.longPauseCount != null && speakingAnalytics.longPauseCount > 0 ? ` (trong đó có ${speakingAnalytics.longPauseCount} lần ngắt quãng dài hơn 2 giây)` : ''}
+                                                                {speakingAnalytics.totalPauseSeconds != null ? `, tổng thời gian dừng là ${speakingAnalytics.totalPauseSeconds.toFixed(1)} giây.` : '.'}
+                                                            </span>
+                                                        ) : null}
                                                     </Paragraph>
-                                                ) : null}
+                                                </div>
+
+                                                {(() => {
+                                                    const filteredWarnings = (speakingAnalytics.audioQualityWarnings ?? [])
+                                                        .filter((w) => !w.toLowerCase().includes('ffmpeg') && !w.toLowerCase().includes('pyav'));
+                                                    if (filteredWarnings.length === 0) return null;
+                                                    return (
+                                                        <div style={{ background: '#fffbeb', borderRadius: 8, padding: '8px 12px', border: '1px solid #fde68a' }}>
+                                                            <Text strong style={{ color: '#b45309', fontSize: '0.78rem', display: 'block', marginBottom: 2 }}>Lưu ý chất lượng âm thanh:</Text>
+                                                            <Text style={{ color: '#78350f', fontSize: '0.8rem' }}>{filteredWarnings.join('; ')}</Text>
+                                                        </div>
+                                                    );
+                                                })()}
+
                                                 {lowConfidenceWords.length > 0 ? (
-                                                    <Space wrap size={[4, 4]}>
-                                                        <Text type="secondary">Low-confidence words:</Text>
-                                                        {lowConfidenceWords.map((word, index) => (
-                                                            <Tag key={`${entry.question.id}-low-${index}`}>
-                                                                {word.word}
-                                                                {word.start != null ? ` @${word.start.toFixed(1)}s` : ''}
-                                                            </Tag>
-                                                        ))}
-                                                    </Space>
+                                                    <div>
+                                                        <Text type="secondary" style={{ fontSize: '0.8rem', display: 'block', marginBottom: 6 }}>
+                                                            Từ phát âm chưa chuẩn (cần lưu ý cải thiện):
+                                                        </Text>
+                                                        <Space wrap size={[6, 6]}>
+                                                            {lowConfidenceWords.map((word, index) => (
+                                                                <Tag key={`${entry.question.id}-low-${index}`} color="warning" style={{ borderRadius: 6, fontSize: '0.78rem' }}>
+                                                                    <Text strong>{word.word}</Text>
+                                                                    {word.start != null ? ` (giây thứ ${word.start.toFixed(1)})` : ''}
+                                                                </Tag>
+                                                            ))}
+                                                        </Space>
+                                                    </div>
                                                 ) : null}
                                             </Space>
                                         </Card>
@@ -554,11 +682,11 @@ export const SpeakingSessionReview: FC<SpeakingSessionReviewProps> = ({
                                                 <Card key={`${entry.question.id}-${feedback.criteria}`} size="small" style={{ borderRadius: 14 }}>
                                                     <Space direction="vertical" size={6} style={{ width: '100%' }}>
                                                         <Space wrap>
-                                                            <Tag color="purple">{feedback.criteria}</Tag>
+                                                            <Tag color="purple">{criteriaNameMap[feedback.criteria] || feedback.criteria}</Tag>
                                                             <Tag>Band {feedback.bandScore.toFixed(1)}</Tag>
                                                             {feedback.confidenceScore != null ? (
                                                                 <Tag color={feedback.confidenceScore >= 0.7 ? 'green' : feedback.confidenceScore >= 0.5 ? 'gold' : 'orange'}>
-                                                                    Confidence {formatPercent(feedback.confidenceScore)}
+                                                                    Độ tin cậy: {formatPercent(feedback.confidenceScore)}
                                                                 </Tag>
                                                             ) : null}
                                                         </Space>
@@ -566,15 +694,19 @@ export const SpeakingSessionReview: FC<SpeakingSessionReviewProps> = ({
                                                         {(feedback.evidence?.length ?? 0) > 0 ? (
                                                             <Space wrap size={[4, 4]}>
                                                                 {feedback.evidence!
-                                                                    .slice(0, feedback.criteria === 'Grammatical Range and Accuracy' ? 10 : 6)
-                                                                    .map((item) => (
-                                                                        <Tag
-                                                                            key={`${entry.question.id}-${feedback.criteria}-${item}`}
-                                                                            style={{ maxWidth: '100%', whiteSpace: 'normal' }}
-                                                                        >
-                                                                            {item}
-                                                                        </Tag>
-                                                                    ))}
+                                                                    .map((item) => {
+                                                                        const formatted = formatEvidenceItem(item);
+                                                                        if (!formatted) return null;
+                                                                        return (
+                                                                            <Tag
+                                                                                key={`${entry.question.id}-${feedback.criteria}-${item}`}
+                                                                                style={{ maxWidth: '100%', whiteSpace: 'normal', borderRadius: 6 }}
+                                                                            >
+                                                                                {formatted}
+                                                                            </Tag>
+                                                                        );
+                                                                    })
+                                                                    .filter(Boolean)}
                                                             </Space>
                                                         ) : null}
                                                         {feedback.improvements ? (
@@ -595,7 +727,7 @@ export const SpeakingSessionReview: FC<SpeakingSessionReviewProps> = ({
             </div>
             <ReviewCopilotDrawer
                 open={copilotOpen}
-                loadingContext={copilotLoadingContext}
+                loadingContext={false}
                 context={baseContext}
                 messages={copilotMessages}
                 draftMessage={copilotDraftMessage}

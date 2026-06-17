@@ -396,7 +396,10 @@ export const ClientProgressPage: React.FC = () => {
                                 <YAxis domain={[0, 9]} tickCount={10} tick={{ fill: palette.muted, fontSize: 11 }} axisLine={false} tickLine={false} />
                                 <Tooltip
                                     contentStyle={{ background: '#fff', border: `1px solid ${palette.border}`, borderRadius: 12, boxShadow: '0 10px 25px rgba(0,0,0,0.05)' }}
-                                    formatter={(value: any, props: any) => [`Band ${Number(value).toFixed(1)}`, props.payload.title]}
+                                    formatter={(value: any, name: any, props: any) => [
+                                        `Band ${Number(value).toFixed(1)}`,
+                                        props?.payload?.title || 'Bài thi'
+                                    ]}
                                 />
                                 <Area
                                     type="monotone"
