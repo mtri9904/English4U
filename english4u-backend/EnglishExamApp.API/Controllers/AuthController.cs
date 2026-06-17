@@ -132,7 +132,11 @@ public class AuthController(
         try
         {
             var requestScheme = Request.Scheme;
-            var requestHost = Request.Host;
+            var requestHost = Request.Host.Value;
+            if (!requestHost.Contains("localhost") && !requestHost.Contains("127.0.0.1"))
+            {
+                requestScheme = "https";
+            }
             var backendUrl = $"{requestScheme}://{requestHost}";
             var activationLink = $"{backendUrl}/api/auth/confirm-email?token={token}";
             var emailBody = AuthEmailTemplates.BuildActivationLinkEmail(activationLink);
