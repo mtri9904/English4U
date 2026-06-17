@@ -15,8 +15,8 @@ export const authApi = {
         const response = await axiosInstance.post<AuthResponse>('auth/google', { idToken });
         return response.data;
     },
-    verifyEmail: async (token: string): Promise<any> => {
-        const response = await axiosInstance.get(`auth/verify-email`, { params: { token } });
+    confirmEmail: async (token: string): Promise<any> => {
+        const response = await axiosInstance.post('auth/confirm-email', null, { params: { token } });
         return response.data;
     },
     verifyOtp: async (data: { email: string; otp: string }): Promise<any> => {
@@ -53,9 +53,9 @@ export const useRegisterMutation = () => {
     });
 };
 
-export const useVerifyEmailMutation = () => {
+export const useConfirmEmailMutation = () => {
     return useMutation({
-        mutationFn: authApi.verifyEmail,
+        mutationFn: authApi.confirmEmail,
     });
 };
 

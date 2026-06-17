@@ -131,14 +131,8 @@ public class AuthController(
 
         try
         {
-            var requestScheme = Request.Scheme;
-            var requestHost = Request.Host.Value ?? "localhost";
-            if (!requestHost.Contains("localhost") && !requestHost.Contains("127.0.0.1"))
-            {
-                requestScheme = "https";
-            }
-            var backendUrl = $"{requestScheme}://{requestHost}";
-            var activationLink = $"{backendUrl}/api/auth/confirm-email?token={token}";
+            var frontendUrl = configuration["FrontendUrl"] ?? "http://localhost:5173";
+            var activationLink = $"{frontendUrl}/confirm-email?token={token}";
             var emailBody = AuthEmailTemplates.BuildActivationLinkEmail(activationLink);
             await emailService.SendEmailAsync(user.Email, "Kích hoạt tài khoản English4U", emailBody);
             return TypedResults.Ok(new { message = "Đăng ký thành công! Vui lòng kiểm tra hòm thư của bạn và bấm vào liên kết xác nhận để đăng nhập." });
@@ -155,17 +149,16 @@ public class AuthController(
         }
     }
 
-    [HttpGet("confirm-email")]
+    [HttpPost("confirm-email")]
     public async Task<IResult> ConfirmEmail([FromQuery] string token, CancellationToken cancellationToken)
     {
         if (string.IsNullOrEmpty(token))
-            return TypedResults.BadRequest("Token xác nhận không hợp lệ.");
+            return TypedResults.BadRequest(new { message = "Token xác nhận không hợp lệ." });
 
         var user = await context.Users.FirstOrDefaultAsync(u => u.ActivationToken == token, cancellationToken);
-        var frontendUrl = configuration["FrontendUrl"] ?? "http://localhost:5173";
         if (user is null || user.TokenExpiry < DateTime.UtcNow)
         {
-            return TypedResults.Redirect($"{frontendUrl}/login?status=error&message=token_expired");
+            return TypedResults.BadRequest(new { message = "Liên kết kích hoạt đã hết hạn hoặc không hợp lệ." });
         }
 
         user.IsEmailConfirmed = true;
@@ -175,7 +168,7 @@ public class AuthController(
 
         await context.SaveChangesAsync(cancellationToken);
 
-        return TypedResults.Redirect($"{frontendUrl}/login?status=success&message=activated");
+        return TypedResults.Ok(new { message = "Kích hoạt tài khoản thành công!" });
     }
 
     [HttpPost("verify-otp")]

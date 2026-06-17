@@ -6,6 +6,7 @@ import { AboutPage } from '@/features/home/pages/AboutPage';
 import { ContactPage } from '@/features/home/pages/ContactPage';
 import { LoginPage } from '@/features/auth/pages/LoginPage';
 import ResetPasswordPage from '@/features/auth/pages/ResetPasswordPage';
+import { ConfirmEmailPage } from '@/features/auth/pages/ConfirmEmailPage';
 import {
     AdminLoginPage,
     AdminDashboard,
@@ -71,6 +72,10 @@ export const appRouter = createBrowserRouter([
     {
         path: '/reset-password',
         element: <ResetPasswordPage />,
+    },
+    {
+        path: '/confirm-email',
+        element: <ConfirmEmailPage />,
     },
     {
         path: '/admin/login',
