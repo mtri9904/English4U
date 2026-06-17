@@ -105,7 +105,7 @@ public class AuthController(
 
         var studentRole = await GetOrCreateRoleAsync(AuthRoles.Student, cancellationToken);
 
-        var otp = authCodeGenerator.GenerateOtpCode();
+        var token = Guid.NewGuid().ToString("N");
         var user = new Domain.Entities.User
         {
             Id = Guid.NewGuid(),
@@ -114,8 +114,8 @@ public class AuthController(
             DisplayName = request.DisplayName ?? request.Email.Split('@')[0],
             IsActive = true,
             IsEmailConfirmed = false,
-            ActivationToken = otp,
-            TokenExpiry = DateTime.UtcNow.AddMinutes(1), // OTP expires in 1 mins
+            ActivationToken = token,
+            TokenExpiry = DateTime.UtcNow.AddHours(24),
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
@@ -131,13 +131,16 @@ public class AuthController(
 
         try
         {
-            var emailBody = AuthEmailTemplates.BuildActivationOtpEmail(otp);
-            await emailService.SendEmailAsync(user.Email, "Mã xác thực tài khoản English4U", emailBody);
-            return TypedResults.Ok(new { message = "Đã gửi mã xác nhận vào email của bạn. Vui lòng kiểm tra." });
+            var requestScheme = Request.Scheme;
+            var requestHost = Request.Host;
+            var backendUrl = $"{requestScheme}://{requestHost}";
+            var activationLink = $"{backendUrl}/api/auth/confirm-email?token={token}";
+            var emailBody = AuthEmailTemplates.BuildActivationLinkEmail(activationLink);
+            await emailService.SendEmailAsync(user.Email, "Kích hoạt tài khoản English4U", emailBody);
+            return TypedResults.Ok(new { message = "Đăng ký thành công! Vui lòng kiểm tra hòm thư của bạn và bấm vào liên kết xác nhận để đăng nhập." });
         }
         catch (Exception ex)
         {
-            // If email fails, we should probably remove the user so they can try again with fixed settings
             context.Users.Remove(user);
             await context.SaveChangesAsync(cancellationToken);
             
@@ -146,6 +149,29 @@ public class AuthController(
                 error = ex.Message 
             });
         }
+    }
+
+    [HttpGet("confirm-email")]
+    public async Task<IResult> ConfirmEmail([FromQuery] string token, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrEmpty(token))
+            return TypedResults.BadRequest("Token xác nhận không hợp lệ.");
+
+        var user = await context.Users.FirstOrDefaultAsync(u => u.ActivationToken == token, cancellationToken);
+        var frontendUrl = configuration["FrontendUrl"] ?? "http://localhost:5173";
+        if (user is null || user.TokenExpiry < DateTime.UtcNow)
+        {
+            return TypedResults.Redirect($"{frontendUrl}/login?status=error&message=token_expired");
+        }
+
+        user.IsEmailConfirmed = true;
+        user.ActivationToken = null;
+        user.TokenExpiry = null;
+        user.UpdatedAt = DateTime.UtcNow;
+
+        await context.SaveChangesAsync(cancellationToken);
+
+        return TypedResults.Redirect($"{frontendUrl}/login?status=success&message=activated");
     }
 
     [HttpPost("verify-otp")]

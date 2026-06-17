@@ -14,6 +14,17 @@ internal static class AuthEmailTemplates
                     <p>Vui long khong chia se ma nay voi bat ky ai.</p>
                 </div>";
 
+    public static string BuildActivationLinkEmail(string activationLink) =>
+        $@"
+        <div style='font-family: Arial, sans-serif; padding: 20px; text-align: center; border: 1px solid #eee; border-radius: 10px; max-width: 500px; margin: auto;'>
+            <h2 style='color: #137dc5;'>Chào mừng bạn đến với English4U!</h2>
+            <p>Bạn đã đăng ký tài khoản thành công. Vui lòng bấm vào nút bên dưới để xác nhận đăng nhập và kích hoạt tài khoản của mình:</p>
+            <div style='margin: 30px 0;'>
+                <a href='{activationLink}' style='padding: 14px 28px; background: #137dc5; color: white; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;'>Đăng nhập ngay</a>
+            </div>
+            <p style='color: #666; font-size: 13px;'>Liên kết này sẽ hết hạn sau 24 giờ.</p>
+        </div>";
+
     public static string BuildResetPasswordEmail(string resetLink) =>
         $@"
             <div style='font-family: Arial, sans-serif; padding: 20px;'>

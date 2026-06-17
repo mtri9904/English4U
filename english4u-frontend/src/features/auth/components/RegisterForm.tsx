@@ -1,13 +1,12 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { Mail, Lock, Eye, EyeOff, User, CheckCircle } from 'lucide-react'
 import { message } from 'antd'
-import { useRegisterMutation, useVerifyOtpMutation } from '../api/auth.api'
+import { useRegisterMutation } from '../api/auth.api'
 import { SocialLogin } from './SocialLogin'
 import { AuthDivider } from './AuthDivider'
 
 export function RegisterForm() {
-    const navigate = useNavigate()
     const [showPassword, setShowPassword] = useState(false)
     const [formData, setFormData] = useState({
         displayName: '',
@@ -15,11 +14,8 @@ export function RegisterForm() {
         password: '',
     })
     const [isRegistered, setIsRegistered] = useState(false)
-    const [isVerifying, setIsVerifying] = useState(false)
-    const [otp, setOtp] = useState('')
 
     const registerMutation = useRegisterMutation()
-    const verifyOtpMutation = useVerifyOtpMutation()
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault()
@@ -31,35 +27,11 @@ export function RegisterForm() {
 
         registerMutation.mutate(formData, {
             onSuccess: (data: any) => {
-                message.success(data.message || 'Mã xác thực đã được gửi!')
-                setIsVerifying(true)
+                message.success(data.message || 'Đăng ký thành công!')
+                setIsRegistered(true)
             },
             onError: (error: any) => {
                 const errorMsg = error.response?.data?.message || 'Đăng ký thất bại. Vui lòng thử lại.'
-                message.error(errorMsg)
-            }
-        })
-    }
-
-    const handleVerifyOtp = (e: React.FormEvent) => {
-        e.preventDefault()
-        if (otp.length !== 4) {
-            message.warning('Vui lòng nhập mã OTP 4 số.')
-            return
-        }
-
-        verifyOtpMutation.mutate({ email: formData.email, otp }, {
-            onSuccess: (data: any) => {
-                message.success(data?.message || 'Kích hoạt tài khoản thành công!')
-                setIsRegistered(true)
-                setIsVerifying(false)
-
-                setTimeout(() => {
-                    navigate('/login')
-                }, 2500)
-            },
-            onError: (error: any) => {
-                const errorMsg = error.response?.data?.message || 'Mã OTP không đúng.'
                 message.error(errorMsg)
             }
         })
@@ -70,11 +42,11 @@ export function RegisterForm() {
             <div style={{ textAlign: 'center', padding: '40px 0' }}>
                 <CheckCircle size={80} color="#10b981" style={{ margin: '0 auto 24px' }} />
                 <h2 style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--color-text-primary)', marginBottom: '16px' }}>
-                    Kích hoạt thành công!
+                    Đăng ký thành công!
                 </h2>
                 <p style={{ fontSize: '1rem', color: 'var(--color-text-secondary)', lineHeight: 1.6, marginBottom: '32px' }}>
-                    Tài khoản của bạn đã được xác thực.<br />
-                    Đang chuyển hướng về trang đăng nhập...
+                    Chúng tôi đã gửi một liên kết kích hoạt đến email <strong>{formData.email}</strong>.<br />
+                    Vui lòng kiểm tra hộp thư và bấm vào liên kết để xác nhận tài khoản trước khi đăng nhập.
                 </p>
                 <Link to="/login" style={{
                     display: 'inline-block',
@@ -85,81 +57,8 @@ export function RegisterForm() {
                     fontWeight: 600,
                     textDecoration: 'none'
                 }}>
-                    Đăng nhập ngay
+                    Quay lại Đăng nhập
                 </Link>
-            </div>
-        )
-    }
-
-    if (isVerifying) {
-        return (
-            <div style={{ textAlign: 'center' }}>
-                <h2 style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--color-text-primary)', marginBottom: '8px' }}>
-                    Xác thực tài khoản
-                </h2>
-                <p style={{ fontSize: '0.9375rem', color: 'var(--color-text-secondary)', marginBottom: '36px' }}>
-                    Nhập mã code 4 số vừa được gửi đến <strong>{formData.email}</strong>
-                </p>
-
-                <form onSubmit={handleVerifyOtp} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
-                        <input
-                            type="text"
-                            maxLength={4}
-                            value={otp}
-                            onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
-                            placeholder="0000"
-                            style={{
-                                width: '160px',
-                                textAlign: 'center',
-                                padding: '16px',
-                                border: '2px solid var(--color-primary)',
-                                borderRadius: '12px',
-                                fontSize: '2rem',
-                                fontWeight: 700,
-                                letterSpacing: '8px',
-                                outline: 'none',
-                                background: '#f8fafc'
-                            }}
-                        />
-                    </div>
-
-                    <button
-                        type="submit"
-                        disabled={verifyOtpMutation.isPending}
-                        style={{
-                            width: '100%',
-                            padding: '14px',
-                            background: 'var(--color-primary)',
-                            color: '#fff',
-                            fontWeight: 600,
-                            fontSize: '1rem',
-                            borderRadius: '10px',
-                            border: 'none',
-                            cursor: verifyOtpMutation.isPending ? 'not-allowed' : 'pointer',
-                            opacity: verifyOtpMutation.isPending ? 0.7 : 1,
-                            transition: 'all 0.2s',
-                            boxShadow: '0 4px 12px rgba(19, 125, 197, 0.2)'
-                        }}
-                    >
-                        {verifyOtpMutation.isPending ? 'Đang xác thực...' : 'Xác thực ngay'}
-                    </button>
-
-                    <button
-                        type="button"
-                        onClick={() => setIsVerifying(false)}
-                        style={{
-                            background: 'none',
-                            border: 'none',
-                            color: 'var(--color-text-secondary)',
-                            fontSize: '0.875rem',
-                            cursor: 'pointer',
-                            textDecoration: 'underline'
-                        }}
-                    >
-                        Quay lại đăng ký
-                    </button>
-                </form>
             </div>
         )
     }

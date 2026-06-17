@@ -20,6 +20,18 @@ export function LoginForm() {
         if (forcedLogoutReason) {
             message.warning(forcedLogoutReason)
         }
+
+        const params = new URLSearchParams(window.location.search)
+        const status = params.get('status')
+        const messageParam = params.get('message')
+
+        if (status === 'success' && messageParam === 'activated') {
+            message.success('Kích hoạt tài khoản thành công! Bạn có thể đăng nhập ngay.')
+            window.history.replaceState({}, document.title, window.location.pathname)
+        } else if (status === 'error' && messageParam === 'token_expired') {
+            message.error('Liên kết kích hoạt đã hết hạn hoặc không hợp lệ. Vui lòng đăng ký lại.')
+            window.history.replaceState({}, document.title, window.location.pathname)
+        }
     }, [])
 
     const handleLogin = (e: React.FormEvent) => {
