@@ -194,9 +194,12 @@ const copilotAnswerIntroMarkers = [
     'ket luan',
     'phan tich',
     'dua vao',
+    'dua tren',
+    'goi y',
+    'sau day la',
+    'duoi day la',
     'tu transcript',
     'theo transcript',
-    'duoi day la',
 ];
 
 const copilotMetaLineMarkers = [
@@ -352,6 +355,10 @@ const looksLikeReasoningParagraph = (value: string) => {
     const normalized = normalizeCopilotText(stripLeadingQuoteAndBulletMarkers(value));
     if (!normalized) {
         return false;
+    }
+
+    if (/^(?:user'?s?\s*request|context|current\s+focus|student'?s?\s*original\s*answer|feedback(?:\s+from\s+the\s+system)?|fluency|grammar|lexical|pronunciation|tone|language|structure|idea\s+\d+|sample\s+\d+|drafting\s+sample\s+\d+|ensure\s+i\s+explain|avoid\s+["']?outside\s+knowledge["']?)\b/i.test(normalized)) {
+        return true;
     }
 
     if (/^(?:current focus|question\s+\d+\s+content|student'?s choice|student choice|student chose|result|the question is about|the statement says|scanning|found in|this matches|answer\s+[a-h]:|evidence from|direct answer|specify the location|provide the english evidence|explain why|tone|no external knowledge|no meta-talk|no latex|clear, natural|use labels|english quotes included)\b/i.test(normalized)) {
@@ -1321,7 +1328,7 @@ export const ReviewCopilotDrawer = ({
                         <Input.TextArea
                             ref={composerRef}
                             value={draftMessage}
-                            disabled={loadingContext || !context}
+                            disabled={loadingContext || !context || isStreaming}
                             autoSize={{ minRows: 3, maxRows: 7 }}
                             placeholder="Hỏi bất kỳ điều gì trong bài review này, hoặc bôi đen một đoạn rồi nhấn Ctrl + L."
                             onChange={(event) => onDraftChange(event.target.value)}

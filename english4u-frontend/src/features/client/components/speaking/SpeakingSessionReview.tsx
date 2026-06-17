@@ -237,21 +237,24 @@ export const SpeakingSessionReview: FC<SpeakingSessionReviewProps> = ({
             id: `user-${Date.now()}`,
             role: 'user',
             content: textToSend,
-            createdAt: Date.now()
+            createdAt: Date.now(),
+            status: 'done',
+            focusChips: copilotFocuses.length > 0 ? [...copilotFocuses] : null,
         };
 
         const updatedHistory = [...copilotMessages, userMsg];
         setCopilotMessages(updatedHistory);
         setCopilotDraftMessage('');
         setCopilotErrorMessage(null);
+        setCopilotFocuses([]);
 
         const controller = new AbortController();
         copilotAbortRef.current = controller;
         setCopilotStreamingMessageId(assistantMessageId);
 
         let outgoingUserMessage = textToSend.trim();
-        if (copilotFocuses.length > 0) {
-            const focusContext = copilotFocuses.map(f => `[Focus: ${f.label}]\n${f.text}`).join('\n\n');
+        if (userMsg.focusChips && userMsg.focusChips.length > 0) {
+            const focusContext = userMsg.focusChips.map(f => `[Focus: ${f.label}]\n${f.text}`).join('\n\n');
             outgoingUserMessage = `Ngữ cảnh câu hỏi đang focus:\n${focusContext}\n\nCâu hỏi: ${outgoingUserMessage}`;
         }
 
@@ -267,7 +270,8 @@ export const SpeakingSessionReview: FC<SpeakingSessionReviewProps> = ({
                     id: assistantMessageId,
                     role: 'model',
                     content: '',
-                    createdAt: Date.now()
+                    createdAt: Date.now(),
+                    status: 'streaming'
                 }
             ]);
 
@@ -292,9 +296,20 @@ export const SpeakingSessionReview: FC<SpeakingSessionReviewProps> = ({
                     }
                 }
             });
+
+            setCopilotMessages(prev => prev.map(msg =>
+                msg.id === assistantMessageId
+                    ? { ...msg, status: 'done' }
+                    : msg
+            ));
         } catch (err: any) {
             if (err.name !== 'AbortError') {
                 setCopilotErrorMessage(err.message || 'Lỗi kết nối đến Gia Sư AI.');
+                setCopilotMessages(prev => prev.map(msg =>
+                    msg.id === assistantMessageId
+                        ? { ...msg, status: 'error' }
+                        : msg
+                ));
             }
         } finally {
             setCopilotStreamingMessageId(null);
