@@ -67,5 +67,16 @@ export function GoogleLoginButton({ requiredRole, redirectTo = '/' }: GoogleLogi
         };
     }, [handleCredentialResponse]);
 
-    return <div ref={buttonRef} style={{ width: '100%' }} />;
+    return (
+        <div 
+            ref={buttonRef} 
+            style={{ 
+                width: '100%', 
+                minHeight: '40px', 
+                display: 'flex', 
+                justifyContent: 'center', 
+                alignItems: 'center' 
+            }} 
+        />
+    );
 }
