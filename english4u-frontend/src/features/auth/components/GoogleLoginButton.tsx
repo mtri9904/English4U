@@ -52,7 +52,7 @@ export function GoogleLoginButton({ requiredRole, redirectTo = '/' }: GoogleLogi
                 });
                 google.accounts.id.renderButton(buttonRef.current, {
                     theme: 'outline',
-                    size: 'large',
+                    size: 'medium',
                     text: 'signin_with',
                     shape: 'rectangular',
                     logo_alignment: 'left',
