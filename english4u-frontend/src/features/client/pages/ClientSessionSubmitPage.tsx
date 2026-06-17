@@ -12,7 +12,7 @@ import {
     Typography,
     message,
 } from 'antd';
-import { ArrowLeftOutlined, BulbOutlined, ReloadOutlined, SendOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, BulbOutlined, ReloadOutlined, SendOutlined, RobotOutlined } from '@ant-design/icons';
 import { createPortal } from 'react-dom';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { streamCopilotChat } from '../api/copilot.api';
@@ -2061,11 +2061,22 @@ const ObjectiveSessionReviewRunner = ({
             return (
                 <Button
                     size="small"
-                    type={isActiveQuestion ? 'primary' : 'default'}
-                    icon={<SendOutlined />}
+                    icon={<RobotOutlined style={{ color: '#8b5cf6' }} />}
                     onClick={() => handleFocusQuestionCopilot({ group, question, reviewAnswer })}
+                    className="hover:scale-102 hover:shadow-md transition-all duration-200"
+                    style={{
+                        borderRadius: 999,
+                        fontWeight: 600,
+                        borderColor: '#c084fc',
+                        background: 'linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%)',
+                        color: '#7e22ce',
+                        boxShadow: '0 4px 10px rgba(168, 85, 247, 0.08)',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                    }}
                 >
-                    {compact ? 'Focus AI' : 'Hỏi AI Copilot'}
+                    {compact ? 'Hỏi AI' : 'Hỏi AI Gia sư'}
                 </Button>
             );
         }
@@ -2719,6 +2730,7 @@ export const ClientSessionSubmitPage = () => {
                 result={result}
                 submitLoading={speakingActionLoading}
                 canSubmitNow={canSubmitSpeaking}
+                headerSlot={headerSlot}
                 onSubmit={() => {
                     const mutation = canRescoreSpeaking ? rescoreSpeakingMutation : submitSpeakingMutation;
                     mutation.mutate(sessionId, {
@@ -3869,9 +3881,20 @@ export const ClientSessionSubmitPage = () => {
                                             {canUseWritingCopilot ? (
                                                 <Button
                                                     size="small"
-                                                    type={writingCopilotFocuses.some((focus) => focus.label === `Task ${task.taskNumber}`) ? 'primary' : 'default'}
-                                                    icon={<SendOutlined />}
+                                                    icon={<RobotOutlined style={{ color: '#8b5cf6' }} />}
                                                     onClick={() => handleFocusWritingCopilotTask(task.key)}
+                                                    className="hover:scale-102 hover:shadow-md transition-all duration-200"
+                                                    style={{
+                                                        borderRadius: 999,
+                                                        fontWeight: 600,
+                                                        borderColor: '#c084fc',
+                                                        background: 'linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%)',
+                                                        color: '#7e22ce',
+                                                        boxShadow: '0 4px 10px rgba(168, 85, 247, 0.08)',
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        gap: '6px',
+                                                    }}
                                                 >
                                                     Hỏi AI gia sư
                                                 </Button>

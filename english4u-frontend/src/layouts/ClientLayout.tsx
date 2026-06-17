@@ -8,7 +8,6 @@ import {
     BellOutlined,
     UserOutlined,
     LogoutOutlined,
-    SettingOutlined,
     MenuFoldOutlined,
     MenuUnfoldOutlined,
     CheckCircleOutlined,
@@ -183,12 +182,6 @@ export const ClientLayout: React.FC = () => {
             icon: <UserOutlined />,
             label: 'Hồ sơ cá nhân',
             onClick: () => navigate('/app/profile')
-        },
-        {
-            key: 'settings',
-            icon: <SettingOutlined />,
-            label: 'Cài đặt',
-            onClick: () => navigate('/app/settings')
         },
         { type: 'divider' },
         {

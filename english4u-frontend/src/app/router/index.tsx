@@ -25,7 +25,6 @@ import { AdminLayout } from '@/layouts/AdminLayout';
 import {
     ClientDashboard,
     ClientNotFoundPage,
-    ClientPlaceholderPage,
     ClientMyExamsPage,
     ClientPracticeExamPage,
     ClientPracticePage,
@@ -186,15 +185,6 @@ export const appRouter = createBrowserRouter([
             {
                 path: 'profile',
                 element: <ClientProfilePage />,
-            },
-            {
-                path: 'settings',
-                element: (
-                    <ClientPlaceholderPage
-                        title="Cài đặt"
-                        description="Các thiết lập liên quan đến timer, audio và thông báo sẽ nằm trong màn này."
-                    />
-                ),
             },
         ]
     },

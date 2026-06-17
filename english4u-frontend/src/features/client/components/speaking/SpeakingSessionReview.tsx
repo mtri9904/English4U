@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef, type FC } from 'react';
-import { ArrowLeftOutlined, AudioOutlined, ReloadOutlined, SendOutlined, RobotOutlined } from '@ant-design/icons';
+import { createPortal } from 'react-dom';
+import { ArrowLeftOutlined, AudioOutlined, ReloadOutlined, SendOutlined, RobotOutlined, BulbOutlined } from '@ant-design/icons';
 import { Alert, Button, Card, Empty, Row, Col, Space, Statistic, Tag, Typography } from 'antd';
 import type { PracticeSessionDto, PracticeSessionResultDto, PracticeSessionSpeakingAnalyticsDto } from '../../types/session.types';
 import { getSkillLabel } from '../../lib/sessionRouting';
@@ -16,6 +17,7 @@ interface SpeakingSessionReviewProps {
     result: PracticeSessionResultDto | null;
     canSubmitNow: boolean;
     submitLoading: boolean;
+    headerSlot?: HTMLElement | null;
     onSubmit: () => void;
     onBackToRunner: () => void;
     onBackToLibrary: () => void;
@@ -118,6 +120,7 @@ export const SpeakingSessionReview: FC<SpeakingSessionReviewProps> = ({
     result,
     canSubmitNow,
     submitLoading,
+    headerSlot,
     onSubmit,
     onBackToRunner,
     onBackToLibrary,
@@ -228,6 +231,49 @@ export const SpeakingSessionReview: FC<SpeakingSessionReviewProps> = ({
 
     return (
         <>
+            {headerSlot && result?.speakingScore != null ? createPortal(
+                <div
+                    style={{
+                        display: 'flex',
+                        justifyContent: 'flex-end',
+                        alignItems: 'center',
+                        minWidth: 0,
+                        width: 'auto',
+                        maxWidth: '100%',
+                        overflow: 'hidden',
+                        flex: '0 0 auto',
+                    }}
+                >
+                    <Button
+                        type="text"
+                        onClick={() => setCopilotOpen(prev => !prev)}
+                        style={{
+                            height: 40,
+                            marginLeft: 10,
+                            paddingInline: 16,
+                            borderRadius: 999,
+                            border: copilotOpen ? '1px solid #93c5fd' : '1px solid #dbeafe',
+                            background: copilotOpen
+                                ? 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)'
+                                : 'linear-gradient(135deg, #ffffff 0%, #f8fbff 100%)',
+                            color: '#1d4ed8',
+                            fontWeight: 700,
+                            boxShadow: copilotOpen
+                                ? '0 8px 18px rgba(59, 130, 246, 0.18)'
+                                : '0 6px 14px rgba(15, 23, 42, 0.06)',
+                            flexShrink: 0,
+                            whiteSpace: 'nowrap',
+                        }}
+                    >
+                        <Space size={8}>
+                            <BulbOutlined />
+                            <span>AI gia sư</span>
+                        </Space>
+                    </Button>
+                </div>,
+                headerSlot,
+            ) : null}
+
             <div
                 style={{
                     width: '100%',
@@ -255,22 +301,6 @@ export const SpeakingSessionReview: FC<SpeakingSessionReviewProps> = ({
                                 </Space>
                                 <Space wrap>
                                     <Button onClick={onBackToLibrary}>Bài thi của tôi</Button>
-                                    <Button
-                                        type="default"
-                                        icon={<RobotOutlined style={{ color: '#8b5cf6' }} />}
-                                        onClick={() => {
-                                            setCopilotFocuses([]);
-                                            setCopilotOpen(prev => !prev);
-                                        }}
-                                        style={{
-                                            fontWeight: 600,
-                                            borderColor: '#c7d2fe',
-                                            background: 'linear-gradient(135deg, #ffffff 0%, #eff6ff 100%)',
-                                            color: '#4f46e5'
-                                        }}
-                                    >
-                                        Gia sư AI
-                                    </Button>
                                     <Button
                                         type="primary"
                                         icon={canSubmitNow && isRescoreMode ? <ReloadOutlined /> : <SendOutlined />}
@@ -363,31 +393,38 @@ export const SpeakingSessionReview: FC<SpeakingSessionReviewProps> = ({
                                             <Tag color={entry.question.audioPromptUrl ? 'blue' : 'default'}>{entry.question.audioPromptUrl ? 'Có prompt audio' : 'Prompt dùng fallback voice'}</Tag>
                                             {answer?.scoreEarned ? <Tag color="purple">Band {answer.scoreEarned.toFixed(1)}</Tag> : null}
                                         </Space>
-                                        <Button
-                                            type="default"
-                                            icon={<RobotOutlined style={{ color: '#8b5cf6' }} />}
-                                            size="small"
-                                            onClick={() => {
-                                                const focusPayload: CopilotFocusPayload = {
-                                                    label: `Part ${entry.partNumber ?? ''} Q${entry.promptIndex}`,
-                                                    text: `Câu hỏi Speaking: "${entry.question.content}"\n\nPhản hồi nháp/ghi chú: "${responseText || 'Chưa trả lời.'}"`,
-                                                    questionNumber: entry.promptIndex,
-                                                    images: []
-                                                };
-                                                setCopilotFocuses([focusPayload]);
-                                                setCopilotOpen(true);
-                                                setCopilotComposerFocusSignal(prev => prev + 1);
-                                            }}
-                                            style={{
-                                                borderRadius: 8,
-                                                fontWeight: 600,
-                                                borderColor: '#c7d2fe',
-                                                background: '#f5f3ff',
-                                                color: '#6d28d9'
-                                            }}
-                                        >
-                                            Gia sư AI
-                                        </Button>
+                                        {result?.speakingScore != null ? (
+                                            <Button
+                                                type="default"
+                                                icon={<RobotOutlined style={{ color: '#8b5cf6' }} />}
+                                                size="small"
+                                                onClick={() => {
+                                                    const focusPayload: CopilotFocusPayload = {
+                                                        label: `Part ${entry.partNumber ?? ''} Q${entry.promptIndex}`,
+                                                        text: `Câu hỏi Speaking: "${entry.question.content}"\n\nPhản hồi nháp/ghi chú: "${responseText || 'Chưa trả lời.'}"`,
+                                                        questionNumber: entry.promptIndex,
+                                                        images: []
+                                                    };
+                                                    setCopilotFocuses([focusPayload]);
+                                                    setCopilotOpen(true);
+                                                    setCopilotComposerFocusSignal(prev => prev + 1);
+                                                }}
+                                                className="hover:scale-102 hover:shadow-md transition-all duration-200"
+                                                style={{
+                                                    borderRadius: 999,
+                                                    fontWeight: 600,
+                                                    borderColor: '#c084fc',
+                                                    background: 'linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%)',
+                                                    color: '#7e22ce',
+                                                    boxShadow: '0 4px 10px rgba(168, 85, 247, 0.08)',
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: '6px',
+                                                }}
+                                            >
+                                                Gia sư AI
+                                            </Button>
+                                        ) : null}
                                     </Space>
 
                                     <div>
