@@ -3,11 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import {
     Table,
     Select,
-    Progress,
     Row,
     Col,
     Typography,
-    Space,
     Tag,
     Empty,
     Button,
@@ -18,7 +16,6 @@ import {
     ClockCircleOutlined,
     BookOutlined,
     FireOutlined,
-    ThunderboltOutlined,
     SafetyCertificateOutlined,
     StarOutlined,
     RightOutlined,
@@ -38,7 +35,6 @@ import {
 } from 'recharts';
 import { useUserProfileQuery } from '@/features/admin/api/user.api';
 import { useMyPracticeSessionsQuery } from '../api/session.api';
-import { getSkillLabel } from '../lib/sessionRouting';
 import { formatDateTimeToMinute } from '@/shared/lib/dateTime';
 import type { PracticeSessionListItemDto } from '../types/session.types';
 
@@ -121,7 +117,7 @@ const formatShortDate = (value?: string | null) => {
 
 const getAiAdvice = (skill: string, avgBand: number | null) => {
     if (avgBand === null) return 'Hãy hoàn thành bài thi thử đầu tiên để nhận đánh giá chi tiết từ trợ lý học tập.';
-    
+
     if (avgBand < 5.0) {
         return 'Tập trung học từ vựng học thuật cơ bản và luyện tập các chủ đề quen thuộc hàng ngày.';
     }
@@ -240,8 +236,8 @@ export const ClientProgressPage: React.FC = () => {
             if (key === 'READING' || key === 'LISTENING') {
                 const totalCorrect = skillSessions.reduce((sum, s) => sum + (s.totalAutoScore ?? 0), 0);
                 const totalQs = skillSessions.reduce((sum, s) => sum + (s.totalQuestions ?? 0), 0);
-                extraMetric = totalQs > 0 
-                    ? `Độ chính xác: ${Math.round((totalCorrect / totalQs) * 100)}%` 
+                extraMetric = totalQs > 0
+                    ? `Độ chính xác: ${Math.round((totalCorrect / totalQs) * 100)}%`
                     : null;
             }
 
@@ -293,7 +289,7 @@ export const ClientProgressPage: React.FC = () => {
         <div className="progress-shell">
             <style>{progressStyles}</style>
 
-            <motion.section 
+            <motion.section
                 className="progress-header"
                 initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -358,7 +354,7 @@ export const ClientProgressPage: React.FC = () => {
                 </Col>
             </Row>
 
-            <motion.section 
+            <motion.section
                 className="section-panel glass-card"
                 initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -398,9 +394,9 @@ export const ClientProgressPage: React.FC = () => {
                                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.15)" />
                                 <XAxis dataKey="date" tick={{ fill: palette.muted, fontSize: 11 }} axisLine={false} tickLine={false} />
                                 <YAxis domain={[0, 9]} tickCount={10} tick={{ fill: palette.muted, fontSize: 11 }} axisLine={false} tickLine={false} />
-                                <Tooltip 
+                                <Tooltip
                                     contentStyle={{ background: '#fff', border: `1px solid ${palette.border}`, borderRadius: 12, boxShadow: '0 10px 25px rgba(0,0,0,0.05)' }}
-                                    formatter={(value: any, name: any, props: any) => [`Band ${Number(value).toFixed(1)}`, props.payload.title]}
+                                    formatter={(value: any, props: any) => [`Band ${Number(value).toFixed(1)}`, props.payload.title]}
                                 />
                                 <Area
                                     type="monotone"
@@ -418,7 +414,7 @@ export const ClientProgressPage: React.FC = () => {
                 )}
             </motion.section>
 
-            <motion.section 
+            <motion.section
                 className="section-panel flex-panel"
                 initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -452,7 +448,7 @@ export const ClientProgressPage: React.FC = () => {
                                         </div>
                                     </div>
                                 </div>
-                                
+
                                 {skill.extraMetric && (
                                     <div className="skill-extra-metric">
                                         <Tag color="geekblue" className="metric-tag">{skill.extraMetric}</Tag>
@@ -469,7 +465,7 @@ export const ClientProgressPage: React.FC = () => {
                 </Row>
             </motion.section>
 
-            <motion.section 
+            <motion.section
                 className="section-panel flex-panel"
                 initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -483,9 +479,9 @@ export const ClientProgressPage: React.FC = () => {
                     {badges.map(badge => (
                         <Col xs={12} sm={8} md={4} key={badge.id} style={{ flexGrow: 1, maxWidth: '20%' }}>
                             <div className={badge.unlocked ? 'badge-card unlocked glass-card' : 'badge-card locked glass-card'}>
-                                <div 
-                                    className="badge-icon" 
-                                    style={{ 
+                                <div
+                                    className="badge-icon"
+                                    style={{
                                         color: badge.unlocked ? badge.color : '#94A3B8',
                                         background: badge.unlocked ? `${badge.color}15` : '#F1F5F9'
                                     }}
@@ -500,7 +496,7 @@ export const ClientProgressPage: React.FC = () => {
                 </Row>
             </motion.section>
 
-            <motion.section 
+            <motion.section
                 className="section-panel glass-card"
                 initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}

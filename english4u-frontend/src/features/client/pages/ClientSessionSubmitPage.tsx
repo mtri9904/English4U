@@ -2054,10 +2054,6 @@ const ObjectiveSessionReviewRunner = ({
             reviewAnswer?: PracticeSessionAnswerDto;
             compact?: boolean;
         }) => {
-            const isActiveQuestion = copilotFocuses.some(
-                (focus) => focus.questionNumber != null && focus.questionNumber === question.questionNumber,
-            );
-
             return (
                 <Button
                     size="small"

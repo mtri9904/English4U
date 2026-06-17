@@ -133,7 +133,6 @@ export const SpeakingSessionReview: FC<SpeakingSessionReviewProps> = ({
     const [copilotFocuses, setCopilotFocuses] = useState<CopilotFocusPayload[]>([]);
     const [copilotComposerFocusSignal, setCopilotComposerFocusSignal] = useState(0);
     const [copilotReservedWidth, setCopilotReservedWidth] = useState(0);
-    const [copilotLoadingContext, setCopilotLoadingContext] = useState(false);
 
     const copilotAbortRef = useRef<AbortController | null>(null);
 

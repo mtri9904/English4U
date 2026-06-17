@@ -113,7 +113,7 @@ export const useSpeakingRecorder = () => {
         setElapsedSeconds(0);
     }, [clearElapsedInterval, clearStopTimer]);
 
-    const requestPermission = useCallback(async () => {
+    const requestPermission = useCallback(async (): Promise<MediaStream> => {
         if (typeof window === 'undefined' || !navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
             setPermissionState('unsupported');
             const unsupportedError = new Error('Trình duyệt hiện tại không hỗ trợ MediaRecorder.');
@@ -121,13 +121,14 @@ export const useSpeakingRecorder = () => {
             throw unsupportedError;
         }
 
-        if (hasUsableAudioTrack(streamRef.current)) {
+        const currentStream = streamRef.current;
+        if (currentStream && hasUsableAudioTrack(currentStream)) {
             setPermissionState('granted');
-            return streamRef.current;
+            return currentStream;
         }
 
-        if (streamRef.current) {
-            stopMediaStream(streamRef.current);
+        if (currentStream) {
+            stopMediaStream(currentStream);
             streamRef.current = null;
             setStreamVersion((current) => current + 1);
         }
