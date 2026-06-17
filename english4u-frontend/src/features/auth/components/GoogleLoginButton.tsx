@@ -39,13 +39,15 @@ export function GoogleLoginButton({ requiredRole, redirectTo = '/' }: GoogleLogi
     );
 
     useEffect(() => {
-        const script = document.createElement('script');
-        script.src = 'https://accounts.google.com/gsi/client';
-        script.async = true;
-        script.defer = true;
-        script.onload = () => {
+        let resizeTimeout: NodeJS.Timeout;
+
+        const renderGoogleButton = () => {
             const google = (window as any).google;
             if (google && buttonRef.current) {
+                buttonRef.current.innerHTML = '';
+                const width = buttonRef.current.offsetWidth || 390;
+                const buttonWidth = Math.max(200, Math.min(400, width));
+
                 google.accounts.id.initialize({
                     client_id: GOOGLE_CLIENT_ID,
                     callback: handleCredentialResponse,
@@ -56,14 +58,41 @@ export function GoogleLoginButton({ requiredRole, redirectTo = '/' }: GoogleLogi
                     text: 'signin_with',
                     shape: 'rectangular',
                     logo_alignment: 'left',
+                    width: buttonWidth,
                 });
             }
         };
-        document.head.appendChild(script);
+
+        const handleResize = () => {
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(renderGoogleButton, 150);
+        };
+
+        if ((window as any).google) {
+            renderGoogleButton();
+        } else {
+            const existingScript = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
+            if (existingScript) {
+                existingScript.addEventListener('load', renderGoogleButton);
+            } else {
+                const script = document.createElement('script');
+                script.src = 'https://accounts.google.com/gsi/client';
+                script.async = true;
+                script.defer = true;
+                script.onload = renderGoogleButton;
+                document.head.appendChild(script);
+            }
+        }
+
+        window.addEventListener('resize', handleResize);
 
         return () => {
+            window.removeEventListener('resize', handleResize);
+            clearTimeout(resizeTimeout);
             const existingScript = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
-            if (existingScript) existingScript.remove();
+            if (existingScript) {
+                existingScript.removeEventListener('load', renderGoogleButton);
+            }
         };
     }, [handleCredentialResponse]);
 
@@ -72,10 +101,11 @@ export function GoogleLoginButton({ requiredRole, redirectTo = '/' }: GoogleLogi
             ref={buttonRef} 
             style={{ 
                 width: '100%', 
-                minHeight: '40px', 
+                height: '32px', 
                 display: 'flex', 
                 justifyContent: 'center', 
-                alignItems: 'center' 
+                alignItems: 'center',
+                overflow: 'hidden'
             }} 
         />
     );
