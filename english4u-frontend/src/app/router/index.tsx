@@ -34,6 +34,7 @@ import {
     ClientWritingSessionPage,
     ClientSpeakingSessionPage,
     ClientSessionSubmitPage,
+    ClientProgressPage,
 } from '@/features/client';
 
 
@@ -180,7 +181,7 @@ export const appRouter = createBrowserRouter([
             },
             {
                 path: 'progress',
-                element: <Navigate to="/app" replace />,
+                element: <ClientProgressPage />,
             },
             {
                 path: 'profile',

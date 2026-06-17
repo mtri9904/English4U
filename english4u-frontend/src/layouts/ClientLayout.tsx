@@ -12,6 +12,7 @@ import {
     MenuUnfoldOutlined,
     CheckCircleOutlined,
     ReloadOutlined,
+    RiseOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useUserProfileQuery, userApi } from '@/features/admin/api/user.api';
@@ -208,6 +209,11 @@ export const ClientLayout: React.FC = () => {
             key: '/app/my-exams',
             icon: <BookOutlined />,
             label: 'Bài thi của tôi',
+        },
+        {
+            key: '/app/progress',
+            icon: <RiseOutlined />,
+            label: 'Tiến trình học',
         },
     ];
 

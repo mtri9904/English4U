@@ -8,3 +8,5 @@ export { ClientReadingSessionPage, ClientListeningSessionPage } from './pages/Cl
 export { ClientWritingSessionPage } from './pages/ClientWritingSessionRunnerPage';
 export { ClientSpeakingSessionPage } from './pages/ClientSpeakingSessionRunnerPage';
 export { ClientSessionSubmitPage } from './pages/ClientSessionSubmitPage';
+export { ClientProgressPage } from './pages/ClientProgressPage';
+
