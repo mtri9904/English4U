@@ -16,6 +16,7 @@ import {
 } from 'antd';
 import {
     ArrowLeftOutlined,
+    ArrowRightOutlined,
     AudioOutlined,
     CheckCircleOutlined,
     ClockCircleOutlined,
@@ -152,6 +153,20 @@ const getNextPromptQuestionId = (entries: SpeakingPromptEntry[], questionId: str
     return currentPromptIndex >= 0 ? entries[currentPromptIndex + 1]?.question.id ?? null : null;
 };
 
+const TRANSITION_PHRASES = [
+    "Thank you. Let's move on to the next question.",
+    "Alright. Now, let's proceed to the next prompt.",
+    "Thank you. Let's head over to the next part of our discussion.",
+    "Okay, I see. Now, let's talk about the next topic.",
+    "Great. Let's advance to the next question, please."
+];
+
+const FINAL_PHRASES = [
+    "Thank you. That is the end of the speaking test.",
+    "Alright, that concludes your speaking session. Thank you.",
+    "Thank you very much. We have finished the speaking exam."
+];
+
 export const ClientSpeakingSessionPage = () => {
     const navigate = useNavigate();
     const { sessionId = '' } = useParams();
@@ -185,6 +200,21 @@ export const ClientSpeakingSessionPage = () => {
     const [selectedQuestionId, setSelectedQuestionId] = useState<string | null>(null);
     const [cueCardDrafts, setCueCardDrafts] = useState<Record<string, string>>({});
     const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
+    const [isTransitioning, setIsTransitioning] = useState(false);
+    const [nextBlinkerVisible, setNextBlinkerVisible] = useState(false);
+    const [transitionText, setTransitionText] = useState<string | null>(null);
+    const [isNextRunning, setIsNextRunning] = useState(false);
+    const isNextRunningRef = useRef(false);
+    const stopPromptPlaybackRef = useRef(stopPromptPlayback);
+    const stopRecordingRef = useRef(stopRecording);
+
+    useEffect(() => {
+        stopPromptPlaybackRef.current = stopPromptPlayback;
+        stopRecordingRef.current = stopRecording;
+    }, [stopPromptPlayback, stopRecording]);
+
+    const lastActiveTimeRef = useRef<number>(0);
+    const nextTimeoutRef = useRef<number | null>(null);
     const [prepStartedAtByQuestionId, setPrepStartedAtByQuestionId] = useState<Record<string, number>>({});
     const [clockNow, setClockNow] = useState(() => Date.now());
     const [headerSlot, setHeaderSlot] = useState<HTMLElement | null>(null);
@@ -212,9 +242,36 @@ export const ClientSpeakingSessionPage = () => {
         promptEntriesRef.current = promptEntries;
     }, [promptEntries]);
 
-    useEffect(() => () => {
-        isMountedRef.current = false;
+    useEffect(() => {
+        isMountedRef.current = true;
+        return () => {
+            isMountedRef.current = false;
+        };
     }, []);
+
+    useEffect(() => {
+        if (!isRecording) {
+            lastActiveTimeRef.current = 0;
+            return;
+        }
+
+        if (lastActiveTimeRef.current === 0) {
+            lastActiveTimeRef.current = Date.now();
+        }
+
+        const threshold = 0.025;
+        const silenceTimeout = 5000;
+
+        if (audioLevel >= threshold) {
+            lastActiveTimeRef.current = Date.now();
+        } else {
+            const elapsed = Date.now() - lastActiveTimeRef.current;
+            if (elapsed >= silenceTimeout) {
+                void stopRecording();
+                message.info('Đã tự động dừng ghi âm do không phát hiện giọng nói trong 5 giây.');
+            }
+        }
+    }, [audioLevel, isRecording, stopRecording]);
 
     const updateRecordingTargetQuestionId = useCallback((questionId: string | null) => {
         recordingTargetQuestionIdRef.current = questionId;
@@ -320,7 +377,6 @@ export const ClientSpeakingSessionPage = () => {
         return Math.max(0, preparationLimitSeconds - elapsed);
     }, [activePrompt, clockNow, prepStartedAtByQuestionId, preparationLimitSeconds]);
 
-    const recordingRemainingSeconds = Math.max(0, recordingLimitSeconds - elapsedSeconds);
     const systemCheckReady = permissionState === 'granted';
 
     useEffect(() => {
@@ -330,12 +386,14 @@ export const ClientSpeakingSessionPage = () => {
 
         setTimeRemaining(session.timeRemaining ?? null);
         lastPersistedTimeRef.current = session.timeRemaining ?? null;
-        setSelectedQuestionId((current) => (
-            current && promptEntries.some((entry) => entry.question.id === current)
-                ? current
-                : promptEntries[0]?.question.id ?? null
-        ));
-    }, [session, promptEntries]);
+        setSelectedQuestionId((current) => {
+            if (current && promptEntries.some((entry) => entry.question.id === current)) {
+                return current;
+            }
+            const firstUnanswered = promptEntries.find((entry) => !hasPromptResponse(entry.question.id));
+            return firstUnanswered?.question.id ?? promptEntries[0]?.question.id ?? null;
+        });
+    }, [session, promptEntries, hasPromptResponse]);
 
     useEffect(() => {
         setPrepStartedAtByQuestionId({});
@@ -444,6 +502,22 @@ export const ClientSpeakingSessionPage = () => {
         }));
         const nextPromptQuestionId = getNextPromptQuestionId(promptEntriesRef.current, questionId);
 
+        setIsTransitioning(true);
+        setNextBlinkerVisible(false);
+        const isLastQuestion = !nextPromptQuestionId;
+        const phrases = isLastQuestion ? FINAL_PHRASES : TRANSITION_PHRASES;
+        const randomPhrase = phrases[Math.floor(Math.random() * phrases.length)];
+        setTransitionText(randomPhrase);
+
+        void playPrompt({
+            questionId: 'transition',
+            text: randomPhrase,
+            visemeTimeline: null,
+            onEnd: () => {
+                setNextBlinkerVisible(true);
+            },
+        });
+
         const persistRecording = async () => {
             try {
                 const file = new File(
@@ -476,10 +550,6 @@ export const ClientSpeakingSessionPage = () => {
                     [questionId]: result.speakingAnalytics,
                 }));
 
-                if (nextPromptQuestionId) {
-                    setSelectedQuestionId((current) => (current === questionId ? nextPromptQuestionId : current));
-                }
-
                 message.success('Đã lưu bản ghi Speaking.');
             } catch (error: any) {
                 if (isMountedRef.current && activeSessionIdRef.current === uploadSessionId) {
@@ -493,15 +563,24 @@ export const ClientSpeakingSessionPage = () => {
         };
 
         void persistRecording();
-    }, [lastRecording, markQuestionUploading, sessionId, unmarkQuestionUploading, updateRecordingTargetQuestionId, uploadSpeakingRecordingMutation]);
+    }, [lastRecording, markQuestionUploading, sessionId, unmarkQuestionUploading, updateRecordingTargetQuestionId, uploadSpeakingRecordingMutation, playPrompt]);
 
     useEffect(() => () => {
-        stopPromptPlayback();
-        void stopRecording().catch(() => undefined);
-    }, [stopPromptPlayback, stopRecording]);
+        stopPromptPlaybackRef.current();
+        void stopRecordingRef.current().catch(() => undefined);
+        if (nextTimeoutRef.current != null) {
+            window.clearTimeout(nextTimeoutRef.current);
+        }
+        isNextRunningRef.current = false;
+    }, []);
 
     useEffect(() => {
-        if (!activeQuestionId || !promptPlaybackQuestionId || promptPlaybackQuestionId === activeQuestionId) {
+        if (
+            !activeQuestionId
+            || !promptPlaybackQuestionId
+            || promptPlaybackQuestionId === activeQuestionId
+            || promptPlaybackQuestionId === 'transition'
+        ) {
             return;
         }
 
@@ -586,6 +665,77 @@ export const ClientSpeakingSessionPage = () => {
     const handleStopRecording = useCallback(async () => {
         await stopRecording();
     }, [stopRecording]);
+
+    const handleNextTransition = useCallback(() => {
+        if (isNextRunningRef.current) {
+            return;
+        }
+
+        const nextPromptQuestionId = getNextPromptQuestionId(promptEntries, activeQuestionId);
+        stopPromptPlayback();
+
+        if (!nextPromptQuestionId) {
+            navigate(`/app/sessions/${sessionId}/submit`);
+            return;
+        }
+
+        isNextRunningRef.current = true;
+        setIsNextRunning(true);
+        const nextEntry = promptEntries.find((entry) => entry.question.id === nextPromptQuestionId);
+
+        if (nextTimeoutRef.current != null) {
+            window.clearTimeout(nextTimeoutRef.current);
+        }
+
+        nextTimeoutRef.current = window.setTimeout(async () => {
+            if (!isMountedRef.current) {
+                return;
+            }
+
+            setSelectedQuestionId(nextPromptQuestionId);
+            setIsTransitioning(false);
+            setNextBlinkerVisible(false);
+            setTransitionText(null);
+            isNextRunningRef.current = false;
+            setIsNextRunning(false);
+
+            if (nextEntry) {
+                setQueuedAutoRecordingQuestionId(nextPromptQuestionId);
+                try {
+                    const promptTimeline = nextEntry.question.promptVisemeTimeline?.map((cue) => ({
+                        code: cue.code as SpeakingVisemeCue['code'],
+                        startMs: cue.startMs,
+                        endMs: cue.endMs,
+                    })) ?? null;
+
+                    await playPrompt({
+                        questionId: nextEntry.question.id,
+                        text: nextEntry.question.content,
+                        visemeTimeline: promptTimeline,
+                        estimatedDurationMs: nextEntry.question.promptEstimatedDurationMs,
+                    });
+                } catch (error: any) {
+                    setQueuedAutoRecordingQuestionId(null);
+                    message.error(error?.message || 'Không thể phát prompt của giám khảo.');
+                }
+            }
+
+            nextTimeoutRef.current = null;
+        }, 3000);
+    }, [activeQuestionId, promptEntries, stopPromptPlayback, navigate, sessionId, playPrompt]);
+
+    const handleNextTransitionRef = useRef(handleNextTransition);
+    useEffect(() => {
+        handleNextTransitionRef.current = handleNextTransition;
+    }, [handleNextTransition]);
+
+    useEffect(() => {
+        if (!nextBlinkerVisible || !isTransitioning) {
+            return;
+        }
+
+        handleNextTransitionRef.current();
+    }, [nextBlinkerVisible, isTransitioning]);
 
     useEffect(() => {
         if (
@@ -742,6 +892,97 @@ export const ClientSpeakingSessionPage = () => {
 
             <div style={{ width: '100%', padding: '8px 8px 46px' }}>
                 <style>{`
+                    @keyframes pulseGlow {
+                        0% {
+                            transform: scale(1);
+                            box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.7);
+                        }
+                        70% {
+                            transform: scale(1.03);
+                            box-shadow: 0 0 0 10px rgba(37, 99, 235, 0);
+                        }
+                        100% {
+                            transform: scale(1);
+                            box-shadow: 0 0 0 0 rgba(37, 99, 235, 0);
+                        }
+                    }
+
+                    @keyframes pulseGlowSuccess {
+                        0% {
+                            transform: scale(1);
+                            box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+                        }
+                        70% {
+                            transform: scale(1.03);
+                            box-shadow: 0 0 0 10px rgba(16, 185, 129, 0);
+                        }
+                        100% {
+                            transform: scale(1);
+                            box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+                        }
+                    }
+
+                    .speaking-next-btn-blink {
+                        animation: pulseGlow 2s infinite;
+                    }
+
+                    .speaking-next-btn-blink-success {
+                        animation: pulseGlowSuccess 2s infinite;
+                    }
+
+                    @keyframes buttonProgress {
+                        from {
+                            width: 0%;
+                        }
+                        to {
+                            width: 100%;
+                        }
+                    }
+
+                    .speaking-next-btn-progress {
+                        position: relative;
+                        overflow: hidden;
+                        pointer-events: none;
+                        background: linear-gradient(135deg, #1e40af 0%, #3b82f6 50%, #1d4ed8 100%) !important;
+                        border: none !important;
+                        box-shadow: 0 4px 15px rgba(37, 99, 235, 0.4);
+                        transition: all 0.3s ease;
+                    }
+
+                    .speaking-next-btn-progress::after {
+                        content: '';
+                        position: absolute;
+                        top: 0;
+                        left: 0;
+                        height: 100%;
+                        background: linear-gradient(90deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.32) 50%, rgba(255, 255, 255, 0.05) 100%);
+                        animation: buttonProgress 3s linear forwards;
+                        pointer-events: none;
+                        z-index: 1;
+                    }
+
+                    .speaking-next-btn-progress-success {
+                        position: relative;
+                        overflow: hidden;
+                        pointer-events: none;
+                        background: linear-gradient(135deg, #065f46 0%, #10b981 50%, #047857 100%) !important;
+                        border: none !important;
+                        box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);
+                        transition: all 0.3s ease;
+                    }
+
+                    .speaking-next-btn-progress-success::after {
+                        content: '';
+                        position: absolute;
+                        top: 0;
+                        left: 0;
+                        height: 100%;
+                        background: linear-gradient(90deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.32) 50%, rgba(255, 255, 255, 0.05) 100%);
+                        animation: buttonProgress 3s linear forwards;
+                        pointer-events: none;
+                        z-index: 1;
+                    }
+
                     .speaking-runner-page-toolbar {
                         display: flex;
                         align-items: center;
@@ -925,7 +1166,7 @@ export const ClientSpeakingSessionPage = () => {
                                                     key={entry.question.id}
                                                     block
                                                     type={isActive ? 'primary' : 'default'}
-                                                    disabled={isLocked || isRecording || isPreparingPromptPlayback || isPromptPlaying || !!queuedAutoRecordingQuestionId}
+                                                    disabled={!isActive || isLocked || isRecording || isPreparingPromptPlayback || isPromptPlaying || !!queuedAutoRecordingQuestionId || isTransitioning}
                                                     onClick={() => setSelectedQuestionId(entry.question.id)}
                                                     style={{
                                                         height: 'auto',
@@ -979,9 +1220,9 @@ export const ClientSpeakingSessionPage = () => {
                                     <SpeakingAvatarCanvas
                                         microphoneLevel={audioLevel}
                                         promptAudioLevel={promptAudioLevel}
-                                        isPromptPlaying={isPromptPlaying && promptPlaybackQuestionId === activeQuestionId}
+                                        isPromptPlaying={isPromptPlaying && (promptPlaybackQuestionId === activeQuestionId || promptPlaybackQuestionId === 'transition')}
                                         isRecording={isRecording}
-                                        promptText={activePrompt.question.content}
+                                        promptText={promptPlaybackQuestionId === 'transition' ? transitionText : activePrompt.question.content}
                                         activeViseme={activeViseme}
                                         playbackMode={promptPlaybackMode}
                                     />
@@ -1001,9 +1242,6 @@ export const ClientSpeakingSessionPage = () => {
                                                         Prep {preparationRemainingSeconds}s
                                                     </Tag>
                                                 ) : null}
-                                                <Tag color={isRecording ? 'red' : 'default'}>
-                                                    {isRecording ? `Recording ${recordingRemainingSeconds}s` : `Limit ${recordingLimitSeconds}s`}
-                                                </Tag>
                                             </Space>
                                         </Space>
 
@@ -1063,54 +1301,86 @@ export const ClientSpeakingSessionPage = () => {
                                             </div>
                                         ) : null}
 
-                                        <Space wrap>
-                                            <Button
-                                                icon={<SoundOutlined />}
-                                                loading={isPreparingPromptPlayback && promptPlaybackQuestionId === activeQuestionId}
-                                                disabled={isRecording || isExaminerLeadingActivePrompt}
-                                                onClick={() => {
-                                                    if (isPromptPlaying && promptPlaybackQuestionId === activeQuestionId) {
-                                                        stopPromptPlayback();
-                                                        return;
+                                        {isTransitioning ? (
+                                            <Space wrap>
+                                                <Button
+                                                    type="primary"
+                                                    size="large"
+                                                    className={
+                                                        isNextRunning
+                                                            ? (getNextPromptQuestionId(promptEntries, activeQuestionId) ? "speaking-next-btn-progress" : "speaking-next-btn-progress-success")
+                                                            : nextBlinkerVisible
+                                                                ? (getNextPromptQuestionId(promptEntries, activeQuestionId) ? "speaking-next-btn-blink" : "speaking-next-btn-blink-success")
+                                                                : ""
                                                     }
+                                                    disabled={!nextBlinkerVisible && !isNextRunning}
+                                                    icon={isNextRunning ? null : getNextPromptQuestionId(promptEntries, activeQuestionId) ? <ArrowRightOutlined /> : <CheckCircleOutlined />}
+                                                    onClick={handleNextTransition}
+                                                    style={{
+                                                        height: 48,
+                                                        borderRadius: 16,
+                                                        paddingInline: 28,
+                                                        fontWeight: 700,
+                                                        fontSize: '0.98rem',
+                                                        pointerEvents: isNextRunning ? 'none' : 'auto',
+                                                        background: getNextPromptQuestionId(promptEntries, activeQuestionId)
+                                                            ? 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)'
+                                                            : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                                                        border: 'none',
+                                                        boxShadow: nextBlinkerVisible && !isNextRunning
+                                                            ? (getNextPromptQuestionId(promptEntries, activeQuestionId) ? '0 0 15px rgba(37, 99, 235, 0.5)' : '0 0 15px rgba(16, 185, 129, 0.5)')
+                                                            : 'none',
+                                                    }}
+                                                >
+                                                    {isNextRunning
+                                                        ? (getNextPromptQuestionId(promptEntries, activeQuestionId) ? 'Đang chuẩn bị câu hỏi tiếp theo...' : 'Đang chuẩn bị màn nộp bài...')
+                                                        : getNextPromptQuestionId(promptEntries, activeQuestionId)
+                                                            ? (nextBlinkerVisible ? 'Chuyển sang câu tiếp theo' : 'Examiner đang chuyển tiếp...')
+                                                            : (nextBlinkerVisible ? 'Hoàn thành & Xem màn nộp bài' : 'Examiner đang kết thúc...')}
+                                                </Button>
+                                            </Space>
+                                        ) : (
+                                            <Space wrap>
+                                                <Button
+                                                    icon={<SoundOutlined />}
+                                                    loading={isPreparingPromptPlayback && promptPlaybackQuestionId === activeQuestionId}
+                                                    disabled={isRecording || isExaminerLeadingActivePrompt}
+                                                    onClick={() => {
+                                                        if (isPromptPlaying && promptPlaybackQuestionId === activeQuestionId) {
+                                                            stopPromptPlayback();
+                                                            return;
+                                                        }
 
-                                                    void handleReplayPrompt(activePrompt);
-                                                }}
-                                            >
-                                                {isPromptPlaying && promptPlaybackQuestionId === activeQuestionId ? 'Dừng examiner' : 'Nghe lại examiner'}
-                                            </Button>
-                                            <Button
-                                                type={isRecording ? 'default' : 'primary'}
-                                                danger={isRecording}
-                                                disabled={!isRecording && (!systemCheckReady || isUploadingActivePrompt || isPreparationBlockingRecording)}
-                                                icon={isRecording ? <PauseCircleOutlined /> : <PlayCircleOutlined />}
-                                                onClick={() => {
-                                                    void (isRecording ? handleStopRecording() : handleBeginResponseTurn());
-                                                }}
-                                                loading={isExaminerLeadingActivePrompt && (isPreparingPromptPlayback || isPromptPlaying)}
-                                            >
-                                                {isRecording
-                                                    ? 'Dừng ghi âm'
-                                                    : isPreparationBlockingRecording
-                                                        ? `Chờ hết prep (${preparationRemainingSeconds}s)`
-                                                        : isPreparationReadyToRecord
-                                                            ? 'Bắt đầu ghi âm'
-                                                            : isExaminerLeadingActivePrompt
-                                                                ? 'Examiner đang hỏi...'
-                                                                : preparationLimitSeconds > 0 && !hasPreparationStarted
-                                                                    ? 'Nghe examiner để bắt đầu prep'
-                                                                    : 'Nghe examiner rồi trả lời'}
-                                            </Button>
-                                        </Space>
+                                                        void handleReplayPrompt(activePrompt);
+                                                    }}
+                                                >
+                                                    {isPromptPlaying && promptPlaybackQuestionId === activeQuestionId ? 'Dừng examiner' : 'Nghe lại examiner'}
+                                                </Button>
+                                                <Button
+                                                    type={isRecording ? 'default' : 'primary'}
+                                                    danger={isRecording}
+                                                    disabled={!isRecording && (!systemCheckReady || isUploadingActivePrompt || isPreparationBlockingRecording)}
+                                                    icon={isRecording ? <PauseCircleOutlined /> : <PlayCircleOutlined />}
+                                                    onClick={() => {
+                                                        void (isRecording ? handleStopRecording() : handleBeginResponseTurn());
+                                                    }}
+                                                    loading={isExaminerLeadingActivePrompt && (isPreparingPromptPlayback || isPromptPlaying)}
+                                                >
+                                                    {isRecording
+                                                        ? 'Dừng ghi âm'
+                                                        : isPreparationBlockingRecording
+                                                            ? `Chờ hết prep (${preparationRemainingSeconds}s)`
+                                                            : isPreparationReadyToRecord
+                                                                ? 'Bắt đầu ghi âm'
+                                                                : isExaminerLeadingActivePrompt
+                                                                    ? 'Examiner đang hỏi...'
+                                                                    : preparationLimitSeconds > 0 && !hasPreparationStarted
+                                                                        ? 'Nghe examiner để bắt đầu prep'
+                                                                        : 'Nghe examiner rồi trả lời'}
+                                                </Button>
+                                            </Space>
+                                        )}
 
-                                        <Row gutter={[12, 12]}>
-                                            <Col xs={12} md={12}>
-                                                <Statistic title="Đang ghi" value={formatSeconds(elapsedSeconds)} />
-                                            </Col>
-                                            <Col xs={12} md={12}>
-                                                <Statistic title="Còn lại cho câu này" value={formatSeconds(recordingRemainingSeconds)} />
-                                            </Col>
-                                        </Row>
 
                                         {isExaminerLeadingActivePrompt ? (
                                             <Alert

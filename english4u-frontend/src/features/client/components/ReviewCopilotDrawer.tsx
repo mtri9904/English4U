@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { Alert, Button, Empty, Input, Space, Tag, Typography } from 'antd';
+import { Alert, Button, Empty, Input, Space, Typography } from 'antd';
 import {
     BulbOutlined,
     CloseOutlined,
@@ -194,12 +194,9 @@ const copilotAnswerIntroMarkers = [
     'ket luan',
     'phan tich',
     'dua vao',
-    'dua tren',
-    'goi y',
-    'sau day la',
-    'duoi day la',
     'tu transcript',
     'theo transcript',
+    'duoi day la',
 ];
 
 const copilotMetaLineMarkers = [
@@ -357,10 +354,6 @@ const looksLikeReasoningParagraph = (value: string) => {
         return false;
     }
 
-    if (/^(?:user'?s?\s*request|context|current\s+focus|student'?s?\s*original\s*answer|feedback(?:\s+from\s+the\s+system)?|fluency|grammar|lexical|pronunciation|tone|language|structure|idea\s+\d+|sample\s+\d+|drafting\s+sample\s+\d+|ensure\s+i\s+explain|avoid\s+["']?outside\s+knowledge["']?)\b/i.test(normalized)) {
-        return true;
-    }
-
     if (/^(?:current focus|question\s+\d+\s+content|student'?s choice|student choice|student chose|result|the question is about|the statement says|scanning|found in|this matches|answer\s+[a-h]:|evidence from|direct answer|specify the location|provide the english evidence|explain why|tone|no external knowledge|no meta-talk|no latex|clear, natural|use labels|english quotes included)\b/i.test(normalized)) {
         return true;
     }
@@ -511,23 +504,23 @@ const trimToUserFacingVietnameseStart = (value: string) => {
 const cleanCopilotDisplayText = (value?: string | null) => {
     const normalized = trimToUserFacingVietnameseStart(
         stripCodeFenceWrapper(
-        (value ?? '')
-            .replace(/\r\n/g, '\n')
-            .replace(/\r/g, '\n')
-            .replace(/\$\\rightarrow\$/g, '->')
-            .replace(/\$\\Rightarrow\$/g, '=>')
-            .replace(/\$\\leftarrow\$/g, '<-')
-            .replace(/\$\\Leftarrow\$/g, '<=')
-            .replace(/\$\\leftrightarrow\$/g, '<->')
-            .replace(/\$\\Leftrightarrow\$/g, '<=>')
-            .replace(/\\rightarrow/g, '->')
-            .replace(/\\Rightarrow/g, '=>')
-            .replace(/\\leftarrow/g, '<-')
-            .replace(/\\Leftarrow/g, '<=')
-            .replace(/\\leftrightarrow/g, '<->')
-            .replace(/\\Leftrightarrow/g, '<=>')
-            .replace(/\$([^$\n]{1,80})\$/g, '$1')
-            .trim(),
+            (value ?? '')
+                .replace(/\r\n/g, '\n')
+                .replace(/\r/g, '\n')
+                .replace(/\$\\rightarrow\$/g, '->')
+                .replace(/\$\\Rightarrow\$/g, '=>')
+                .replace(/\$\\leftarrow\$/g, '<-')
+                .replace(/\$\\Leftarrow\$/g, '<=')
+                .replace(/\$\\leftrightarrow\$/g, '<->')
+                .replace(/\$\\Leftrightarrow\$/g, '<=>')
+                .replace(/\\rightarrow/g, '->')
+                .replace(/\\Rightarrow/g, '=>')
+                .replace(/\\leftarrow/g, '<-')
+                .replace(/\\Leftarrow/g, '<=')
+                .replace(/\\leftrightarrow/g, '<->')
+                .replace(/\\Leftrightarrow/g, '<=>')
+                .replace(/\$([^$\n]{1,80})\$/g, '$1')
+                .trim(),
         ),
     );
 

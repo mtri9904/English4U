@@ -20,6 +20,7 @@ interface PlaySpeakingPromptOptions {
     text: string;
     visemeTimeline?: SpeakingVisemeCue[] | null;
     estimatedDurationMs?: number | null;
+    onEnd?: () => void;
 }
 
 const toPromptPlaybackErrorMessage = (error: unknown) => {
@@ -44,6 +45,7 @@ export const useSpeakingPromptPlayback = () => {
     const animationFrameRef = useRef<number | null>(null);
     const speechStartedAtRef = useRef<number | null>(null);
     const visemeTimelineRef = useRef<SpeakingVisemeCue[]>([]);
+    const onEndRef = useRef<(() => void) | null>(null);
 
     const [activeQuestionId, setActiveQuestionId] = useState<string | null>(null);
     const [isPreparing, setIsPreparing] = useState(false);
@@ -68,6 +70,7 @@ export const useSpeakingPromptPlayback = () => {
 
         speechStartedAtRef.current = null;
         visemeTimelineRef.current = [];
+        onEndRef.current = null;
 
         setIsPreparing(false);
         setIsPlaying(false);
@@ -97,9 +100,10 @@ export const useSpeakingPromptPlayback = () => {
     }, [clearFrameLoop, publishFrame]);
 
     const playPrompt = useCallback(async (options: PlaySpeakingPromptOptions) => {
-        const { questionId, text, visemeTimeline, estimatedDurationMs } = options;
+        const { questionId, text, visemeTimeline, estimatedDurationMs, onEnd } = options;
 
         stopPlayback();
+        onEndRef.current = onEnd ?? null;
 
         const normalizedText = text.trim();
         if (!normalizedText) {
@@ -154,11 +158,17 @@ export const useSpeakingPromptPlayback = () => {
         };
 
         utterance.onend = () => {
+            const cb = onEndRef.current;
+            onEndRef.current = null;
             stopPlayback();
+            cb?.();
         };
 
         utterance.onerror = () => {
+            const cb = onEndRef.current;
+            onEndRef.current = null;
             stopPlayback();
+            cb?.();
         };
 
         speechStartedAtRef.current = performance.now();
@@ -189,13 +199,13 @@ export const useSpeakingPromptPlayback = () => {
         playbackMode,
         audioLevel,
         activeViseme,
-        playPrompt: async (options: PlaySpeakingPromptOptions) => {
+        playPrompt: useCallback(async (options: PlaySpeakingPromptOptions) => {
             try {
                 await playPrompt(options);
             } catch (error) {
                 throw new Error(toPromptPlaybackErrorMessage(error));
             }
-        },
+        }, [playPrompt]),
         stopPlayback,
     };
 };
