@@ -20,7 +20,7 @@ export function ProgressBar({ value, max = 100, variant = 'primary', size = 'md'
             <div style={{ flex: 1, height: heightMap[size], background: 'var(--color-border)', borderRadius: 'var(--radius-full)', overflow: 'hidden' }}>
                 <div style={{ width: `${percent}%`, height: '100%', background: gradients[variant], borderRadius: 'var(--radius-full)', transition: 'width 0.6s cubic-bezier(0.4,0,0.2,1)' }} />
             </div>
-            {showLabel && <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-secondary)', minWidth: 36, textAlign: 'right', fontFamily: 'var(--font-sans)' }}>{Math.round(percent)}%</span>}
+            {showLabel && <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-secondary)', minWidth: 36, textAlign: 'right' }}>{Math.round(percent)}%</span>}
         </div>
     )
 }

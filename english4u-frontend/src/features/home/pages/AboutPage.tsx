@@ -8,7 +8,6 @@ export function AboutPage() {
             <LandingHeader />
 
             <main style={{ paddingTop: '120px' }}>
-                {/* Hero Section */}
                 <section className="container-app" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '64px', alignItems: 'center', padding: '40px 24px 80px' }}>
                     <div>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '6px 16px', background: '#eff6ff', borderRadius: '100px', marginBottom: '24px' }}>
@@ -37,7 +36,6 @@ export function AboutPage() {
                                 style={{ width: '100%', height: '400px', objectFit: 'cover', opacity: 0.9 }}
                             />
                         </div>
-                        {/* Floating Stats Card */}
                         <div style={{ position: 'absolute', bottom: '-20px', left: '-20px', background: '#fff', padding: '16px 24px', borderRadius: '16px', boxShadow: '0 12px 32px rgba(0,0,0,0.08)', display: 'flex', alignItems: 'center', gap: '16px' }}>
                             <div style={{ width: '48px', height: '48px', background: '#eff6ff', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3b82f6' }}>
                                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -55,7 +53,6 @@ export function AboutPage() {
                     </div>
                 </section>
 
-                {/* Who We Are Section */}
                 <section style={{ background: '#fff', padding: '100px 24px' }}>
                     <div className="container-app" style={{ maxWidth: '800px', margin: '0 auto', textAlign: 'center' }}>
                         <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: '2.5rem', fontWeight: 800, color: 'var(--color-text-primary)', marginBottom: '40px' }}>
@@ -73,7 +70,6 @@ export function AboutPage() {
                     </div>
                 </section>
 
-                {/* Core Values Section */}
                 <section style={{ padding: '100px 24px', background: '#f8fafc' }}>
                     <div className="container-app" style={{ textAlign: 'center' }}>
                         <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: '2.5rem', fontWeight: 800, color: 'var(--color-text-primary)', marginBottom: '12px' }}>
@@ -84,7 +80,6 @@ export function AboutPage() {
                         </p>
 
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '24px' }}>
-                            {/* Card 1 */}
                             <div style={{ background: '#fff', padding: '40px 24px', borderRadius: '20px', boxShadow: '0 4px 20px rgba(0,0,0,0.04)', textAlign: 'center' }}>
                                 <div style={{ width: '48px', height: '48px', margin: '0 auto 20px', background: '#eff6ff', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3b82f6' }}>
                                     <Rocket size={24} />
@@ -93,7 +88,6 @@ export function AboutPage() {
                                 <p style={{ fontSize: '0.9375rem', color: 'var(--color-text-secondary)', lineHeight: 1.6 }}>Luôn tiên phong ứng dụng công nghệ AI để tối ưu hóa trải nghiệm học tập.</p>
                             </div>
 
-                            {/* Card 2 */}
                             <div style={{ background: '#fff', padding: '40px 24px', borderRadius: '20px', boxShadow: '0 4px 20px rgba(0,0,0,0.04)', textAlign: 'center' }}>
                                 <div style={{ width: '48px', height: '48px', margin: '0 auto 20px', background: '#ecfdf5', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10b981' }}>
                                     <Target size={24} />
@@ -102,7 +96,6 @@ export function AboutPage() {
                                 <p style={{ fontSize: '0.9375rem', color: 'var(--color-text-secondary)', lineHeight: 1.6 }}>Mọi lộ trình học đều được cá nhân hóa dựa trên năng lực và mục tiêu riêng.</p>
                             </div>
 
-                            {/* Card 3 */}
                             <div style={{ background: '#fff', padding: '40px 24px', borderRadius: '20px', boxShadow: '0 4px 20px rgba(0,0,0,0.04)', textAlign: 'center' }}>
                                 <div style={{ width: '48px', height: '48px', margin: '0 auto 20px', background: '#fffbeb', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f59e0b' }}>
                                     <ShieldCheck size={24} />
@@ -111,7 +104,6 @@ export function AboutPage() {
                                 <p style={{ fontSize: '0.9375rem', color: 'var(--color-text-secondary)', lineHeight: 1.6 }}>Cam kết đầu ra bằng văn bản và hệ thống đánh giá tiến độ rõ ràng.</p>
                             </div>
 
-                            {/* Card 4 */}
                             <div style={{ background: '#fff', padding: '40px 24px', borderRadius: '20px', boxShadow: '0 4px 20px rgba(0,0,0,0.04)', textAlign: 'center' }}>
                                 <div style={{ width: '48px', height: '48px', margin: '0 auto 20px', background: '#f3e8ff', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#a855f7' }}>
                                     <Star size={24} />
@@ -123,7 +115,6 @@ export function AboutPage() {
                     </div>
                 </section>
 
-                {/* Team Section */}
                 <section style={{ padding: '100px 24px', background: '#fff' }}>
                     <div className="container-app">
                         <div style={{ marginBottom: '64px' }}>
@@ -136,7 +127,6 @@ export function AboutPage() {
                         </div>
 
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '32px' }}>
-                            {/* Member 1 */}
                             <div>
                                 <div style={{ background: '#fde68a', borderRadius: '20px', overflow: 'hidden', marginBottom: '20px', height: '320px' }}>
                                     <img src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?q=80&w=600&auto=format&fit=crop" alt="Dr. Nguyen Anh" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -146,7 +136,6 @@ export function AboutPage() {
                                 <p style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)', lineHeight: 1.5 }}>Cựu giám khảo chấm thi quốc tế với 15 năm kinh nghiệm giảng dạy.</p>
                             </div>
 
-                            {/* Member 2 */}
                             <div>
                                 <div style={{ background: '#fdba74', borderRadius: '20px', overflow: 'hidden', marginBottom: '20px', height: '320px' }}>
                                     <img src="https://images.unsplash.com/photo-1560250097-0b93528c311a?q=80&w=600&auto=format&fit=crop" alt="ThS. Le Hoang" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -156,7 +145,6 @@ export function AboutPage() {
                                 <p style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)', lineHeight: 1.5 }}>Chuyên gia NLP & AI, tốt nghiệp Đại học Stanford.</p>
                             </div>
 
-                            {/* Member 3 */}
                             <div>
                                 <div style={{ background: '#86efac', borderRadius: '20px', overflow: 'hidden', marginBottom: '20px', height: '320px' }}>
                                     <img src="https://images.unsplash.com/photo-1580489944761-15a19d654956?q=80&w=600&auto=format&fit=crop" alt="Ms. Lan Huong" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -166,7 +154,6 @@ export function AboutPage() {
                                 <p style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)', lineHeight: 1.5 }}>Tác giả của bộ giáo trình "Writing Logic" và nhiều tài liệu tham khảo.</p>
                             </div>
 
-                            {/* Member 4 */}
                             <div>
                                 <div style={{ background: '#e2e8f0', borderRadius: '20px', overflow: 'hidden', marginBottom: '20px', height: '320px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                     <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">

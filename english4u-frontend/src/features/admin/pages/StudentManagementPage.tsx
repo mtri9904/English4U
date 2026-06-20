@@ -110,7 +110,7 @@ export const StudentManagementPage = () => {
         isActive: statusFilter === 'ALL' ? undefined : statusFilter,
     }), [page, pageSize, searchText, statusFilter]);
 
-    // Queries
+
     const { data: stats, isLoading: isStatsLoading } = useAdminStatsQuery({
         refetchOnWindowFocus: false,
     });

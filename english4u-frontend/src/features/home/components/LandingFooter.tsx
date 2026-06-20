@@ -28,7 +28,7 @@ export function LandingFooter() {
                         <p style={{ fontSize: '0.9rem', lineHeight: 1.7, maxWidth: 300, marginBottom: 24, color: 'rgba(255,255,255,0.5)' }}>Học tiếng Anh với sức mạnh AI. Chuẩn bị cho IELTS, TOEFL với lộ trình luyện tập cá nhân hóa.</p>
                         <div style={{ display: 'flex', gap: 10 }}>
                             {['𝕏', 'in', 'f', '▶'].map((icon, i) => (
-                                <button key={i} style={{ width: 36, height: 36, borderRadius: 8, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 600, transition: 'all 0.2s', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-sans)' }}
+                                <button key={i} style={{ width: 36, height: 36, borderRadius: 8, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 600, transition: 'all 0.2s', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                                     onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(19,125,197,0.3)'; e.currentTarget.style.color = '#fff' }}
                                     onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = 'rgba(255,255,255,0.5)' }}>{icon}</button>
                             ))}
@@ -36,10 +36,10 @@ export function LandingFooter() {
                     </div>
                     {Object.entries(FOOTER_LINKS).map(([group, links]) => (
                         <div key={group}>
-                            <div style={{ fontSize: '0.75rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)', marginBottom: 16, fontFamily: 'var(--font-sans)' }}>{group}</div>
+                            <div style={{ fontSize: '0.75rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)', marginBottom: 16 }}>{group}</div>
                             <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 10 }}>
                                 {links.map((link) => (
-                                    <li key={link}><a href="#" style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.5)', textDecoration: 'none', transition: 'color 0.2s', fontFamily: 'var(--font-sans)' }} onMouseEnter={(e) => (e.currentTarget.style.color = '#fff')} onMouseLeave={(e) => (e.currentTarget.style.color = 'rgba(255,255,255,0.5)')}>{link}</a></li>
+                                    <li key={link}><a href="#" style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.5)', textDecoration: 'none', transition: 'color 0.2s' }} onMouseEnter={(e) => (e.currentTarget.style.color = '#fff')} onMouseLeave={(e) => (e.currentTarget.style.color = 'rgba(255,255,255,0.5)')}>{link}</a></li>
                                 ))}
                             </ul>
                         </div>
@@ -48,7 +48,7 @@ export function LandingFooter() {
                 <div style={{ padding: '32px 0 0', borderTop: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 24 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 16, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: '12px 20px', flex: 1, maxWidth: 380 }}>
                         <span style={{ fontSize: '0.875rem', color: 'rgba(245, 238, 238, 1)', whiteSpace: 'nowrap' }}>Nhận tin hàng tuần</span>
-                        <input type="email" placeholder="email@gmail.com" style={{ flex: 1, background: 'none', border: 'none', outline: 'none', fontSize: '0.875rem', color: '#fff', fontFamily: 'var(--font-sans)' }} />
+                        <input type="email" placeholder="email@gmail.com" style={{ flex: 1, background: 'none', border: 'none', outline: 'none', fontSize: '0.875rem', color: '#fff' }} />
                         <Button variant="primary" size="sm" style={{ whiteSpace: 'nowrap' }}>Đăng ký</Button>
                     </div>
                     <p style={{ fontSize: '0.8125rem', color: 'rgba(255,255,255,0.3)' }}>© 2026 English4U. Tất cả quyền được bảo lưu.</p>

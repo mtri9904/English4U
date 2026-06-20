@@ -34,7 +34,8 @@ export interface NotificationStatsDto {
 export interface BroadcastNotificationRequest {
     title: string;
     message?: string;
-    targetRole: string;
+    targetRole?: string;
+    userIds?: string[];
 }
 
 export interface UpdateNotificationRequest {

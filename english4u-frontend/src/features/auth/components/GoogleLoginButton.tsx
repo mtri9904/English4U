@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { message } from 'antd';
 import { useGoogleLoginMutation } from '../api/auth.api';
 
-const GOOGLE_CLIENT_ID = '207103112017-sao9nmtfknht1cja68hqd1pv3bb8i4tt.apps.googleusercontent.com';
+const GOOGLE_CLIENT_ID = (import.meta as any).env.VITE_GOOGLE_CLIENT_ID || '';
 
 interface GoogleLoginButtonProps {
     requiredRole?: string;

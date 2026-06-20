@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { Modal, Input, Select, InputNumber, Button, Divider, message, Upload, Tabs, Tag } from 'antd';
+import { Modal, Input, Select, InputNumber, Button, Divider, message, Upload, Tabs, Tag, Radio } from 'antd';
+import type { RadioChangeEvent } from 'antd';
 import { PlusOutlined, MinusCircleOutlined, SoundOutlined, PictureOutlined, BoldOutlined, CloseOutlined } from '@ant-design/icons';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -307,14 +308,14 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
         }
     };
 
-    const hasMultiSelectLayout = (contentData?: string) => {
+    const hasMultiSelectLayout = (contentData?: string): boolean => {
         if (!contentData) return false;
 
         try {
             const parsed = JSON.parse(contentData) as unknown;
-            return parsed
+            return !!(parsed
                 && typeof parsed === 'object'
-                && (parsed as { layout?: unknown }).layout === 'listening_multi_select';
+                && (parsed as { layout?: unknown }).layout === 'listening_multi_select');
         } catch {
             return false;
         }
@@ -1584,7 +1585,7 @@ const setListeningMcqOptionInputMode = (
                             <Radio.Group
                                 size="small"
                                 value={optionInputMode}
-                                onChange={(event) => {
+                                onChange={(event: RadioChangeEvent) => {
                                     const nextMode = event.target.value as 'text' | 'image';
                                     const updated = [...groups];
                                     updated[gIdx] = {

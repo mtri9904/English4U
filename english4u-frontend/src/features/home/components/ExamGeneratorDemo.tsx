@@ -91,7 +91,6 @@ export function ExamGeneratorDemo() {
                                 🤖 AI Exam Generator
                             </span>
                             <h2 style={{ 
-                                fontFamily: 'var(--font-sans)', 
                                 fontSize: 'clamp(2rem, 3.5vw, 2.75rem)', 
                                 fontWeight: 800, 
                                 marginBottom: 20, 

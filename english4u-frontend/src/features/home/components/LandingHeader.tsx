@@ -36,7 +36,7 @@ export function LandingHeader() {
                         <Link
                             key={link.label}
                             to={link.href}
-                            style={{ textDecoration: 'none', padding: '6px 16px', fontSize: '0.9375rem', fontWeight: 500, color: 'var(--color-text-secondary)', borderRadius: 8, transition: 'all 0.2s', fontFamily: 'var(--font-sans)' }}
+                            style={{ textDecoration: 'none', padding: '6px 16px', fontSize: '0.9375rem', fontWeight: 500, color: 'var(--color-text-secondary)', borderRadius: 8, transition: 'all 0.2s' }}
                             onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--color-primary)'; e.currentTarget.style.background = 'var(--color-primary-light)' }}
                             onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--color-text-secondary)'; e.currentTarget.style.background = 'none' }}
                         >{link.label}</Link>
@@ -47,15 +47,15 @@ export function LandingHeader() {
                     {isLoggedIn ? (
                         <Link
                             to="/app"
-                            style={{ background: '#2267e7ff', border: 'none', padding: '6px 18px', fontSize: '0.9375rem', fontWeight: 600, color: '#fff', cursor: 'pointer', fontFamily: 'var(--font-sans)', borderRadius: 8, transition: 'all 0.2s', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                            style={{ background: '#2267e7ff', border: 'none', padding: '6px 18px', fontSize: '0.9375rem', fontWeight: 600, color: '#fff', cursor: 'pointer', borderRadius: 8, transition: 'all 0.2s', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}
                         >
                             Vào học ngay 🚀
                         </Link>
                     ) : (
                         <>
-                            <Link to="/login" style={{ background: 'none', border: 'none', padding: '6px 14px', fontSize: '0.9375rem', fontWeight: 500, color: '#2267e7ff', cursor: 'pointer', fontFamily: 'var(--font-sans)', borderRadius: 8, transition: 'color 0.2s', textDecoration: 'none' }}
+                            <Link to="/login" style={{ background: 'none', border: 'none', padding: '6px 14px', fontSize: '0.9375rem', fontWeight: 500, color: '#2267e7ff', cursor: 'pointer', borderRadius: 8, transition: 'color 0.2s', textDecoration: 'none' }}
                             >Đăng nhập</Link>
-                            <Link to="/register" style={{ background: '#2267e7ff', border: 'none', padding: '6px 14px', fontSize: '0.9375rem', fontWeight: 500, color: '#fff', cursor: 'pointer', fontFamily: 'var(--font-sans)', borderRadius: 8, transition: 'color 0.2s', textDecoration: 'none' }}
+                            <Link to="/register" style={{ background: '#2267e7ff', border: 'none', padding: '6px 14px', fontSize: '0.9375rem', fontWeight: 500, color: '#fff', cursor: 'pointer', borderRadius: 8, transition: 'color 0.2s', textDecoration: 'none' }}
                             >Đăng ký</Link>
                         </>
                     )}

@@ -233,6 +233,7 @@ export const SpeakingSessionReview: FC<SpeakingSessionReviewProps> = ({
         if (!textToSend.trim() || !baseContext || !!copilotStreamingMessageId) return;
 
         const assistantMessageId = `model-${Date.now()}`;
+        let accumulatedContent = '';
         const userMsg: CopilotChatMessage = {
             id: `user-${Date.now()}`,
             role: 'user',
@@ -285,11 +286,7 @@ export const SpeakingSessionReview: FC<SpeakingSessionReviewProps> = ({
                 onEvent: (event) => {
                     if (event.event === 'chunk') {
                         const delta = String(event.data?.text || '');
-                        setCopilotMessages(prev => prev.map(msg =>
-                            msg.id === assistantMessageId
-                                ? { ...msg, content: msg.content + delta }
-                                : msg
-                        ));
+                        accumulatedContent += delta;
                     } else if (event.event === 'error') {
                         const errorMsg = String(event.data?.message || 'Lỗi từ AI Copilot');
                         setCopilotErrorMessage(errorMsg);
@@ -299,18 +296,14 @@ export const SpeakingSessionReview: FC<SpeakingSessionReviewProps> = ({
 
             setCopilotMessages(prev => prev.map(msg =>
                 msg.id === assistantMessageId
-                    ? { ...msg, status: 'done' }
+                    ? { ...msg, status: 'done', content: accumulatedContent }
                     : msg
             ));
         } catch (err: any) {
             if (err.name !== 'AbortError') {
                 setCopilotErrorMessage(err.message || 'Lỗi kết nối đến Gia Sư AI.');
-                setCopilotMessages(prev => prev.map(msg =>
-                    msg.id === assistantMessageId
-                        ? { ...msg, status: 'error' }
-                        : msg
-                ));
             }
+            setCopilotMessages(prev => prev.filter(msg => msg.id !== assistantMessageId));
         } finally {
             setCopilotStreamingMessageId(null);
             copilotAbortRef.current = null;

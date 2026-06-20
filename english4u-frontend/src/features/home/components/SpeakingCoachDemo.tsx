@@ -98,7 +98,6 @@ export function SpeakingCoachDemo() {
             <div className="container-app">
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 48, alignItems: 'center' }}>
 
-                    {/* Left Column: Description */}
                     <FadeIn>
                         <div>
                             <span style={{
@@ -116,7 +115,6 @@ export function SpeakingCoachDemo() {
                                 🎙️ AI Speaking Examiner
                             </span>
                             <h2 style={{
-                                fontFamily: 'var(--font-sans)',
                                 fontSize: 'clamp(2rem, 3.5vw, 2.75rem)',
                                 fontWeight: 800,
                                 marginBottom: 20,
@@ -160,7 +158,6 @@ export function SpeakingCoachDemo() {
                         </div>
                     </FadeIn>
 
-                    {/* Right Column: Interactive Speaking Canvas Mockup */}
                     <FadeIn delay={150}>
                         <div style={{
                             background: 'linear-gradient(180deg, #eff6ff 0%, #f8fafc 100%)',
@@ -171,7 +168,6 @@ export function SpeakingCoachDemo() {
                             position: 'relative'
                         }}>
 
-                            {/* Speaking Canvas Area */}
                             <div style={{
                                 position: 'relative',
                                 minHeight: 340,
@@ -182,7 +178,6 @@ export function SpeakingCoachDemo() {
                                 overflow: 'hidden',
                                 marginBottom: 20
                             }}>
-                                {/* Examiner Status Chip */}
                                 <div style={{
                                     position: 'absolute',
                                     top: 18,
@@ -198,7 +193,6 @@ export function SpeakingCoachDemo() {
                                     {getAvatarStatus()}
                                 </div>
 
-                                {/* Actual 3D Examiner Model */}
                                 <SpeakingExaminerModel
                                     activeViseme={viseme}
                                     audioLevel={speakerLevel}
@@ -207,7 +201,6 @@ export function SpeakingCoachDemo() {
                                     onAvailabilityChange={setIsModelAvailable}
                                 />
 
-                                {/* Fallback Face - 3D Mockup if model is not loaded/available */}
                                 {!isModelAvailable && (
                                     <div style={{
                                         width: 150,
@@ -222,7 +215,6 @@ export function SpeakingCoachDemo() {
                                         transition: 'transform 140ms ease, box-shadow 140ms ease',
                                         border: `8px solid ${getAvatarAccent()}`
                                     }}>
-                                        {/* Left Eye */}
                                         <div style={{
                                             position: 'absolute',
                                             top: 52,
@@ -234,7 +226,6 @@ export function SpeakingCoachDemo() {
                                             transform: `scaleY(${eyeScaleY})`,
                                             transition: 'transform 140ms ease'
                                         }} />
-                                        {/* Right Eye */}
                                         <div style={{
                                             position: 'absolute',
                                             top: 52,
@@ -246,7 +237,6 @@ export function SpeakingCoachDemo() {
                                             transform: `scaleY(${eyeScaleY})`,
                                             transition: 'transform 140ms ease'
                                         }} />
-                                        {/* Nose */}
                                         <div style={{
                                             position: 'absolute',
                                             top: 80,
@@ -255,7 +245,6 @@ export function SpeakingCoachDemo() {
                                             borderRadius: 999,
                                             background: '#cbd5e1'
                                         }} />
-                                        {/* Mouth */}
                                         <div style={{
                                             position: 'absolute',
                                             bottom: 32,
@@ -265,12 +254,11 @@ export function SpeakingCoachDemo() {
                                                     viseme === 'D' ? { width: 42, height: 14, borderRadius: 999, background: '#fff7ed', border: '2px solid #0f172a' } :
                                                         viseme === 'F' ? { width: 34, height: 22, borderRadius: '48% 48% 55% 55%', background: '#7f1d1d' } :
                                                             viseme === 'G' ? { width: 40, height: 12, borderRadius: 999, background: '#ef4444' } :
-                                                                { width: 40, height: 6, borderRadius: 999, background: status === 'recording' ? '#dc2626' : '#0f172a' }) // Viseme 'X' (Idle)
+                                                                { width: 40, height: 6, borderRadius: 999, background: status === 'recording' ? '#dc2626' : '#0f172a' })
                                         }} />
                                     </div>
                                 )}
 
-                                {/* Active waveform at bottom of avatar */}
                                 <div style={{
                                     position: 'absolute',
                                     left: 20,
@@ -302,7 +290,6 @@ export function SpeakingCoachDemo() {
                                 </div>
                             </div>
 
-                            {/* Control Description Area */}
                             <div style={{ minHeight: 120, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                                 {status === 'speaking_prompt' && (
                                     <div style={{ textAlign: 'center', animation: 'fadeIn 0.3s ease-out' }}>
@@ -381,14 +368,12 @@ export function SpeakingCoachDemo() {
 
                                 {status === 'done' && (
                                     <div style={{ width: '100%', animation: 'fadeIn 0.4s ease-out' }}>
-                                        {/* Question info */}
                                         <div style={{ background: '#f8fafc', border: '1px solid var(--color-border)', borderRadius: 12, padding: '10px 14px', marginBottom: 12 }}>
                                             <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', fontWeight: 700, display: 'block', marginBottom: 4 }}>CÂU HỎI CỦA EXAMINER:</span>
                                             <p style={{ fontSize: '0.875rem', margin: 0, fontWeight: 700, color: 'var(--color-text-primary)' }}>
                                                 "Let's talk about books. What kind of books do you like to read?"
                                             </p>
                                         </div>
-                                        {/* Transcript area */}
                                         <div style={{ background: '#ffffff', border: '1px solid var(--color-border)', borderRadius: 14, padding: 14, marginBottom: 16 }}>
                                             <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', fontWeight: 700, display: 'block', marginBottom: 4 }}>CÂU TRẢ LỜI CỦA BẠN (ASR):</span>
                                             <p style={{ fontSize: '0.875rem', margin: 0, lineHeight: 1.6, color: 'var(--color-text-primary)' }}>
@@ -423,7 +408,6 @@ export function SpeakingCoachDemo() {
                                             </p>
                                         </div>
 
-                                        {/* IELTS 4 Criteria score card */}
                                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 16 }}>
                                             {[
                                                 { label: 'Pron', score: '7.5' },
@@ -438,7 +422,6 @@ export function SpeakingCoachDemo() {
                                             ))}
                                         </div>
 
-                                        {/* Speaking Analytics Widget */}
                                         <div style={{ background: '#f8fafc', border: '1.5px solid var(--color-border)', borderRadius: 14, padding: 14, marginBottom: 16 }}>
                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                                                 <span style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', fontWeight: 700 }}>📊 SPEAKING ANALYTICS:</span>
@@ -452,7 +435,6 @@ export function SpeakingCoachDemo() {
                                             </div>
                                         </div>
 
-                                        {/* Reset button */}
                                         <button
                                             onClick={resetDemo}
                                             style={{

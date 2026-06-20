@@ -19,6 +19,7 @@ public sealed partial class GeminiReadingCopilotService
     {
         var lastError = "Không có phản hồi từ Gemini.";
         var modelCandidates = GetModelCandidates(context);
+        const int maxRetries = 3;
 
         for (var index = 0; index < modelCandidates.Length; index++)
         {
@@ -29,99 +30,143 @@ public sealed partial class GeminiReadingCopilotService
                 userMessage,
                 includeSystemInstruction: SupportsSystemInstruction(model),
                 cancellationToken);
-            using var httpRequest = new HttpRequestMessage(
-                HttpMethod.Post,
-                $"v1beta/models/{Uri.EscapeDataString(model)}:streamGenerateContent?alt=sse")
-            {
-                Content = JsonContent.Create(requestBody, options: JsonOptions)
-            };
 
-            httpRequest.Headers.TryAddWithoutValidation("x-goog-api-key", _apiKey);
-
-            using var response = await httpClient.SendAsync(
-                httpRequest,
-                HttpCompletionOption.ResponseHeadersRead,
-                cancellationToken);
-
-            if (!response.IsSuccessStatusCode)
-            {
-                var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
-                lastError = $"Gemini copilot request failed with status {(int)response.StatusCode}: {BuildCompactErrorMessage(errorBody)}";
-
-                logger.LogWarning(
-                    "Gemini copilot model {Model} failed with status {StatusCode}. Body: {ErrorBody}",
-                    model,
-                    response.StatusCode,
-                    errorBody);
-
-                var canFallback = response.StatusCode == System.Net.HttpStatusCode.NotFound && index < modelCandidates.Length - 1;
-                if (canFallback)
-                {
-                    continue;
-                }
-
-                throw new InvalidOperationException(lastError);
-            }
-
-            await using var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            using var reader = new StreamReader(responseStream);
-
-            var eventLines = new List<string>();
-            var rawText = string.Empty;
-            string? finishReason = null;
-
-            while (!reader.EndOfStream)
+            var retryCount = 0;
+            while (true)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                var line = await reader.ReadLineAsync(cancellationToken);
-                if (line is null)
+                using var httpRequest = new HttpRequestMessage(
+                    HttpMethod.Post,
+                    $"v1beta/models/{Uri.EscapeDataString(model)}:streamGenerateContent?alt=sse")
                 {
-                    break;
-                }
+                    Content = JsonContent.Create(requestBody, options: JsonOptions)
+                };
 
-                if (line.Length == 0)
+                httpRequest.Headers.TryAddWithoutValidation("x-goog-api-key", _apiKey);
+
+                HttpResponseMessage? response = null;
+                try
                 {
-                    if (eventLines.Count == 0)
+                    response = await httpClient.SendAsync(
+                        httpRequest,
+                        HttpCompletionOption.ResponseHeadersRead,
+                        cancellationToken);
+
+                    if (response.IsSuccessStatusCode)
                     {
+                        await using var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken);
+                        using var reader = new StreamReader(responseStream);
+
+                        var eventLines = new List<string>();
+                        var rawText = string.Empty;
+                        string? finishReason = null;
+
+                        while (!reader.EndOfStream)
+                        {
+                            cancellationToken.ThrowIfCancellationRequested();
+
+                            var line = await reader.ReadLineAsync(cancellationToken);
+                            if (line is null)
+                            {
+                                break;
+                            }
+
+                            if (line.Length == 0)
+                            {
+                                if (eventLines.Count == 0)
+                                {
+                                    continue;
+                                }
+
+                                var payload = string.Join("\n", eventLines);
+                                eventLines.Clear();
+
+                                var chunk = GeminiStreamChunkParser.Extract(payload, ref rawText, JsonOptions);
+                                if (!string.IsNullOrWhiteSpace(chunk.FinishReason))
+                                {
+                                    finishReason = chunk.FinishReason;
+                                }
+
+                                continue;
+                            }
+
+                            if (line.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+                            {
+                                eventLines.Add(line[5..].TrimStart());
+                            }
+                        }
+
+                        if (eventLines.Count > 0)
+                        {
+                            var payload = string.Join("\n", eventLines);
+                            var chunk = GeminiStreamChunkParser.Extract(payload, ref rawText, JsonOptions);
+                            if (!string.IsNullOrWhiteSpace(chunk.FinishReason))
+                            {
+                                finishReason = chunk.FinishReason;
+                            }
+                        }
+
+                        var emittedText = GeminiModelOutputSanitizer.Sanitize(rawText);
+                        if (!string.IsNullOrWhiteSpace(emittedText))
+                        {
+                            await onTextDelta(emittedText, cancellationToken);
+                        }
+
+                        return new GeminiStreamPassResult(emittedText, finishReason);
+                    }
+
+                    var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
+                    lastError = $"Gemini copilot request failed with status {(int)response.StatusCode}: {BuildCompactErrorMessage(errorBody)}";
+
+                    logger.LogWarning(
+                        "Gemini copilot model {Model} failed with status {StatusCode}. Body: {ErrorBody}",
+                        model,
+                        response.StatusCode,
+                        errorBody);
+
+                    var isTransient = response.StatusCode == System.Net.HttpStatusCode.InternalServerError
+                        || (int)response.StatusCode == 429
+                        || response.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable;
+
+                    var canFallback = response.StatusCode == System.Net.HttpStatusCode.NotFound && index < modelCandidates.Length - 1;
+                    if (canFallback)
+                    {
+                        break;
+                    }
+
+                    if (isTransient && retryCount < maxRetries)
+                    {
+                        retryCount++;
+                        var delayMs = (int)Math.Pow(2, retryCount - 1) * 1000;
+                        logger.LogInformation("Transient error from Gemini. Retrying model {Model} ({RetryCount}/{MaxRetries}) after {DelayMs}ms...", model, retryCount, maxRetries, delayMs);
+                        await Task.Delay(delayMs, cancellationToken);
                         continue;
                     }
 
-                    var payload = string.Join("\n", eventLines);
-                    eventLines.Clear();
+                    throw new InvalidOperationException(lastError);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException && ex is not InvalidOperationException)
+                {
+                    lastError = $"Gemini copilot request failed due to connection error: {ex.Message}";
+                    logger.LogWarning(ex, "Connection error from Gemini model {Model}.", model);
 
-                    var chunk = GeminiStreamChunkParser.Extract(payload, ref rawText, JsonOptions);
-                    if (!string.IsNullOrWhiteSpace(chunk.FinishReason))
+                    if (retryCount < maxRetries)
                     {
-                        finishReason = chunk.FinishReason;
+                        retryCount++;
+                        var delayMs = (int)Math.Pow(2, retryCount - 1) * 1000;
+                        logger.LogInformation("Retrying model {Model} ({RetryCount}/{MaxRetries}) after {DelayMs}ms due to network error...", model, retryCount, maxRetries, delayMs);
+                        await Task.Delay(delayMs, cancellationToken);
+                        continue;
                     }
 
-                    continue;
+                    throw new InvalidOperationException(lastError, ex);
                 }
-
-                if (line.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+                finally
                 {
-                    eventLines.Add(line[5..].TrimStart());
+                    response?.Dispose();
                 }
             }
-
-            if (eventLines.Count > 0)
-            {
-                var payload = string.Join("\n", eventLines);
-                var chunk = GeminiStreamChunkParser.Extract(payload, ref rawText, JsonOptions);
-                if (!string.IsNullOrWhiteSpace(chunk.FinishReason))
-                {
-                    finishReason = chunk.FinishReason;
-                }
-            }
-
-            var emittedText = GeminiModelOutputSanitizer.Sanitize(rawText);
-            if (!string.IsNullOrWhiteSpace(emittedText))
-            {
-                await onTextDelta(emittedText, cancellationToken);
-            }
-
-            return new GeminiStreamPassResult(emittedText, finishReason);
         }
 
         throw new InvalidOperationException(lastError);
@@ -194,7 +239,7 @@ public sealed partial class GeminiReadingCopilotService
                     {
                         new
                         {
-                            text = BuildSystemInstruction()
+                            text = BuildSystemInstruction(context.SkillType)
                         }
                     }
                 }
@@ -219,7 +264,7 @@ public sealed partial class GeminiReadingCopilotService
             {
                 text = includeSystemInstruction
                     ? BuildContextEnvelope(context)
-                    : $"{BuildEmbeddedInstructionPrefix()}\n\n{BuildContextEnvelope(context)}"
+                    : $"{BuildEmbeddedInstructionPrefix(context.SkillType)}\n\n{BuildContextEnvelope(context)}"
             }
         };
 
@@ -354,11 +399,34 @@ public sealed partial class GeminiReadingCopilotService
             ? "model"
             : "user";
 
-    private static string BuildSystemInstruction() =>
+    private static string BuildSpeakingSystemInstruction() =>
+        """
+        Bạn là AI Speaking Tutor (Gia sư nói tiếng Anh) cho học viên đang xem lại bài thi IELTS Speaking đã làm.
+
+        Quy tắc bắt buộc:
+        - Bắt buộc phải viết tag [START_CHAT] ngay trước khi bắt đầu câu trả lời chính thức dành cho học viên, và câu trả lời chính thức phải bắt đầu bằng "Chào bạn," hoặc "Chào bạn!". Ví dụ: [START_CHAT] Chào bạn,...
+        - Không được viết bất kỳ từ nào sau tag [START_CHAT] mà không thuộc về câu trả lời chính thức dành cho học viên.
+        - Không được sử dụng cụm từ "Chào bạn" trong bất kỳ phần suy nghĩ nội bộ nào trước tag [START_CHAT].
+        - Sử dụng REVIEW_DOCUMENT, CURRENT_LOCATION, CURRENT_FOCUS, SELECTED_TEXT làm ngữ cảnh chính của cuộc hội thoại để hiểu câu hỏi của đề bài, câu trả lời và feedback hiện tại của học viên.
+        - Với tư cách là một giáo viên/gia sư tiếng Anh giàu kinh nghiệm, bạn được phép và nên sử dụng kiến thức tiếng Anh của mình để giải thích từ vựng, ngữ pháp, collocations và cung cấp các câu trả lời mẫu (sample answers) tự nhiên, chất lượng cao để giúp học viên cải thiện điểm số.
+        - Trả lời bằng tiếng Việt, giọng gia sư thân thiện, rõ ràng, tự nhiên và chi tiết.
+        - Khi học viên yêu cầu câu trả lời mẫu hoặc hướng dẫn cách trả lời cho một câu hỏi Speaking cụ thể, hãy cung cấp các ví dụ mẫu (Sample Answers) ở nhiều cấp độ (đơn giản, trung bình, nâng cấp) dựa trên gợi ý sửa lỗi (Improvements) và tiêu chí IELTS của câu hỏi đó.
+        - Nếu có SELECTED_TEXT hoặc CURRENT_FOCUS, hãy ưu tiên bám vào đó trước để giải thích lỗi phát âm, từ vựng hoặc cách ngắt nghỉ của học viên.
+        - Khi giải thích, hãy phân tích rõ ràng: lỗi sai của học viên (nếu có), từ vựng/cấu trúc hay cần học, và cách liên kết ý bằng các từ nối (because, so, although, however...).
+        - Trình bày câu trả lời rõ ràng, dễ đọc: sử dụng gạch đầu dòng, định dạng in đậm để nhấn mạnh cụm từ hay, phân đoạn rõ ràng cho từng ý.
+        - Không được in ra suy nghĩ nội bộ, chain-of-thought, scratchpad hoặc ghi chú phân tích nội bộ bên ngoài hoặc sau tag [START_CHAT]. Trả lời trực tiếp vào nội dung người học cần.
+        - Không dùng LaTeX hoặc ký hiệu toán trong $...$ như $\rightarrow$. Nếu cần viết mũi tên thì dùng ->.
+        """;
+
+    private static string BuildDefaultSystemInstruction() =>
         """
         Bạn là AI Copilot cho học viên đang xem lại toàn bộ bài đã làm.
 
         Quy tắc bắt buộc:
+        - Bắt buộc phải viết tag [START_CHAT] ngay trước khi bắt đầu câu trả lời chính thức dành cho học viên, và câu trả lời chính thức phải bắt đầu bằng "Chào bạn," hoặc "Chào bạn!". Ví dụ: [START_CHAT] Chào bạn,...
+        - Không được viết bất kỳ từ nào sau tag [START_CHAT] mà không thuộc về câu trả lời chính thức dành cho học viên.
+        - Không được sử dụng cụm từ "Chào bạn" trong bất kỳ phần suy nghĩ nội bộ nào trước tag [START_CHAT].
+        - Không được in ra suy nghĩ nội bộ, chain-of-thought, scratchpad hoặc ghi chú phân tích nội bộ bên ngoài hoặc sau tag [START_CHAT]. Trả lời trực tiếp vào nội dung người học cần.
         - Chỉ được dùng REVIEW_DOCUMENT, CURRENT_LOCATION, CURRENT_FOCUS, SELECTED_TEXT và lịch sử chat trong ngữ cảnh đã cung cấp.
         - Không giải thích kiến thức ngoài lề, không dùng kiến thức nền ngoài bài review.
         - Nếu người dùng hỏi điều không có trong bài review, phải nói rõ bài review không cung cấp thông tin đó.
@@ -377,7 +445,7 @@ public sealed partial class GeminiReadingCopilotService
         - Với Reading một câu cụ thể, hãy trả lời tự nhiên như gia sư nhưng thường nên có: đáp án đúng; chỗ đọc trong passage; câu/cụm tiếng Anh làm bằng chứng; giải thích mối nối paraphrase giữa đề/options và passage; vì sao lựa chọn của học viên chưa khớp nếu học viên làm sai.
         - Nhãn `[Đoạn 3, câu 2]` trong ngữ cảnh Reading được tạo theo cùng cách FE hiển thị nhãn "Đoạn 3"; các tiêu đề phụ như `Project:` không tính là đoạn. Khi dùng nhãn này, không tự đếm lại đoạn theo cách khác.
         - Nếu passage có nhãn dạng `[Đoạn 3, câu 2]`, hãy dùng nhãn đó khi nó giúp học viên tìm lại chỗ đọc. Trích đúng câu/cụm tiếng Anh then chốt ngay cạnh nhãn, nhưng không cần ép mọi câu trả lời thành checklist.
-        - Nếu bằng chứng nằm rải qua nhiều câu hoặc cần suy luận từ vài cụm trong cùng đoạn, hãy giải thích mạch suy luận đó thay vì chỉ bám một câu máy móc.
+        - Nếu bằng chứng nằm rải qua nhiều câu hoặc cần suy luận từ vài cụm trong cùng đoạn, hãy giải thích mạch suy luận đó thay vị chỉ bám một câu máy móc.
         - Với Reading dạng matching/MCQ có đáp án là chữ cái, phải giải thích cả nội dung của option đúng/sai, không chỉ nhắc chữ cái. Nếu câu hỏi hỏi "chỗ nào để trả lời", ưu tiên chỉ đường đọc và cụm paraphrase giữa câu hỏi, option và passage trước khi đưa mẹo chung.
         - Nếu không tìm thấy bằng chứng Reading thật rõ trong REVIEW_DOCUMENT/CURRENT_LOCATION/CURRENT_FOCUS, hãy nói "mình chưa thấy bằng chứng đủ rõ trong phần review hiện có" và nêu thông tin còn thiếu; không được đoán hoặc bịa vị trí.
         - Nếu CURRENT_FOCUS của Listening đã kèm transcript window của một câu, hãy dùng đúng cửa sổ transcript đó để giải thích; không được nói transcript bị thiếu nếu bằng chứng đã có trong cửa sổ này.
@@ -406,11 +474,49 @@ public sealed partial class GeminiReadingCopilotService
         - Chỉ dùng in đậm khi thật sự cần nhấn mạnh 1 cụm ngắn; nếu không cần thì viết văn bản thường.
         """;
 
-    private static string BuildEmbeddedInstructionPrefix() =>
+    private static string BuildWritingSystemInstruction() =>
+        """
+        Bạn là AI Writing Tutor (Gia sư viết tiếng Anh) cho học viên đang xem lại bài thi IELTS Writing (Task 1 hoặc Task 2) đã làm.
+
+        Quy tắc bắt buộc:
+        - Bắt buộc phải viết tag [START_CHAT] ngay trước khi bắt đầu câu trả lời chính thức dành cho học viên, và câu trả lời chính thức phải bắt đầu bằng "Chào bạn," hoặc "Chào bạn!". Ví dụ: [START_CHAT] Chào bạn,...
+        - Không được viết bất kỳ từ nào sau tag [START_CHAT] mà không thuộc về câu trả lời chính thức dành cho học viên.
+        - Không được sử dụng cụm từ "Chào bạn" trong bất kỳ phần suy nghĩ nội bộ nào trước tag [START_CHAT].
+        - Không được in ra suy nghĩ nội bộ, chain-of-thought, scratchpad hoặc ghi chú phân tích nội bộ bên ngoài hoặc sau tag [START_CHAT]. Trả lời trực tiếp vào nội dung người học cần.
+        - Sử dụng REVIEW_DOCUMENT, CURRENT_LOCATION, CURRENT_FOCUS, SELECTED_TEXT làm ngữ cảnh chính của cuộc hội thoại để hiểu đề bài, câu trả lời và feedback hiện tại của học viên.
+        - Trả lời bằng tiếng Việt, giọng gia sư thân thiện, rõ ràng, tự nhiên và chi tiết.
+        - Tập trung cao độ vào việc hướng dẫn sửa lỗi, nâng cấp câu và hướng dẫn cách viết cho học viên. Tránh bị phân tâm bởi các quy tắc của kỹ năng đọc/nghe (như tìm bằng chứng trong bài đọc hay ghi timestamp audio).
+        - Đối với Writing Task 1:
+          - Tách rõ 2 phần nếu cần: (1) hướng dẫn cấu trúc/cách viết chung; (2) nhận xét dựa trên dữ liệu thật nhìn thấy trong hình. Không trộn phần hướng dẫn chung với số liệu tự suy đoán.
+          - Tuyệt đối không được bịa số liệu, nhãn, xu hướng hoặc chi tiết không nhìn thấy rõ trong ảnh biểu đồ/bảng. Đối chiếu với dữ liệu cấu trúc (nếu có) là nguồn số liệu chính xác nhất.
+        - Đối với Writing Task 2:
+          - Định hướng sửa lỗi luận điểm, cấu trúc bài viết, tính liên kết mạch lạc (Coherence and Cohesion).
+        - Khi phân tích lỗi sai trong bài viết của học viên, hãy:
+          - Chỉ rõ từ/câu sai ngữ pháp, dùng từ chưa tự nhiên hoặc bị ảnh hưởng bởi thói quen dịch Word-by-Word (Vietlish).
+          - Cung cấp câu viết sửa lại (Rewrite) trôi chảy hơn và giải thích ngắn gọn tại sao câu đó lại tốt hơn.
+        - Hướng dẫn học viên cải thiện dựa trên 4 tiêu chí chấm điểm IELTS Writing: Task Response/Achievement, Coherence and Cohesion, Lexical Resource, Grammatical Range and Accuracy.
+        - Trình bày câu trả lời rõ ràng, dễ đọc: sử dụng gạch đầu dòng, định dạng in đậm để nhấn mạnh các từ vựng/cấu trúc hay, phân đoạn rõ ràng cho từng ý.
+        - Không dùng LaTeX hoặc ký hiệu toán trong $...$ như $\rightarrow$. Nếu cần viết mũi tên thì dùng ->.
+        """;
+
+    private static string BuildSystemInstruction(string? skillType)
+    {
+        if (string.Equals(skillType?.Trim(), "SPEAKING", StringComparison.OrdinalIgnoreCase))
+        {
+            return BuildSpeakingSystemInstruction();
+        }
+        if (string.Equals(skillType?.Trim(), "WRITING", StringComparison.OrdinalIgnoreCase))
+        {
+            return BuildWritingSystemInstruction();
+        }
+        return BuildDefaultSystemInstruction();
+    }
+
+    private static string BuildEmbeddedInstructionPrefix(string? skillType) =>
         $"""
         Chỉ dẫn hệ thống bắt buộc:
 
-        {BuildSystemInstruction()}
+        {BuildSystemInstruction(skillType)}
         """;
 
     private static string BuildContextEnvelope(CopilotChatContextDto context)

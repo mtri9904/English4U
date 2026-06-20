@@ -44,7 +44,6 @@ export function ExamSimulatorShowcase() {
                             🖥️ Exam Simulator
                         </span>
                         <h2 style={{ 
-                            fontFamily: 'var(--font-sans)', 
                             fontSize: 'clamp(2rem, 3.5vw, 2.75rem)', 
                             fontWeight: 800, 
                             marginBottom: 20, 
@@ -216,7 +215,7 @@ export function ExamSimulatorShowcase() {
 
                                         {activePassage === 1 && (
                                             <div>
-                                                <h3 style={{ fontFamily: 'var(--font-sans)', fontSize: '1.15rem', fontWeight: 800, color: 'var(--color-text-primary)', marginBottom: 12 }}>
+                                                <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--color-text-primary)', marginBottom: 12 }}>
                                                     The Evolution of Language Acquisition (Passage 1)
                                                 </h3>
                                                 <p style={{ marginBottom: 12 }}>
@@ -229,7 +228,7 @@ export function ExamSimulatorShowcase() {
                                         )}
                                         {activePassage === 2 && (
                                             <div>
-                                                <h3 style={{ fontFamily: 'var(--font-sans)', fontSize: '1.15rem', fontWeight: 800, color: 'var(--color-text-primary)', marginBottom: 12 }}>
+                                                <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--color-text-primary)', marginBottom: 12 }}>
                                                     The Secret Life of Coral Reefs (Passage 2)
                                                 </h3>
                                                 <p style={{ marginBottom: 12 }}>
@@ -242,7 +241,7 @@ export function ExamSimulatorShowcase() {
                                         )}
                                         {activePassage === 3 && (
                                             <div>
-                                                <h3 style={{ fontFamily: 'var(--font-sans)', fontSize: '1.15rem', fontWeight: 800, color: 'var(--color-text-primary)', marginBottom: 12 }}>
+                                                <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--color-text-primary)', marginBottom: 12 }}>
                                                     Artificial Intelligence in Modern Medicine (Passage 3)
                                                 </h3>
                                                 <p style={{ marginBottom: 12 }}>

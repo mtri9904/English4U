@@ -8,9 +8,8 @@ export const AntdProvider = ({ children }: { children: React.ReactNode }) => {
             <ConfigProvider
                 theme={{
                     token: {
-                        // Customize your primary color and other tokens here
                         colorPrimary: '#1677ff',
-                        fontFamily: 'Inter, sans-serif',
+                        fontFamily: 'var(--font-sans)',
                     },
                 }}
             >

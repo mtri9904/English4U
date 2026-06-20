@@ -1,11 +1,13 @@
 import { Cloudinary } from '@cloudinary/url-gen';
 
+const CLOUD_NAME = (import.meta as any).env.VITE_CLOUDINARY_CLOUD_NAME || 'dbi95qopt';
+const UPLOAD_PRESET = (import.meta as any).env.VITE_CLOUDINARY_UPLOAD_PRESET || 'english4u_unsigned';
+
 export const cloudinary = new Cloudinary({
-    cloud: { cloudName: 'dbi95qopt' },
+    cloud: { cloudName: CLOUD_NAME },
 });
 
-const CLOUDINARY_UPLOAD_URL = 'https://api.cloudinary.com/v1_1/dbi95qopt';
-const UPLOAD_PRESET = 'english4u_unsigned';
+const CLOUDINARY_UPLOAD_URL = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}`;
 
 export async function uploadToCloudinary(
     file: File,

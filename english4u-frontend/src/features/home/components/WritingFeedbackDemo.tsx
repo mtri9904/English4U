@@ -106,8 +106,6 @@ export function WritingFeedbackDemo() {
             <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, background: 'linear-gradient(90deg, transparent, var(--color-border-strong), transparent)' }} />
             <div className="container-app">
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 48, alignItems: 'center' }}>
-                    
-                    {/* Left Column: Description & Feature Details */}
                     <FadeIn>
                         <div>
                             <span style={{ 
@@ -125,7 +123,6 @@ export function WritingFeedbackDemo() {
                                 ✏️ AI Writing Coach
                             </span>
                             <h2 style={{ 
-                                fontFamily: 'var(--font-sans)', 
                                 fontSize: 'clamp(2rem, 3.5vw, 2.75rem)', 
                                 fontWeight: 800, 
                                 marginBottom: 20, 
@@ -169,7 +166,6 @@ export function WritingFeedbackDemo() {
                         </div>
                     </FadeIn>
 
-                    {/* Right Column: Split Screen Workspace Mockup */}
                     <FadeIn delay={150}>
                         <div style={{
                             background: '#ffffff',
@@ -179,8 +175,6 @@ export function WritingFeedbackDemo() {
                             position: 'relative',
                             overflow: 'hidden'
                         }}>
-                            
-                            {/* Editor Header */}
                             <div style={{ 
                                 padding: '16px 20px', 
                                 borderBottom: '1px solid var(--color-border)', 
@@ -204,10 +198,7 @@ export function WritingFeedbackDemo() {
                                 </div>
                             </div>
 
-                            {/* Split Screen Area */}
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', minHeight: 380, position: 'relative' }}>
-                                
-                                {/* Left Side: Question Prompt & Rubrics info */}
                                 <div style={{ 
                                     padding: '20px', 
                                     background: '#fafbfd', 
@@ -237,10 +228,7 @@ export function WritingFeedbackDemo() {
                                     </div>
                                 </div>
 
-                                {/* Right Side: Student Input & Highlights */}
                                 <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', position: 'relative' }}>
-                                    
-                                    {/* Content Editor */}
                                     <div style={{ fontSize: '0.9375rem', lineHeight: 1.8, color: 'var(--color-text-primary)', overflowY: 'auto', flex: 1, minHeight: 200 }}>
                                         {state === 'idle' && (
                                             <textarea 
@@ -390,7 +378,6 @@ export function WritingFeedbackDemo() {
                                         )}
                                     </div>
 
-                                    {/* Editor Stats Footer */}
                                     {state !== 'checking' && (
                                         <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--color-border)', paddingTop: 10, marginTop: 10, fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>
                                             <div>Words: <strong>{wordCount}</strong></div>
@@ -402,7 +389,6 @@ export function WritingFeedbackDemo() {
 
                                 </div>
 
-                                {/* Mock AI Review Copilot Drawer */}
                                 {showCopilot && (
                                     <div className="copilot-drawer" style={{
                                         position: 'absolute',
@@ -419,7 +405,6 @@ export function WritingFeedbackDemo() {
                                         zIndex: 10,
                                         animation: 'slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1)'
                                     }}>
-                                        {/* Drawer Header */}
                                         <div style={{ 
                                             padding: '12px 16px', 
                                             borderBottom: '1px solid var(--color-border)',
@@ -445,7 +430,6 @@ export function WritingFeedbackDemo() {
                                             </button>
                                         </div>
 
-                                        {/* Drawer Messages */}
                                         <div style={{ flex: 1, padding: '16px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
                                             {chatMessages.map((msg, i) => (
                                                 <div 
@@ -474,7 +458,6 @@ export function WritingFeedbackDemo() {
                                             )}
                                         </div>
 
-                                        {/* Suggested Questions & Quick Actions */}
                                         <div style={{ padding: '12px 16px', borderTop: '1px solid var(--color-border)', background: '#fafbfd' }}>
                                             {state === 'scored' && !isTyping && (
                                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -529,7 +512,6 @@ export function WritingFeedbackDemo() {
 
                             </div>
 
-                            {/* Scoring Scorecard & Action Footer */}
                             <div style={{ 
                                 padding: '16px 20px', 
                                 borderTop: '1px solid var(--color-border)', 
@@ -567,7 +549,6 @@ export function WritingFeedbackDemo() {
 
                                 {(state === 'scored' || state === 'corrected') && (
                                     <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 12 }}>
-                                        {/* IELTS 4 Criteria score card */}
                                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
                                             <div style={{ background: '#ffffff', border: '1px solid var(--color-border)', borderRadius: 10, padding: '8px 4px', textAlign: 'center' }}>
                                                 <div style={{ fontSize: '0.625rem', color: 'var(--color-text-muted)', fontWeight: 700 }}>OVERALL</div>
@@ -588,7 +569,6 @@ export function WritingFeedbackDemo() {
                                             ))}
                                         </div>
 
-                                        {/* Action buttons */}
                                         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 4 }}>
                                             <button 
                                                 onClick={resetDemo}

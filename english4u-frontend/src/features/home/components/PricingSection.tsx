@@ -29,7 +29,7 @@ export function PricingSection() {
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'rgba(255,255,255,0.8)', border: '1.5px solid var(--color-border)', borderRadius: 'var(--radius-full)', padding: 4 }}>
                             {(['monthly', 'yearly'] as const).map((cycle) => (
                                 <button key={cycle} onClick={() => setBilling(cycle)}
-                                    style={{ padding: '7px 20px', borderRadius: 'var(--radius-full)', border: 'none', cursor: 'pointer', fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: '0.875rem', transition: 'all 0.2s', background: billing === cycle ? 'var(--color-primary)' : 'transparent', color: billing === cycle ? '#fff' : 'var(--color-text-secondary)' }}>
+                                    style={{ padding: '7px 20px', borderRadius: 'var(--radius-full)', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem', transition: 'all 0.2s', background: billing === cycle ? 'var(--color-primary)' : 'transparent', color: billing === cycle ? '#fff' : 'var(--color-text-secondary)' }}>
                                     {cycle === 'monthly' ? 'Theo tháng' : <>Theo năm <span style={{ fontSize: '0.6875rem', background: 'rgba(250,207,57,0.9)', color: '#7a4800', padding: '1px 6px', borderRadius: 99, fontWeight: 700 }}>−25%</span></>}
                                 </button>
                             ))}
@@ -68,11 +68,11 @@ function PlanCard({ plan, billing }: { plan: Plan; billing: BillingCycle }) {
                     <div style={{ width: 36, height: 36, borderRadius: 10, background: `${plan.color}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>
                         {plan.id === 'basic' ? '🌱' : plan.id === 'pro' ? '⚡' : '👑'}
                     </div>
-                    <span style={{ fontSize: '1.125rem', fontWeight: 700, color: 'var(--color-text-primary)', fontFamily: 'var(--font-sans)' }}>{plan.name}</span>
+                    <span style={{ fontSize: '1.125rem', fontWeight: 700, color: 'var(--color-text-primary)' }}>{plan.name}</span>
                 </div>
                 <div style={{ marginBottom: 16 }}>
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-                        <span style={{ fontSize: '2.5rem', fontWeight: 800, color: isPopular ? plan.color : 'var(--color-text-primary)', fontFamily: 'var(--font-sans)', lineHeight: 1 }}>{price === 0 ? 'Miễn phí' : `$${price}`}</span>
+                        <span style={{ fontSize: '2.5rem', fontWeight: 800, color: isPopular ? plan.color : 'var(--color-text-primary)', lineHeight: 1 }}>{price === 0 ? 'Miễn phí' : `$${price}`}</span>
                         {price > 0 && <span style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)', fontWeight: 500 }}>/ tháng</span>}
                     </div>
                     {billing === 'yearly' && price > 0 && <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', marginTop: 4 }}>Thanh toán ${price * 12}/năm</div>}
@@ -87,7 +87,7 @@ function PlanCard({ plan, billing }: { plan: Plan; billing: BillingCycle }) {
                         </li>
                     ))}
                 </ul>
-                <button style={{ width: '100%', padding: '12px 24px', borderRadius: 12, border: isPopular ? 'none' : `1.5px solid ${plan.color}40`, background: isPopular ? `linear-gradient(135deg, ${plan.color} 0%, #0c5a92 100%)` : 'transparent', color: isPopular ? '#fff' : plan.color, fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: '0.9375rem', cursor: 'pointer', transition: 'all 0.2s', boxShadow: isPopular ? `0 8px 24px ${plan.color}40` : 'none', marginTop: 'auto' }}
+                <button style={{ width: '100%', padding: '12px 24px', borderRadius: 12, border: isPopular ? 'none' : `1.5px solid ${plan.color}40`, background: isPopular ? `linear-gradient(135deg, ${plan.color} 0%, #0c5a92 100%)` : 'transparent', color: isPopular ? '#fff' : plan.color, fontWeight: 700, fontSize: '0.9375rem', cursor: 'pointer', transition: 'all 0.2s', boxShadow: isPopular ? `0 8px 24px ${plan.color}40` : 'none', marginTop: 'auto' }}
                     onMouseEnter={(e) => { if (!isPopular) e.currentTarget.style.background = `${plan.color}10`; else e.currentTarget.style.transform = 'translateY(-1px)' }}
                     onMouseLeave={(e) => { if (!isPopular) e.currentTarget.style.background = 'transparent'; else e.currentTarget.style.transform = 'translateY(0)' }}>
                     {plan.cta} →

@@ -237,7 +237,7 @@ export const ClientLayout: React.FC = () => {
     );
 
     return (
-        <Layout style={{ minHeight: '100vh', fontFamily: 'var(--font-sans)' }}>
+        <Layout style={{ minHeight: '100vh' }}>
             <Sider
                 trigger={null}
                 collapsible

@@ -27,12 +27,11 @@ const FAQ_LIST = [
 
 export function ContactPage() {
     return (
-        <div style={{ minHeight: '100vh', background: 'var(--color-bg)', fontFamily: 'var(--font-sans)' }}>
+        <div style={{ minHeight: '100vh', background: 'var(--color-bg)' }}>
             <LandingHeader />
 
             <main style={{ paddingTop: '120px', paddingBottom: '80px' }}>
                 <div className="container-app">
-                    {/* Header */}
                     <div style={{ textAlign: 'center', marginBottom: '64px' }}>
                         <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: '2.5rem', fontWeight: 800, color: 'var(--color-text-primary)', marginBottom: '16px' }}>
                             Liên hệ với chúng tôi
@@ -42,10 +41,8 @@ export function ContactPage() {
                         </p>
                     </div>
 
-                    {/* Contact Grid */}
                     <div style={{ display: 'grid', gridTemplateColumns: 'minmax(350px, 1fr) 1.5fr', gap: '32px', marginBottom: '100px', alignItems: 'flex-start' }}>
 
-                        {/* Info Section */}
                         <div style={{ background: '#fff', borderRadius: '24px', padding: '40px', display: 'flex', flexDirection: 'column', gap: '24px', boxShadow: '0 12px 40px rgba(0,0,0,0.04)' }}>
                             <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--color-text-primary)' }}>Thông tin liên hệ</h2>
 
@@ -87,7 +84,6 @@ export function ContactPage() {
                                 </div>
                             </div>
 
-                            {/* Map */}
                             <div style={{ marginTop: '8px', borderRadius: '16px', overflow: 'hidden', height: '220px', background: '#e2e8f0', position: 'relative' }}>
                                 <iframe
                                     src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3918.427671239648!2d106.7828032!3d10.8550426!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3175276edaf178dd%3A0xe54c1fc9943fcfd4!2zMTAvODBjIFNvbmcgSMOgbmggeGEgbOG7mSBIw6AgTuG7mWksIFBoxrDhu51uZyBUw6JuIFBow7osIFRo4bunIMSQ4bupYywgVGjDoG5oIHBo4buRIEjhu5MgQ2jDrSBNaW5oLCBWaeG7h3QgTmFt!5e0!3m2!1svi!2s!4v1700000000000!5m2!1svi!2s"
@@ -101,7 +97,6 @@ export function ContactPage() {
                             </div>
                         </div>
 
-                        {/* Form Section */}
                         <div style={{ background: '#fff', borderRadius: '24px', padding: '40px', boxShadow: '0 12px 40px rgba(0,0,0,0.04)' }}>
                             <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: '24px' }}>Gửi lời nhắn cho chúng tôi</h2>
 
@@ -109,22 +104,22 @@ export function ContactPage() {
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
                                     <div>
                                         <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--color-text-primary)', marginBottom: '8px' }}>Họ và tên</label>
-                                        <input type="text" placeholder="Nguyễn Văn A" style={{ width: '100%', padding: '12px 16px', border: '1px solid var(--color-border)', borderRadius: '10px', fontSize: '0.9375rem', outline: 'none', transition: 'border 0.2s', fontFamily: 'var(--font-sans)' }} onFocus={e => e.target.style.borderColor = 'var(--color-primary)'} onBlur={e => e.target.style.borderColor = 'var(--color-border)'} />
+                                        <input type="text" placeholder="Nguyễn Văn A" style={{ width: '100%', padding: '12px 16px', border: '1px solid var(--color-border)', borderRadius: '10px', fontSize: '0.9375rem', outline: 'none', transition: 'border 0.2s' }} onFocus={e => e.target.style.borderColor = 'var(--color-primary)'} onBlur={e => e.target.style.borderColor = 'var(--color-border)'} />
                                     </div>
                                     <div>
                                         <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--color-text-primary)', marginBottom: '8px' }}>Số điện thoại</label>
-                                        <input type="tel" placeholder="090 123 4567" style={{ width: '100%', padding: '12px 16px', border: '1px solid var(--color-border)', borderRadius: '10px', fontSize: '0.9375rem', outline: 'none', transition: 'border 0.2s', fontFamily: 'var(--font-sans)' }} onFocus={e => e.target.style.borderColor = 'var(--color-primary)'} onBlur={e => e.target.style.borderColor = 'var(--color-border)'} />
+                                        <input type="tel" placeholder="090 123 4567" style={{ width: '100%', padding: '12px 16px', border: '1px solid var(--color-border)', borderRadius: '10px', fontSize: '0.9375rem', outline: 'none', transition: 'border 0.2s' }} onFocus={e => e.target.style.borderColor = 'var(--color-primary)'} onBlur={e => e.target.style.borderColor = 'var(--color-border)'} />
                                     </div>
                                 </div>
                                 <div>
                                     <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--color-text-primary)', marginBottom: '8px' }}>Email</label>
-                                    <input type="email" placeholder="example@gmail.com" style={{ width: '100%', padding: '12px 16px', border: '1px solid var(--color-border)', borderRadius: '10px', fontSize: '0.9375rem', outline: 'none', transition: 'border 0.2s', fontFamily: 'var(--font-sans)' }} onFocus={e => e.target.style.borderColor = 'var(--color-primary)'} onBlur={e => e.target.style.borderColor = 'var(--color-border)'} />
+                                    <input type="email" placeholder="example@gmail.com" style={{ width: '100%', padding: '12px 16px', border: '1px solid var(--color-border)', borderRadius: '10px', fontSize: '0.9375rem', outline: 'none', transition: 'border 0.2s' }} onFocus={e => e.target.style.borderColor = 'var(--color-primary)'} onBlur={e => e.target.style.borderColor = 'var(--color-border)'} />
                                 </div>
                                 <div>
                                     <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--color-text-primary)', marginBottom: '8px' }}>Nội dung tin nhắn</label>
-                                    <textarea placeholder="Vui lòng nhập nội dung chi tiết..." rows={5} style={{ width: '100%', padding: '12px 16px', border: '1px solid var(--color-border)', borderRadius: '10px', fontSize: '0.9375rem', outline: 'none', transition: 'border 0.2s', resize: 'vertical', fontFamily: 'var(--font-sans)' }} onFocus={e => e.target.style.borderColor = 'var(--color-primary)'} onBlur={e => e.target.style.borderColor = 'var(--color-border)'}></textarea>
+                                    <textarea placeholder="Vui lòng nhập nội dung chi tiết..." rows={5} style={{ width: '100%', padding: '12px 16px', border: '1px solid var(--color-border)', borderRadius: '10px', fontSize: '0.9375rem', outline: 'none', transition: 'border 0.2s', resize: 'vertical' }} onFocus={e => e.target.style.borderColor = 'var(--color-primary)'} onBlur={e => e.target.style.borderColor = 'var(--color-border)'}></textarea>
                                 </div>
-                                <button type="submit" style={{ width: '100%', padding: '14px', background: '#3b82f6', color: '#fff', fontWeight: 600, fontSize: '1rem', borderRadius: '10px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', transition: 'all 0.2s', marginTop: '8px', fontFamily: 'var(--font-sans)' }}
+                                <button type="submit" style={{ width: '100%', padding: '14px', background: '#3b82f6', color: '#fff', fontWeight: 600, fontSize: '1rem', borderRadius: '10px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', transition: 'all 0.2s', marginTop: '8px' }}
                                     onMouseEnter={e => e.currentTarget.style.background = '#2563eb'}
                                     onMouseLeave={e => e.currentTarget.style.background = '#3b82f6'}
                                 >
@@ -134,7 +129,6 @@ export function ContactPage() {
                         </div>
                     </div>
 
-                    {/* FAQ Section */}
                     <div style={{ maxWidth: '800px', margin: '0 auto' }}>
                         <div style={{ textAlign: 'center', marginBottom: '40px' }}>
                             <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: '2rem', fontWeight: 800, color: 'var(--color-text-primary)', marginBottom: '12px' }}>

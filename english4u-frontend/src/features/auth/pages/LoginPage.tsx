@@ -1,14 +1,12 @@
 import { Link } from 'react-router-dom'
-import { Globe, ChevronDown } from 'lucide-react'
 import { LoginForm } from '../components/LoginForm'
 import { RegisterForm } from '../components/RegisterForm'
 import { ForgotForm } from '../components/ForgotForm'
 
 export function LoginPage({ mode = 'login' }: { mode?: 'login' | 'register' | 'forgot' }) {
     return (
-        <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: '#fff', fontFamily: 'var(--font-sans)' }}>
+        <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', backgroundColor: '#fff' }}>
 
-            {/* Left Panel - Hidden on small screens */}
             <div style={{
                 flex: 1,
                 maxWidth: '50%',
@@ -19,7 +17,7 @@ export function LoginPage({ mode = 'login' }: { mode?: 'login' | 'register' | 'f
                 position: 'relative'
             }} className="hidden lg:flex">
 
-                {/* Logo */}
+
                 <Link to="/" style={{ display: 'inline-flex', width: '40px', height: '40px', borderRadius: '10px', alignItems: 'center', justifyContent: 'center', textDecoration: 'none', marginBottom: '40px' }}>
                     <img
                         src="logo/Logo.png"
@@ -32,7 +30,7 @@ export function LoginPage({ mode = 'login' }: { mode?: 'login' | 'register' | 'f
                 </Link>
 
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', maxWidth: '480px', margin: '0 auto', width: '100%' }}>
-                    {/* Image Container */}
+
                     <div style={{
                         background: '#fff',
                         padding: '10px',
@@ -56,7 +54,7 @@ export function LoginPage({ mode = 'login' }: { mode?: 'login' | 'register' | 'f
                         Khám phá thế giới bài học đa dạng, luyện tập với các công cụ thông minh và theo dõi tiến trình học tập của bạn từng bước một với nền tảng hỗ trợ trí tuệ nhân tạo của chúng tôi.
                     </p>
 
-                    {/* Social Proof */}
+
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: 'auto' }}>
                         <div style={{ display: 'flex', marginLeft: '10px' }}>
                             {['https://i.pravatar.cc/150?img=11', 'https://i.pravatar.cc/150?img=12', 'https://i.pravatar.cc/150?img=13'].map((img, i) => (
@@ -70,23 +68,14 @@ export function LoginPage({ mode = 'login' }: { mode?: 'login' | 'register' | 'f
                 </div>
             </div>
 
-            {/* Right Panel - Form */}
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '40px 24px', position: 'relative' }}>
+
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '40px 24px', position: 'relative', overflowY: 'auto' }}>
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', maxWidth: '440px', margin: '0 auto', width: '100%' }}>
 
                     {mode === 'login' && <LoginForm />}
                     {mode === 'register' && <RegisterForm />}
                     {mode === 'forgot' && <ForgotForm />}
 
-                </div>
-
-                {/* Footer / Language Selector */}
-                <div style={{ marginTop: 'auto', display: 'flex', justifyContent: 'center', paddingTop: '40px' }}>
-                    <button style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.875rem', color: 'var(--color-text-muted)', background: 'none', border: 'none', cursor: 'pointer' }}>
-                        <Globe size={16} />
-                        English (US)
-                        <ChevronDown size={14} />
-                    </button>
                 </div>
             </div>
         </div>

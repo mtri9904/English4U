@@ -2,10 +2,10 @@ import { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Drawer, Skeleton, Empty, Avatar } from 'antd';
 import {
-    Trophy, Star, Flame, Zap, Award, Crown,
+    Trophy, Award, Crown,
     TrendingUp, Users, Search, ChevronLeft,
-    ChevronRight, BarChart2, Target, Clock,
-    Medal, RefreshCw,
+    ChevronRight, BarChart2, Clock,
+    RefreshCw,
 } from 'lucide-react';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -14,7 +14,7 @@ import {
 import { useAdminUsersQuery, useAdminUserDetailQuery } from '@/features/admin/api/user.api';
 import { formatDateTimeToMinute } from '@/shared/lib/dateTime';
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+
 const PAGE_SIZE = 10;
 
 const RANK_COLORS = [
@@ -25,12 +25,9 @@ const RANK_COLORS = [
 
 const LEVEL_COLORS = ['#6366f1', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
-const SKILL_COLORS: Record<string, string> = {
-    Reading: '#6366f1', Listening: '#06b6d4',
-    Writing: '#f59e0b', Speaking: '#ec4899', FullTest: '#10b981',
-};
 
-// ─── Level utils ──────────────────────────────────────────────────────────────
+
+
 function levelLabel(level: string | null) {
     if (!level) return { emoji: '🌱', label: 'Chưa xác định', color: '#94a3b8', bg: '#f1f5f9' };
     const lvlMap: Record<string, { emoji: string; label: string; color: string; bg: string }> = {
@@ -44,17 +41,17 @@ function levelLabel(level: string | null) {
     return lvlMap[level] ?? { emoji: '📖', label: level, color: '#475569', bg: '#f1f5f9' };
 }
 
-// ─── Animation variants ───────────────────────────────────────────────────────
+
 const container = {
     hidden: { opacity: 0 },
     show:   { opacity: 1, transition: { staggerChildren: 0.06 } },
-};
+} as const;
 const item = {
     hidden: { opacity: 0, y: 20 },
     show:   { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 260, damping: 20 } },
-};
+} as const;
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+
 function scoreColor(s: number) {
     if (s >= 8) return '#10b981';
     if (s >= 6.5) return '#6366f1';
@@ -62,7 +59,7 @@ function scoreColor(s: number) {
     return '#ef4444';
 }
 
-// ─── Mini Stat Card ───────────────────────────────────────────────────────────
+
 function StatCard({ icon: Icon, label, value, gradient }: { icon: React.ElementType; label: string; value: string | number; gradient: string }) {
     return (
         <motion.div variants={item} style={{
@@ -87,7 +84,7 @@ function StatCard({ icon: Icon, label, value, gradient }: { icon: React.ElementT
     );
 }
 
-// ─── Main Page ────────────────────────────────────────────────────────────────
+
 export const GamificationPage = () => {
     const [search, setSearch]       = useState('');
     const [page, setPage]           = useState(1);
@@ -107,7 +104,7 @@ export const GamificationPage = () => {
 
     const users = pagedData?.items ?? [];
 
-    // ── Derived stats ──
+
     const stats = useMemo(() => {
         const withScore = users.filter(u => u.averageScore > 0);
         const avgBand   = withScore.length ? withScore.reduce((s, u) => s + u.averageScore, 0) / withScore.length : 0;
@@ -125,11 +122,11 @@ export const GamificationPage = () => {
             .map(([name, count]) => ({ name, count })),
         [stats.levelMap]);
 
-    // ── Paginate ──
+
     const totalPages = Math.max(1, Math.ceil(users.length / PAGE_SIZE));
     const paginated  = users.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
-    // ─── Detail Drawer ────────────────────────────────────────────────────────
+
     const DetailDrawer = () => {
         if (!selectedId) return null;
         const lv = levelLabel(detail?.currentLevel ?? null);
@@ -161,7 +158,7 @@ export const GamificationPage = () => {
                 ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
 
-                        {/* Hero user card */}
+
                         <div style={{
                             background: 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%)',
                             padding: '28px 24px 24px',
@@ -196,7 +193,7 @@ export const GamificationPage = () => {
                                 </div>
                             </div>
 
-                            {/* Score prominent */}
+
                             <div style={{ marginTop: 20, display: 'flex', gap: 12 }}>
                                 {[
                                     { label: 'Band TB',   value: detail.averageScore > 0 ? detail.averageScore.toFixed(1) : '—', color: scoreColor(detail.averageScore) },
@@ -213,10 +210,10 @@ export const GamificationPage = () => {
                             </div>
                         </div>
 
-                        {/* Recent sessions */}
+
                         <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
 
-                            {/* Quick info grid */}
+
                             <div style={{ background: '#fff', borderRadius: 16, padding: '16px', border: '1px solid #f1f5f9' }}>
                                 <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.875rem', marginBottom: 12 }}>Thông tin tài khoản</div>
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 20px' }}>
@@ -236,7 +233,7 @@ export const GamificationPage = () => {
                                 </div>
                             </div>
 
-                            {/* Recent sessions */}
+
                             {detail.recentSessions && detail.recentSessions.length > 0 && (
                                 <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #f1f5f9', overflow: 'hidden' }}>
                                     <div style={{ padding: '14px 16px', borderBottom: '1px solid #f1f5f9', fontWeight: 700, color: '#0f172a', fontSize: '0.875rem', display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -275,7 +272,7 @@ export const GamificationPage = () => {
     return (
         <motion.div variants={container} initial="hidden" animate="show" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
 
-            {/* ── Hero Header ─────────────────────────────────────────── */}
+
             <motion.div variants={item} style={{
                 background: 'linear-gradient(135deg, #431462 0%, #1a0533 40%, #0f172a 100%)',
                 borderRadius: 24, padding: '32px 36px',
@@ -293,7 +290,7 @@ export const GamificationPage = () => {
                     }} />
                 ))}
 
-                {/* Floating trophies decoration */}
+
                 <div style={{ position: 'absolute', right: 40, top: '50%', transform: 'translateY(-50%)', fontSize: '5rem', opacity: 0.08, userSelect: 'none' }}>
                     🏆
                 </div>
@@ -314,7 +311,7 @@ export const GamificationPage = () => {
                 </div>
             </motion.div>
 
-            {/* ── Stat Cards ──────────────────────────────────────────── */}
+
             <motion.div variants={item} style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
                 <StatCard icon={Users}    label="Tổng học viên" value={isLoading ? '...' : stats.total}                                          gradient="linear-gradient(135deg,#6366f1,#8b5cf6)" />
                 <StatCard icon={TrendingUp} label="Band TB"     value={isLoading ? '...' : (stats.avgBand > 0 ? stats.avgBand.toFixed(2) : '—')} gradient="linear-gradient(135deg,#10b981,#059669)" />
@@ -322,7 +319,7 @@ export const GamificationPage = () => {
                 <StatCard icon={Award}    label="Cấp phổ biến"  value={isLoading ? '...' : (levelChartData[0]?.name || '—')}                      gradient="linear-gradient(135deg,#ec4899,#f43f5e)" />
             </motion.div>
 
-            {/* ── Charts Row ──────────────────────────────────────────── */}
+
             <motion.div variants={item} style={{
                 background: '#fff', borderRadius: 20, padding: '24px',
                 border: '1px solid #f1f5f9',
@@ -357,16 +354,16 @@ export const GamificationPage = () => {
                 )}
             </motion.div>
 
-            {/* ── Leaderboard Table ────────────────────────────────────── */}
+
             <motion.div variants={item} style={{
                 background: '#fff', borderRadius: 20, border: '1px solid #f1f5f9',
                 boxShadow: '0 1px 3px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.04)',
                 overflow: 'hidden',
             }}>
-                {/* Toolbar */}
+
                 <div style={{ padding: '18px 24px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', justifyContent: 'space-between' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                        {/* Search */}
+
                         <div style={{ position: 'relative' }}>
                             <Search size={15} color="#94a3b8" style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
                             <input
@@ -383,7 +380,7 @@ export const GamificationPage = () => {
                                 onBlur={e => (e.target.style.borderColor = '#e2e8f0')}
                             />
                         </div>
-                        {/* Sort */}
+
                         <div style={{ display: 'flex', background: '#f1f5f9', borderRadius: 10, padding: 3, gap: 2 }}>
                             {(['score', 'level'] as const).map(v => (
                                 <button key={v} onClick={() => { setSortBy(v); setPage(1); }} style={{
@@ -414,7 +411,7 @@ export const GamificationPage = () => {
                     </motion.button>
                 </div>
 
-                {/* Table body */}
+
                 {isLoading ? (
                     <div style={{ padding: 24 }}><Skeleton active paragraph={{ rows: 8 }} /></div>
                 ) : users.length === 0 ? (
@@ -456,7 +453,7 @@ export const GamificationPage = () => {
                                                         transition: 'background 0.15s',
                                                     }}
                                                 >
-                                                    {/* Rank */}
+
                                                     <td style={{ padding: '13px 16px', width: 60 }}>
                                                         {globalRank <= 3 ? (
                                                             <div style={{
@@ -478,7 +475,7 @@ export const GamificationPage = () => {
                                                         )}
                                                     </td>
 
-                                                    {/* User */}
+
                                                     <td style={{ padding: '13px 16px' }}>
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                                                             <div style={{ position: 'relative' }}>
@@ -497,7 +494,7 @@ export const GamificationPage = () => {
                                                         </div>
                                                     </td>
 
-                                                    {/* Level */}
+
                                                     <td style={{ padding: '13px 16px' }}>
                                                         <span style={{
                                                             display: 'inline-flex', alignItems: 'center', gap: 4,
@@ -509,7 +506,7 @@ export const GamificationPage = () => {
                                                         </span>
                                                     </td>
 
-                                                    {/* Plan */}
+
                                                     <td style={{ padding: '13px 16px' }}>
                                                         <span style={{
                                                             display: 'inline-flex', alignItems: 'center', gap: 4,
@@ -523,7 +520,7 @@ export const GamificationPage = () => {
                                                         </span>
                                                     </td>
 
-                                                    {/* Score */}
+
                                                     <td style={{ padding: '13px 16px' }}>
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                                             <span style={{
@@ -546,7 +543,7 @@ export const GamificationPage = () => {
                                                         </div>
                                                     </td>
 
-                                                    {/* Status */}
+
                                                     <td style={{ padding: '13px 16px' }}>
                                                         {!user.isActive ? (
                                                             <span style={{ color: '#ef4444', fontWeight: 600, fontSize: '0.8rem' }}>🔒 Bị khóa</span>
@@ -557,7 +554,7 @@ export const GamificationPage = () => {
                                                         )}
                                                     </td>
 
-                                                    {/* Action */}
+
                                                     <td style={{ padding: '13px 16px' }}>
                                                         <motion.button
                                                             whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.95 }}
@@ -582,7 +579,7 @@ export const GamificationPage = () => {
                             </table>
                         </div>
 
-                        {/* Pagination */}
+
                         {totalPages > 1 && (
                             <div style={{ padding: '14px 24px', borderTop: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                 <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>

@@ -1195,6 +1195,8 @@ public sealed partial class ExamExecutionService(
                 question.Group.PassageId != null ? "READING" : "LISTENING"))
             .ToListAsync(cancellationToken);
 
+        await ReallocateChooseNAnswersAsync(session, objectiveQuestions, cancellationToken);
+
         var answersByQuestionId = session.UserAnswers
             .Where(answer => answer.QuestionId != null && answer.Question is not null)
             .ToDictionary(answer => answer.QuestionId!.Value);
@@ -1973,5 +1975,142 @@ public sealed partial class ExamExecutionService(
         }
 
         return blueprints.LastOrDefault()?.QuestionNumber;
+    }
+
+    private async Task ReallocateChooseNAnswersAsync(
+        ExamSession session,
+        List<ObjectiveQuestionBlueprint> blueprints,
+        CancellationToken cancellationToken)
+    {
+        var chooseNBlueprints = blueprints
+            .Where(b => IsChooseNGroupType(b.GroupType))
+            .ToList();
+
+        if (chooseNBlueprints.Count == 0)
+        {
+            return;
+        }
+
+        var chooseNQuestionIds = chooseNBlueprints.Select(b => b.QuestionId).ToHashSet();
+        var chooseNQuestions = await context.Questions
+            .Include(q => q.Group)
+            .Where(q => chooseNQuestionIds.Contains(q.Id))
+            .ToListAsync(cancellationToken);
+
+        var chooseNAnswers = session.UserAnswers
+            .Where(ua => ua.QuestionId != null && chooseNQuestionIds.Contains(ua.QuestionId.Value))
+            .ToList();
+
+        var answersByQuestionId = chooseNAnswers.ToDictionary(ua => ua.QuestionId!.Value);
+
+        foreach (var q in chooseNQuestions)
+        {
+            if (!answersByQuestionId.ContainsKey(q.Id))
+            {
+                var newAnswer = new UserAnswer
+                {
+                    Id = Guid.NewGuid(),
+                    SessionId = session.Id,
+                    QuestionId = q.Id,
+                    Question = q,
+                    AnswerText = null,
+                    SubmittedAt = DateTime.UtcNow
+                };
+                session.UserAnswers.Add(newAnswer);
+                context.UserAnswers.Add(newAnswer);
+                chooseNAnswers.Add(newAnswer);
+            }
+            else
+            {
+                var existing = answersByQuestionId[q.Id];
+                if (existing.Question == null)
+                {
+                    existing.Question = q;
+                }
+            }
+        }
+
+        var chooseNCorrectTokensByQuestionId = await GetChooseNCorrectTokensByQuestionIdAsync(session.ExamId, cancellationToken);
+        var answersByGroupId = chooseNAnswers
+            .Where(ua => ua.Question != null)
+            .GroupBy(ua => ua.Question!.GroupId)
+            .ToList();
+
+        foreach (var group in answersByGroupId)
+        {
+            var answersInGroup = group.ToList();
+            var questionsInGroup = answersInGroup
+                .Select(ua => ua.Question)
+                .OfType<Question>()
+                .DistinctBy(q => q.Id)
+                .OrderBy(q => (q.QuestionNumber ?? int.MaxValue))
+                .ThenBy(q => q.Id)
+                .ToList();
+
+            if (questionsInGroup.Count == 0)
+            {
+                continue;
+            }
+
+            var submittedTokens = answersInGroup
+                .SelectMany(a => BuildDiscreteAnswerTokenSet(a.AnswerText ?? string.Empty))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var groupCorrectTokens = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var correctTokensByQuestion = new Dictionary<Guid, List<string>>();
+
+            foreach (var q in questionsInGroup)
+            {
+                var tokens = BuildChooseNQuestionCorrectTokens(q, chooseNCorrectTokensByQuestionId.TryGetValue(q.Id, out var ct) ? ct : null);
+                correctTokensByQuestion[q.Id] = tokens;
+                foreach (var token in tokens)
+                {
+                    groupCorrectTokens.Add(token);
+                }
+            }
+
+            var matchedTokens = submittedTokens
+                .Intersect(groupCorrectTokens, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var unmatchedTokens = submittedTokens
+                .Except(matchedTokens, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var assignedQuestionIds = new HashSet<Guid>();
+
+            foreach (var matchedToken in matchedTokens)
+            {
+                var targetQuestion = questionsInGroup
+                    .FirstOrDefault(q => !assignedQuestionIds.Contains(q.Id)
+                        && correctTokensByQuestion.TryGetValue(q.Id, out var tokens)
+                        && tokens != null
+                        && tokens.Contains(matchedToken, StringComparer.OrdinalIgnoreCase));
+
+                if (targetQuestion != null)
+                {
+                    var answerObj = answersInGroup.First(a => a.QuestionId == targetQuestion.Id);
+                    answerObj.AnswerText = matchedToken;
+                    assignedQuestionIds.Add(targetQuestion.Id);
+                }
+            }
+
+            var unassignedQuestions = questionsInGroup.Where(q => !assignedQuestionIds.Contains(q.Id)).ToList();
+            for (int i = 0; i < unassignedQuestions.Count; i++)
+            {
+                var targetQuestion = unassignedQuestions[i];
+                var answerObj = answersInGroup.First(a => a.QuestionId == targetQuestion.Id);
+
+                if (i < unmatchedTokens.Count)
+                {
+                    answerObj.AnswerText = unmatchedTokens[i];
+                }
+                else
+                {
+                    answerObj.AnswerText = null;
+                }
+            }
+        }
     }
 }

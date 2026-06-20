@@ -36,7 +36,11 @@ public class AdminNotificationController(
 
     public sealed record NotificationStatsDto(int Total, int Unread, int CreatedToday);
     public sealed record PagedResult<T>(IReadOnlyList<T> Items, int TotalCount, int PageNumber, int PageSize);
-    public sealed record BroadcastNotificationRequest(string Title, string? Message, string TargetRole = "Student");
+    public sealed record BroadcastNotificationRequest(
+        string Title,
+        string? Message,
+        string TargetRole = "Student",
+        System.Collections.Generic.IReadOnlyList<System.Guid>? UserIds = null);
     public sealed record UpdateNotificationRequest(string Title, string? Message);
     public sealed record UpdateReadStatusRequest(bool IsRead);
 
@@ -175,26 +179,40 @@ public class AdminNotificationController(
             return TypedResults.BadRequest(new { message = "Title is required." });
         }
 
-        var normalizedTargetRole = string.IsNullOrWhiteSpace(request.TargetRole)
-            ? "Student"
-            : request.TargetRole.Trim();
+        List<Guid> userIds;
 
-        var usersQuery = context.Users
-            .AsNoTracking()
-            .Include(u => u.UserRoles)
-            .ThenInclude(ur => ur.Role)
-            .Where(u => u.IsActive)
-            .AsQueryable();
-
-        if (!normalizedTargetRole.Equals("ALL", StringComparison.OrdinalIgnoreCase))
+        if (request.UserIds != null && request.UserIds.Count > 0)
         {
-            usersQuery = usersQuery.Where(u => u.UserRoles.Any(ur => ur.Role.Name == normalizedTargetRole));
+            userIds = await context.Users
+                .AsNoTracking()
+                .Where(u => u.IsActive && request.UserIds.Contains(u.Id))
+                .Select(u => u.Id)
+                .ToListAsync(cancellationToken);
+        }
+        else
+        {
+            var normalizedTargetRole = string.IsNullOrWhiteSpace(request.TargetRole)
+                ? "Student"
+                : request.TargetRole.Trim();
+
+            var usersQuery = context.Users
+                .AsNoTracking()
+                .Include(u => u.UserRoles)
+                .ThenInclude(ur => ur.Role)
+                .Where(u => u.IsActive)
+                .AsQueryable();
+
+            if (!normalizedTargetRole.Equals("ALL", StringComparison.OrdinalIgnoreCase))
+            {
+                usersQuery = usersQuery.Where(u => u.UserRoles.Any(ur => ur.Role.Name == normalizedTargetRole));
+            }
+
+            userIds = await usersQuery.Select(u => u.Id).ToListAsync(cancellationToken);
         }
 
-        var userIds = await usersQuery.Select(u => u.Id).ToListAsync(cancellationToken);
         if (userIds.Count == 0)
         {
-            return TypedResults.BadRequest(new { message = "No users found for selected target role." });
+            return TypedResults.BadRequest(new { message = "No users found for selected target." });
         }
 
         var batchCreatedAtUtc = TruncateToSecondUtc(DateTime.UtcNow);
@@ -212,8 +230,6 @@ public class AdminNotificationController(
         await context.Notifications.AddRangeAsync(notifications, cancellationToken);
         await context.SaveChangesAsync(cancellationToken);
 
-        // Keep all records in one broadcast batch with the exact same timestamp.
-        // This avoids split rows in admin CMS when DB defaults or precision differ per row.
         foreach (var notification in notifications)
         {
             notification.CreatedAt = batchCreatedAtUtc;

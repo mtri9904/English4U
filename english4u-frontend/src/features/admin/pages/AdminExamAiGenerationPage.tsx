@@ -51,12 +51,12 @@ export const AdminExamAiGenerationPage = () => {
     const [inputMode, setInputMode] = useState<'random' | 'topic' | 'document'>('random');
     const [fileList, setFileList] = useState<any[]>([]);
     
-    // Progress states
+
     const [activeClientId, setActiveClientId] = useState<string | null>(null);
     const [progress, setProgress] = useState<PdfGenerationProgressPayload | null>(null);
     const [isGenerating, setIsGenerating] = useState(false);
     
-    // Quality metrics states parsed from Description
+
     const [qualityMetrics, setQualityMetrics] = useState<{
         accuracy?: number;
         passages?: Array<{
@@ -145,7 +145,7 @@ export const AdminExamAiGenerationPage = () => {
         return false;
     };
 
-    // Parse quality metrics from final exam description when completed
+
     useEffect(() => {
         if (progress?.status === 'completed' && progress.examId) {
             void fetchExamQuality(progress.examId);
@@ -158,7 +158,7 @@ export const AdminExamAiGenerationPage = () => {
             const res = await axiosInstance.get<any>(`/exam/${examId}`);
             const description = res.data?.description || '';
             
-            // Regex parsing metrics
+
             const accuracyMatch = /Validator Agent Accuracy:\s*([\d\.]+)%/.exec(description);
             const accuracy = accuracyMatch ? parseFloat(accuracyMatch[1]) : undefined;
             
@@ -405,7 +405,7 @@ export const AdminExamAiGenerationPage = () => {
                                         />
                                     ) : null}
 
-                                    {/* Show error if failed */}
+
                                     {progress?.status === 'failed' && (
                                         <Alert
                                             message={<span style={{ fontWeight: 700 }}>Thất bại</span>}
@@ -416,7 +416,7 @@ export const AdminExamAiGenerationPage = () => {
                                         />
                                     )}
 
-                                    {/* Quality check outputs after completion */}
+
                                     {progress?.status === 'completed' && qualityMetrics && (
                                         <motion.div
                                             initial={{ opacity: 0, y: 15 }}
@@ -452,7 +452,7 @@ export const AdminExamAiGenerationPage = () => {
                                         </motion.div>
                                     )}
 
-                                    {/* Action Buttons */}
+
                                     <Space size="middle" style={{ marginTop: '12px' }}>
                                         {progress?.status === 'completed' && progress.examId && (
                                             <Button

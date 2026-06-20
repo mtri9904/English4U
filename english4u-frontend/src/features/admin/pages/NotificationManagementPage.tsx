@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Drawer, Modal, Form, Input, Select, Empty, Skeleton, message, Avatar } from 'antd';
+import { Drawer, Modal, Form, Input, Select, Empty, Skeleton, message, Avatar, Button } from 'antd';
 import {
     Bell, Send, Trash2, Pencil, Eye, RefreshCw,
     Search, Users, MailOpen, CalendarClock, CheckCheck,
@@ -14,9 +14,10 @@ import {
     useUpdateNotificationMutation,
     type NotificationListItemDto,
 } from '@/features/admin/api/notification.api';
+import { useAdminUsersQuery, type UserOverviewDto } from '@/features/admin/api/user.api';
 import { formatDateTimeToMinute } from '@/shared/lib/dateTime';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+
 type RoleFilter = 'ALL' | 'Student' | 'Admin';
 type ReadFilter = 'ALL' | 'read' | 'unread';
 type EditorMode = 'create' | 'edit';
@@ -24,10 +25,12 @@ type EditorMode = 'create' | 'edit';
 interface NotificationFormValues {
     title: string;
     message?: string;
-    targetRole: RoleFilter;
+    targetType: 'role' | 'users';
+    targetRole?: RoleFilter;
+    targetUserIds?: string[];
 }
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+
 const PAGE_SIZE = 12;
 const LIVE_MS   = 15_000;
 
@@ -42,9 +45,9 @@ const ROLE_STYLE: Record<string, { bg: string; color: string; label: string }> =
     Admin:   { bg: '#fee2e2', color: '#b91c1c', label: 'Quản trị' },
 };
 
-const DEFAULT_FORM: NotificationFormValues = { title: '', message: '', targetRole: 'Student' };
+const DEFAULT_FORM: NotificationFormValues = { title: '', message: '', targetType: 'role', targetRole: 'Student', targetUserIds: [] };
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+
 function resolveRole(role: string): RoleFilter {
     return ROLE_OPTIONS.some(o => o.value === role) ? (role as RoleFilter) : 'ALL';
 }
@@ -57,7 +60,7 @@ function roleStyle(role: string) {
     return ROLE_STYLE[role] ?? { bg: '#f1f5f9', color: '#475569', label: role };
 }
 
-// ─── Animations ───────────────────────────────────────────────────────────────
+
 const container = {
     hidden: { opacity: 0 },
     show:   { opacity: 1, transition: { staggerChildren: 0.06 } },
@@ -68,7 +71,7 @@ const cardAnim = {
 } as const;
 
 
-// ─── Mini Stat ────────────────────────────────────────────────────────────────
+
 function StatCard({ icon: Icon, label, value, gradient, loading }: {
     icon: React.ElementType; label: string; value: number | string;
     gradient: string; loading?: boolean;
@@ -97,7 +100,7 @@ function StatCard({ icon: Icon, label, value, gradient, loading }: {
     );
 }
 
-// ─── Main Page ────────────────────────────────────────────────────────────────
+
 export const NotificationManagementPage = () => {
     const [search, setSearch]             = useState('');
     const [roleFilter, setRoleFilter]     = useState<RoleFilter>('ALL');
@@ -110,6 +113,55 @@ export const NotificationManagementPage = () => {
     const [editing, setEditing]           = useState<NotificationListItemDto | null>(null);
     const [deletingId, setDeletingId]     = useState<string | null>(null);
     const [form]                          = Form.useForm<NotificationFormValues>();
+
+    const [userSearchTerm, setUserSearchTerm] = useState('');
+    const { data: usersPaged, isLoading: isUsersLoading } = useAdminUsersQuery({
+        pageNumber: 1,
+        pageSize: 50,
+        searchTerm: userSearchTerm.trim() || undefined,
+        isActive: true,
+    }, {
+        enabled: editorOpen && editorMode === 'create',
+    });
+
+    const [selectedUsers, setSelectedUsers] = useState<UserOverviewDto[]>([]);
+
+    const handleUsersChange = (values: string[]) => {
+        const newSelected = [...selectedUsers];
+        values.forEach(val => {
+            if (!newSelected.some(u => u.id === val)) {
+                const userObj = usersPaged?.items.find(u => u.id === val);
+                if (userObj) {
+                    newSelected.push(userObj);
+                }
+            }
+        });
+        const filtered = newSelected.filter(u => values.includes(u.id));
+        setSelectedUsers(filtered);
+        form.setFieldsValue({ targetUserIds: values });
+    };
+
+    const userOptions = useMemo(() => {
+        return (usersPaged?.items ?? []).map(u => ({
+            label: (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '2px 0' }}>
+                    <Avatar src={u.avatarUrl || undefined} size="small" style={{ backgroundColor: '#0ea5e9', flexShrink: 0 }}>
+                        {(u.displayName || u.email).charAt(0).toUpperCase()}
+                    </Avatar>
+                    <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2 }}>
+                        <span style={{ fontWeight: 600, color: '#0f172a', fontSize: '0.85rem' }}>
+                            {u.displayName || 'Chưa đặt tên'}
+                        </span>
+                        <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                            {u.roleName || 'Học viên'} • {u.email}
+                        </span>
+                    </div>
+                </div>
+            ),
+            value: u.id,
+            searchValue: `${u.displayName || ''} ${u.email || ''} ${u.roleName || ''}`,
+        }));
+    }, [usersPaged]);
 
     const queryParams = useMemo(() => ({
         pageNumber,
@@ -143,10 +195,11 @@ export const NotificationManagementPage = () => {
     const totalPages     = Math.max(1, Math.ceil(totalCount / pageSize));
     const isSaving       = broadcastMutation.isPending || updateMutation.isPending;
 
-    // ── Open / Close editor ──────────────────────────────────────────────────
+
     const openCreate = () => {
         setEditorMode('create');
         setEditing(null);
+        setSelectedUsers([]);
         form.setFieldsValue(DEFAULT_FORM);
         setEditorOpen(true);
     };
@@ -154,7 +207,14 @@ export const NotificationManagementPage = () => {
     const openEdit = (item: NotificationListItemDto) => {
         setEditorMode('edit');
         setEditing(item);
-        form.setFieldsValue({ title: item.title, message: item.message ?? '', targetRole: resolveRole(item.userRole) });
+        setSelectedUsers([]);
+        form.setFieldsValue({
+            title: item.title,
+            message: item.message ?? '',
+            targetType: 'role',
+            targetRole: resolveRole(item.userRole),
+            targetUserIds: [],
+        });
         setEditorOpen(true);
     };
 
@@ -162,10 +222,11 @@ export const NotificationManagementPage = () => {
         if (isSaving) return;
         setEditorOpen(false);
         setEditing(null);
+        setSelectedUsers([]);
         form.resetFields();
     };
 
-    // ── Submit editor ────────────────────────────────────────────────────────
+
     const handleSubmit = async () => {
         try {
             const v = await form.validateFields();
@@ -174,7 +235,13 @@ export const NotificationManagementPage = () => {
             if (!title) { message.error('Vui lòng nhập tiêu đề.'); return; }
 
             if (editorMode === 'create') {
-                const res = await broadcastMutation.mutateAsync({ title, message: msg, targetRole: v.targetRole });
+                const payload: any = { title, message: msg };
+                if (v.targetType === 'users') {
+                    payload.userIds = v.targetUserIds;
+                } else {
+                    payload.targetRole = v.targetRole;
+                }
+                const res = await broadcastMutation.mutateAsync(payload);
                 message.success(`✅ Đã gửi cho ${res.createdCount ?? 0} tài khoản.`);
             } else if (editing) {
                 const res = await updateMutation.mutateAsync({ id: editing.id, payload: { title, message: msg } });
@@ -190,7 +257,7 @@ export const NotificationManagementPage = () => {
         }
     };
 
-    // ── Delete ───────────────────────────────────────────────────────────────
+
     const handleDelete = (item: NotificationListItemDto) => {
         Modal.confirm({
             title: 'Xóa thông báo này?',
@@ -220,7 +287,7 @@ export const NotificationManagementPage = () => {
     return (
         <motion.div variants={container} initial="hidden" animate="show" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
 
-            {/* ── Hero Header ─────────────────────────────────────────── */}
+
             <motion.div variants={cardAnim} style={{
                 background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 55%, #1e1b4b 100%)',
                 borderRadius: 24, padding: '30px 36px',
@@ -274,7 +341,7 @@ export const NotificationManagementPage = () => {
                 </div>
             </motion.div>
 
-            {/* ── Stat Cards ──────────────────────────────────────────── */}
+
             <motion.div variants={cardAnim} style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
                 <StatCard icon={Bell}         label="Tổng thông báo"  value={stats?.total         ?? 0} gradient="linear-gradient(135deg,#6366f1,#8b5cf6)" loading={isStatsLoading} />
                 <StatCard icon={MailOpen}     label="Chưa đọc"        value={stats?.unread        ?? 0} gradient="linear-gradient(135deg,#ef4444,#f97316)" loading={isStatsLoading} />
@@ -282,14 +349,14 @@ export const NotificationManagementPage = () => {
                 <StatCard icon={CheckCheck}   label="Đã đọc"          value={Math.max(0, (stats?.total ?? 0) - (stats?.unread ?? 0))} gradient="linear-gradient(135deg,#10b981,#059669)" loading={isStatsLoading} />
             </motion.div>
 
-            {/* ── Toolbar ─────────────────────────────────────────────── */}
+
             <motion.div variants={cardAnim} style={{
                 background: '#fff', borderRadius: 16, padding: '14px 18px',
                 border: '1px solid #f1f5f9',
                 boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
                 display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
             }}>
-                {/* Search */}
+
                 <div style={{ position: 'relative', flex: 2, minWidth: 220 }}>
                     <Search size={15} color="#94a3b8" style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
                     <input
@@ -315,7 +382,7 @@ export const NotificationManagementPage = () => {
                     )}
                 </div>
 
-                {/* Role filter */}
+
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#f1f5f9', borderRadius: 10, padding: '3px 4px' }}>
                     <Filter size={13} color="#94a3b8" style={{ marginLeft: 6 }} />
                     {ROLE_OPTIONS.map(o => (
@@ -333,7 +400,7 @@ export const NotificationManagementPage = () => {
                     ))}
                 </div>
 
-                {/* Read filter */}
+
                 <div style={{ display: 'flex', background: '#f1f5f9', borderRadius: 10, padding: 3, gap: 2 }}>
                     {(['ALL', 'unread', 'read'] as ReadFilter[]).map(v => (
                         <button key={v} onClick={() => handleReadChange(v)} style={{
@@ -349,7 +416,7 @@ export const NotificationManagementPage = () => {
                     ))}
                 </div>
 
-                {/* Refresh */}
+
                 <motion.button
                     whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }}
                     onClick={() => refetch()}
@@ -366,7 +433,7 @@ export const NotificationManagementPage = () => {
                 </motion.button>
             </motion.div>
 
-            {/* ── Notification List ────────────────────────────────────── */}
+
             <motion.div variants={cardAnim}>
                 {isLoading ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -405,7 +472,7 @@ export const NotificationManagementPage = () => {
                                         }}
                                     >
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
-                                            {/* Left: info */}
+
                                             <div style={{ flex: 1, minWidth: 260 }}>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                                                     <Avatar size={36}
@@ -459,7 +526,7 @@ export const NotificationManagementPage = () => {
                                                 </div>
                                             </div>
 
-                                            {/* Right: actions */}
+
                                             <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0 }}>
                                                 <ActionBtn icon={Eye} label="Xem" color="#6366f1" bg="#ede9fe" onClick={() => setSelected(item)} />
                                                 <ActionBtn icon={Pencil} label="Sửa" color="#0ea5e9" bg="#e0f2fe" onClick={() => openEdit(item)} />
@@ -477,7 +544,7 @@ export const NotificationManagementPage = () => {
                     </div>
                 )}
 
-                {/* Pagination */}
+
                 {totalPages > 1 && (
                     <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
                         <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
@@ -508,7 +575,7 @@ export const NotificationManagementPage = () => {
                 )}
             </motion.div>
 
-            {/* ── Detail Drawer ────────────────────────────────────────── */}
+
             <Drawer
                 open={!!selected}
                 onClose={() => setSelected(null)}
@@ -540,7 +607,7 @@ export const NotificationManagementPage = () => {
             >
                 {selected && (
                     <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
-                        {/* Recipient card */}
+
                         <div style={{ background: '#fff', borderRadius: 16, padding: '18px 20px', border: '1px solid #f1f5f9' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
                                 <Avatar size={48}
@@ -567,13 +634,13 @@ export const NotificationManagementPage = () => {
                             </div>
                         </div>
 
-                        {/* Title */}
+
                         <div style={{ background: '#fff', borderRadius: 16, padding: '18px 20px', border: '1px solid #f1f5f9' }}>
                             <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Tiêu đề</div>
                             <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '1.0625rem', lineHeight: 1.45 }}>{selected.title}</div>
                         </div>
 
-                        {/* Message */}
+
                         <div style={{ background: '#fff', borderRadius: 16, padding: '18px 20px', border: '1px solid #f1f5f9' }}>
                             <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>Nội dung chi tiết</div>
                             <div style={{ color: '#334155', lineHeight: 1.7, fontSize: '0.9rem', whiteSpace: 'pre-wrap' }}>
@@ -584,7 +651,7 @@ export const NotificationManagementPage = () => {
                 )}
             </Drawer>
 
-            {/* ── Editor Modal ─────────────────────────────────────────── */}
+
             <Modal
                 open={editorOpen}
                 onCancel={closeEditor}
@@ -614,17 +681,133 @@ export const NotificationManagementPage = () => {
                 }}
             >
                 <Form layout="vertical" form={form} preserve={false} initialValues={DEFAULT_FORM}>
-                    <Form.Item
-                        label={<span style={{ fontWeight: 600, color: '#334155' }}>Vai trò nhận thông báo</span>}
-                        name="targetRole"
-                        rules={[{ required: true, message: 'Vui lòng chọn vai trò.' }]}
-                    >
-                        <Select
-                            size="large"
-                            disabled={editorMode === 'edit'}
-                            options={ROLE_OPTIONS}
-                            style={{ borderRadius: 10 }}
-                        />
+                    {editorMode === 'create' && (
+                        <Form.Item
+                            label={<span style={{ fontWeight: 600, color: '#334155' }}>Hình thức gửi</span>}
+                            name="targetType"
+                            rules={[{ required: true }]}
+                        >
+                            <Select
+                                size="large"
+                                style={{ borderRadius: 10 }}
+                                options={[
+                                    { label: 'Gửi theo Vai trò (Role)', value: 'role' },
+                                    { label: 'Gửi cho Người dùng cụ thể', value: 'users' },
+                                ]}
+                            />
+                        </Form.Item>
+                    )}
+
+                    <Form.Item noStyle shouldUpdate={(prevValues, currentValues) => prevValues.targetType !== currentValues.targetType}>
+                        {({ getFieldValue }) => {
+                            const targetType = getFieldValue('targetType');
+                            if (targetType === 'users' && editorMode === 'create') {
+                                return (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
+                                        <Form.Item
+                                            label={<span style={{ fontWeight: 600, color: '#334155' }}>Chọn người dùng nhận thông báo</span>}
+                                            name="targetUserIds"
+                                            rules={[{ required: true, message: 'Vui lòng chọn ít nhất một người dùng.' }]}
+                                            style={{ marginBottom: 0 }}
+                                        >
+                                            <Select
+                                                mode="multiple"
+                                                size="large"
+                                                placeholder="Nhập tên hoặc email để tìm kiếm..."
+                                                filterOption={(input, option) =>
+                                                    (option?.searchValue ?? '').toLowerCase().includes(input.toLowerCase())
+                                                }
+                                                onSearch={setUserSearchTerm}
+                                                onChange={handleUsersChange}
+                                                options={userOptions}
+                                                tagRender={() => <></>}
+                                                style={{ borderRadius: 10 }}
+                                                notFoundContent={isUsersLoading ? <Skeleton active paragraph={{ rows: 1 }} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />}
+                                            />
+                                        </Form.Item>
+
+                                        {selectedUsers.length > 0 && (
+                                            <div style={{
+                                                display: 'grid',
+                                                gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+                                                gap: 12,
+                                                maxHeight: 180,
+                                                overflowY: 'auto',
+                                                padding: '4px',
+                                                border: '1px solid #f1f5f9',
+                                                borderRadius: 12,
+                                                background: '#f8fafc',
+                                            }}>
+                                                {selectedUsers.map(user => (
+                                                    <div
+                                                        key={user.id}
+                                                        style={{
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'space-between',
+                                                            background: '#fff',
+                                                            border: '1px solid #e2e8f0',
+                                                            borderRadius: 10,
+                                                            padding: '8px 12px',
+                                                            boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
+                                                        }}
+                                                    >
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                                                            <Avatar src={user.avatarUrl || undefined} size="small" style={{ backgroundColor: '#0ea5e9' }}>
+                                                                {(user.displayName || user.email).charAt(0).toUpperCase()}
+                                                            </Avatar>
+                                                            <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, lineHeight: 1.2 }}>
+                                                                <span style={{
+                                                                    fontWeight: 700,
+                                                                    color: '#0f172a',
+                                                                    fontSize: '0.8rem',
+                                                                    whiteSpace: 'nowrap',
+                                                                    overflow: 'hidden',
+                                                                    textOverflow: 'ellipsis',
+                                                                }}>
+                                                                    {user.displayName || 'Chưa đặt tên'}
+                                                                </span>
+                                                                <span style={{ fontSize: '0.7rem', color: '#64748b' }}>
+                                                                    {user.roleName || 'Học viên'}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                        <Button
+                                                            type="text"
+                                                            size="small"
+                                                            danger
+                                                            icon={<Trash2 size={13} />}
+                                                            onClick={() => {
+                                                                const newValues = selectedUsers
+                                                                    .filter(u => u.id !== user.id)
+                                                                    .map(u => u.id);
+                                                                handleUsersChange(newValues);
+                                                            }}
+                                                            style={{ flexShrink: 0 }}
+                                                        />
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            }
+
+                            return (
+                                <Form.Item
+                                    label={<span style={{ fontWeight: 600, color: '#334155' }}>Vai trò nhận thông báo</span>}
+                                    name="targetRole"
+                                    rules={[{ required: true, message: 'Vui lòng chọn vai trò.' }]}
+                                >
+                                    <Select
+                                        size="large"
+                                        disabled={editorMode === 'edit'}
+                                        options={ROLE_OPTIONS}
+                                        style={{ borderRadius: 10 }}
+                                    />
+                                </Form.Item>
+                            );
+                        }}
                     </Form.Item>
 
                     <Form.Item
@@ -675,7 +858,7 @@ export const NotificationManagementPage = () => {
     );
 };
 
-// ─── Action Button Helper ─────────────────────────────────────────────────────
+
 function ActionBtn({ icon: Icon, label, color, bg, onClick, loading }: {
     icon: React.ElementType; label: string; color: string; bg: string;
     onClick: () => void; loading?: boolean;

@@ -29,7 +29,7 @@ export function ConfirmEmailPage() {
     }, [token]);
 
     return (
-        <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)', padding: '20px', fontFamily: 'var(--font-sans)' }}>
+        <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)', padding: '20px' }}>
             <div style={{ maxWidth: '480px', width: '100%', background: '#fff', padding: '48px', borderRadius: '24px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)', textAlign: 'center' }}>
                 {status === 'loading' && (
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '24px' }}>

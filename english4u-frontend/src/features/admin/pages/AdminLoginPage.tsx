@@ -28,16 +28,15 @@ export function AdminLoginPage() {
             { email, password },
             {
                 onSuccess: (data) => {
-                    // Cần kiểm tra roles bên trong user xem có phải Admin không
                     if (data.role !== 'Admin') {
                         message.error('Chỉ Quản trị viên mới có quyền đăng nhập vào CMS!');
                         return;
                     }
 
                     message.success('Đăng nhập thành công!');
-                    localStorage.setItem('token', data.token); // Lưu token hệ thống
-                    localStorage.setItem('userId', data.userId); // Lưu userId
-                    navigate('/admin/dashboard'); // Redirect Admin layout
+                    localStorage.setItem('token', data.token);
+                    localStorage.setItem('userId', data.userId);
+                    navigate('/admin/dashboard');
                 },
                 onError: (error: any) => {
                     message.error(error?.response?.data?.message || 'Tài khoản hoặc mật khẩu không chính xác!');
@@ -47,7 +46,7 @@ export function AdminLoginPage() {
     };
 
     return (
-        <div style={{ display: 'flex', minHeight: '100vh', position: 'relative', overflow: 'hidden', alignItems: 'center', justifyContent: 'center', padding: '20px', fontFamily: 'var(--font-sans)' }}>
+        <div style={{ display: 'flex', minHeight: '100vh', position: 'relative', overflow: 'hidden', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
             <GalaxyBackground />
             <motion.div
                 initial={{ opacity: 0, y: 20 }}
@@ -67,7 +66,7 @@ export function AdminLoginPage() {
                     zIndex: 10
                 }}
             >
-                {/* Logo */}
+
                 <div style={{ marginBottom: '24px' }}>
                     <img
                         src="/logo/Logo.png"

@@ -44,7 +44,7 @@ export const userApi = {
     markOffline: async (): Promise<void> => {
         await axiosInstance.post('user/activity/offline');
     },
-    // Admin APIs
+
     getAdminStats: async (): Promise<UserManagementStatsDto> => {
         const res = await axiosInstance.get<UserManagementStatsDto>('admin/users/stats');
         return res.data;

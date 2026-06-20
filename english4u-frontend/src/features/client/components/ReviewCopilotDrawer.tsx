@@ -413,7 +413,7 @@ const trimToUserFacingVietnameseStart = (value: string) => {
 
     for (let index = 0; index < lines.length; index += 1) {
         const answerStartIndex = findUserFacingAnswerStartIndex(lines[index]);
-        if (answerStartIndex > 0 || (answerStartIndex === 0 && index > 0)) {
+        if (answerStartIndex >= 0) {
             return [
                 lines[index].slice(answerStartIndex).trim(),
                 ...lines.slice(index + 1),
@@ -501,31 +501,66 @@ const trimToUserFacingVietnameseStart = (value: string) => {
         .trim();
 };
 
-const cleanCopilotDisplayText = (value?: string | null) => {
-    const normalized = trimToUserFacingVietnameseStart(
-        stripCodeFenceWrapper(
-            (value ?? '')
-                .replace(/\r\n/g, '\n')
-                .replace(/\r/g, '\n')
-                .replace(/\$\\rightarrow\$/g, '->')
-                .replace(/\$\\Rightarrow\$/g, '=>')
-                .replace(/\$\\leftarrow\$/g, '<-')
-                .replace(/\$\\Leftarrow\$/g, '<=')
-                .replace(/\$\\leftrightarrow\$/g, '<->')
-                .replace(/\$\\Leftrightarrow\$/g, '<=>')
-                .replace(/\\rightarrow/g, '->')
-                .replace(/\\Rightarrow/g, '=>')
-                .replace(/\\leftarrow/g, '<-')
-                .replace(/\\Leftarrow/g, '<=')
-                .replace(/\\leftrightarrow/g, '<->')
-                .replace(/\\Leftrightarrow/g, '<=>')
-                .replace(/\$([^$\n]{1,80})\$/g, '$1')
-                .trim(),
-        ),
-    );
+const stripLeadingGreeting = (value: string): string =>
+    value.replace(/^chào\s+bạn[\s,!.]*\n*/i, '').trim();
+
+const cleanSpeakingTutorThoughts = (value: string): string => {
+    const lastTagIndex = value.lastIndexOf('[START_CHAT]');
+    if (lastTagIndex !== -1) {
+        return stripLeadingGreeting(value.slice(lastTagIndex + '[START_CHAT]'.length).trim());
+    }
+
+    const lastGreetingMatch = [...value.matchAll(/(?:chào\s+bạn)\b/gi)].at(-1);
+    if (lastGreetingMatch?.index !== undefined) {
+        return stripLeadingGreeting(value.slice(lastGreetingMatch.index).trim());
+    }
+
+    return value;
+};
+
+const cleanCopilotDisplayText = (value?: string | null, skillType?: string | null) => {
+    const rawText = (value ?? '')
+        .replace(/\r\n/g, '\n')
+        .replace(/\r/g, '\n')
+        .replace(/\$\\rightarrow\$/g, '->')
+        .replace(/\$\\Rightarrow\$/g, '=>')
+        .replace(/\$\\leftarrow\$/g, '<-')
+        .replace(/\$\\Leftarrow\$/g, '<=')
+        .replace(/\$\\leftrightarrow\$/g, '<->')
+        .replace(/\$\\Leftrightarrow\$/g, '<=>')
+        .replace(/\\rightarrow/g, '->')
+        .replace(/\\Rightarrow/g, '=>')
+        .replace(/\\leftarrow/g, '<-')
+        .replace(/\\Leftarrow/g, '<=')
+        .replace(/\\leftrightarrow/g, '<->')
+        .replace(/\\Leftrightarrow/g, '<=>')
+        .replace(/\$([^$\n]{1,80})\$/g, '$1')
+        .trim();
+
+    const unwrapped = stripCodeFenceWrapper(rawText);
+    const isSpeaking = skillType?.trim().toUpperCase() === 'SPEAKING';
+
+    let normalized = '';
+    if (isSpeaking) {
+        normalized = cleanSpeakingTutorThoughts(unwrapped);
+    } else {
+        const lastTagIndex = unwrapped.lastIndexOf('[START_CHAT]');
+        const tagSliced = lastTagIndex !== -1
+            ? unwrapped.slice(lastTagIndex + '[START_CHAT]'.length).trim()
+            : '';
+        if (tagSliced) {
+            normalized = tagSliced;
+        } else {
+            normalized = trimToUserFacingVietnameseStart(unwrapped);
+        }
+    }
 
     if (!normalized) {
         return '';
+    }
+
+    if (isSpeaking) {
+        return normalized;
     }
 
     const paragraphs = normalized
@@ -599,10 +634,10 @@ const cleanCopilotDisplayText = (value?: string | null) => {
     return finalParagraphs.join('\n\n').trim();
 };
 
-const formatCopilotMarkdown = (value?: string | null) => {
+const formatCopilotMarkdown = (value?: string | null, skillType?: string | null) => {
     const boldTokens: string[] = [];
 
-    const withProtectedBold = cleanCopilotDisplayText(value)
+    const withProtectedBold = cleanCopilotDisplayText(value, skillType)
         .replace(/\r\n/g, '\n')
         .replace(/\r/g, '\n')
         .replace(/\*\*([^*\n][^*\n]{0,160}?)\*\*/g, (_, content: string) => {
@@ -1027,7 +1062,7 @@ export const ReviewCopilotDrawer = ({
                             {messages.map((message) => {
                                 const isUser = message.role === 'user';
                                 const isStreamingMessage = message.status === 'streaming';
-                                const formattedMessageContent = isUser ? message.content : formatCopilotMarkdown(message.content);
+                                const formattedMessageContent = isUser ? message.content : formatCopilotMarkdown(message.content, context?.skillType);
                                 const isThinkingPlaceholder = isStreamingMessage && !formattedMessageContent.trim();
                                 const bubbleBackground = isUser
                                     ? 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)'

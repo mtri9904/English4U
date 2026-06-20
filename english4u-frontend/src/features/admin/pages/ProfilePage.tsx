@@ -102,7 +102,7 @@ export const ProfilePage: React.FC = () => {
             </div>
 
             <Row gutter={[24, 24]}>
-                {/* Left Column: Avatar & Info Summary */}
+
                 <Col xs={24} lg={8}>
                     <Card style={{ borderRadius: 16, textAlign: 'center', height: '100%' }} bodyStyle={{ padding: 40 }}>
                         <div style={{ position: 'relative', display: 'inline-block', marginBottom: 24 }}>
@@ -170,7 +170,7 @@ export const ProfilePage: React.FC = () => {
                     </Card>
                 </Col>
 
-                {/* Right Column: Settings Tabs */}
+
                 <Col xs={24} lg={16}>
                     <Card style={{ borderRadius: 16, height: '100%' }}>
                         <Tabs

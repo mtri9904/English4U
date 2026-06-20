@@ -15,7 +15,7 @@ import { useAdminAttemptsQuery } from '@/features/admin/api/attempt.api';
 import { Skeleton } from 'antd';
 import { useNavigate } from 'react-router-dom';
 
-// ─── Animation Variants ─────────────────────────────────────────────────────
+
 const container = {
     hidden: { opacity: 0 },
     show: { opacity: 1, transition: { staggerChildren: 0.08 } },
@@ -26,10 +26,10 @@ const item = {
 } as const;
 
 
-// ─── Colour Palette ──────────────────────────────────────────────────────────
+
 const CHART_COLORS = ['#6366f1', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+
 const skillLabel: Record<string, string> = {
     Reading: 'Reading',
     Listening: 'Listening',
@@ -56,7 +56,7 @@ function formatStatus(s: string) {
     }
 }
 
-// ─── Sub Components ──────────────────────────────────────────────────────────
+
 interface StatCardProps {
     title: string;
     value: string | number;
@@ -80,7 +80,7 @@ function StatCard({ title, value, subtitle, icon: Icon, gradient, trend, loading
                 overflow: 'hidden',
                 cursor: 'default',
             }}>
-                {/* Decorative blob */}
+
                 <div style={{
                     position: 'absolute', top: -30, right: -30,
                     width: 120, height: 120, borderRadius: '50%',
@@ -126,7 +126,7 @@ function StatCard({ title, value, subtitle, icon: Icon, gradient, trend, loading
     );
 }
 
-// ─── Quick Action Card ────────────────────────────────────────────────────────
+
 interface QuickActionProps {
     label: string;
     desc: string;
@@ -164,7 +164,7 @@ function QuickAction({ label, desc, icon: Icon, color, onClick }: QuickActionPro
     );
 }
 
-// ─── Custom Tooltip for charts ────────────────────────────────────────────────
+
 function CustomTooltip({ active, payload, label }: { active?: boolean; payload?: { value: number; name: string; color: string }[]; label?: string }) {
     if (!active || !payload?.length) return null;
     return (
@@ -182,7 +182,7 @@ function CustomTooltip({ active, payload, label }: { active?: boolean; payload?:
     );
 }
 
-// ─── Section Header ───────────────────────────────────────────────────────────
+
 function SectionHeader({ title, action }: { title: string; action?: React.ReactNode }) {
     return (
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
@@ -192,7 +192,7 @@ function SectionHeader({ title, action }: { title: string; action?: React.ReactN
     );
 }
 
-// ─── Main Dashboard ───────────────────────────────────────────────────────────
+
 export const AdminDashboard = () => {
     const navigate = useNavigate();
 
@@ -200,11 +200,11 @@ export const AdminDashboard = () => {
     const { data: exams = [], isLoading: isExamsLoading } = useExamsQuery();
     const { data: attempts = [], isLoading: isAttemptsLoading } = useAdminAttemptsQuery({});
 
-    // ── Derived exam stats ──
+
     const publishedExams = useMemo(() => exams.filter(e => e.isPublished), [exams]);
     const draftExams = useMemo(() => exams.filter(e => !e.isPublished), [exams]);
 
-    // ── Exam by type (for bar chart) ──
+
     const examByType = useMemo(() => {
         const map: Record<string, number> = {};
         for (const e of exams) {
@@ -214,7 +214,7 @@ export const AdminDashboard = () => {
         return Object.entries(map).map(([name, count]) => ({ name, count }));
     }, [exams]);
 
-    // ── Attempts by skill (for pie) ──
+
     const attemptsBySkill = useMemo(() => {
         const map: Record<string, number> = {};
         for (const a of attempts) {
@@ -224,18 +224,18 @@ export const AdminDashboard = () => {
         return Object.entries(map).map(([name, value]) => ({ name, value }));
     }, [attempts]);
 
-    // ── Attempts by status ──
+
     const completedAttempts = useMemo(() => attempts.filter(a => a.status?.toLowerCase() === 'completed').length, [attempts]);
     const inProgressAttempts = useMemo(() => attempts.filter(a => a.status?.toLowerCase() === 'in_progress').length, [attempts]);
 
-    // ── Recent 6 attempts ──
+
     const recentAttempts = useMemo(() =>
         [...attempts]
             .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime())
             .slice(0, 6),
         [attempts]);
 
-    // ── Average band score of completed attempts ──
+
     const avgBand = useMemo(() => {
         const withScore = attempts.filter(a => a.totalBandScore !== null);
         if (!withScore.length) return null;
@@ -243,7 +243,7 @@ export const AdminDashboard = () => {
         return avg.toFixed(1);
     }, [attempts]);
 
-    // ── Top 5 exams by attempt count ──
+
     const topExams = useMemo(() => {
         const map: Record<string, { title: string; type: string; count: number }> = {};
         for (const a of attempts) {
@@ -256,7 +256,7 @@ export const AdminDashboard = () => {
     return (
         <motion.div variants={container} initial="hidden" animate="show" style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
 
-            {/* ── Header ─────────────────────────────────────────────────── */}
+
             <motion.div variants={item} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 12 }}>
                 <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
@@ -291,7 +291,7 @@ export const AdminDashboard = () => {
                 </motion.button>
             </motion.div>
 
-            {/* ── Stat Cards ─────────────────────────────────────────────── */}
+
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 18 }}>
                 <StatCard
                     title="Tổng học viên"
@@ -345,10 +345,10 @@ export const AdminDashboard = () => {
                 />
             </div>
 
-            {/* ── Charts Row ─────────────────────────────────────────────── */}
+
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 20 }}>
 
-                {/* Bar chart: exams by type */}
+
                 <motion.div variants={item} style={{
                     background: '#fff', borderRadius: 20, padding: '24px 20px',
                     border: '1px solid #f1f5f9',
@@ -378,7 +378,7 @@ export const AdminDashboard = () => {
                     )}
                 </motion.div>
 
-                {/* Pie chart: attempts by skill */}
+
                 <motion.div variants={item} style={{
                     background: '#fff', borderRadius: 20, padding: '24px 20px',
                     border: '1px solid #f1f5f9',
@@ -417,13 +417,13 @@ export const AdminDashboard = () => {
                 </motion.div>
             </div>
 
-            {/* ── Bottom Row: Top Exams + Quick Actions + Recent Attempts ── */}
+
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 20, alignItems: 'start' }}>
 
-                {/* Left: Top Exams + Recent Attempts stacked */}
+
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-                    {/* Top exams by attempts */}
+
                     <motion.div variants={item} style={{
                         background: '#fff', borderRadius: 20, padding: '24px',
                         border: '1px solid #f1f5f9',
@@ -484,7 +484,7 @@ export const AdminDashboard = () => {
                         )}
                     </motion.div>
 
-                    {/* Recent Attempts */}
+
                     <motion.div variants={item} style={{
                         background: '#fff', borderRadius: 20, padding: '24px',
                         border: '1px solid #f1f5f9',
@@ -568,7 +568,7 @@ export const AdminDashboard = () => {
                     </motion.div>
                 </div>
 
-                {/* Right: Quick Actions */}
+
                 <motion.div variants={item} style={{
                     background: '#fff', borderRadius: 20, padding: '24px',
                     border: '1px solid #f1f5f9',
@@ -605,7 +605,7 @@ export const AdminDashboard = () => {
                         onClick={() => navigate('/admin/gamification')}
                     />
 
-                    {/* Status summary box */}
+
                     <div style={{ marginTop: 8, background: '#f8fafc', borderRadius: 14, padding: '16px' }}>
                         <p style={{ margin: '0 0 10px', fontWeight: 700, fontSize: '0.8rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                             Tình trạng nhanh
@@ -647,7 +647,7 @@ export const AdminDashboard = () => {
                 </motion.div>
             </div>
 
-            {/* Pulse animation */}
+
             <style>{`
                 @keyframes pulse {
                     0%, 100% { opacity: 1; transform: scale(1); }

@@ -5,7 +5,6 @@ import {
     UserOutlined,
     FormOutlined,
     TrophyOutlined,
-    CreditCardOutlined,
     BellOutlined,
     PlaySquareOutlined,
     LogoutOutlined,
@@ -19,11 +18,11 @@ import { useUserProfileQuery, userApi } from '@/features/admin/api/user.api';
 import { isTokenExpired } from '@/apis/axios.instance';
 import { useQueryClient } from '@tanstack/react-query';
 import {
-    useAdminNotificationStatsQuery,
-    useAdminNotificationsQuery,
-    useMarkAllNotificationsReadMutation,
-    useUpdateNotificationReadMutation,
-} from '@/features/admin/api/notification.api';
+    useClientNotificationStatsQuery,
+    useClientNotificationsQuery,
+    useUpdateClientNotificationReadMutation,
+    useMarkAllClientNotificationsReadMutation,
+} from '@/features/client/api/notification.api';
 import { PdfGenerationProgressWidget } from '@/features/admin/components/PdfGenerationProgressWidget';
 import { pdfGenerationJobStore } from '@/features/admin/stores/pdfGenerationJob.store';
 import { useRealtimeSync } from '@/features/realtime/hooks/useRealtimeSync';
@@ -44,24 +43,23 @@ export const AdminLayout: React.FC = () => {
     useRealtimeSync(hasToken);
 
     const {
-        data: adminNotificationStats,
+        data: clientNotificationStats,
         isLoading: isNotificationStatsLoading,
-    } = useAdminNotificationStatsQuery({
+    } = useClientNotificationStatsQuery({
         enabled: hasUserId,
     });
     const {
-        data: adminNotificationsPaged,
+        data: clientNotificationsPaged,
         isLoading: isNotificationsLoading,
         isFetching: isNotificationsFetching,
         refetch: refetchNotifications,
-    } = useAdminNotificationsQuery(notificationQueryParams, {
+    } = useClientNotificationsQuery(notificationQueryParams, {
         enabled: hasUserId && isNotificationOpen,
     });
-    const updateNotificationReadMutation = useUpdateNotificationReadMutation();
-    const markAllNotificationsReadMutation = useMarkAllNotificationsReadMutation();
-    const notificationItems = adminNotificationsPaged?.items ?? [];
+    const updateNotificationReadMutation = useUpdateClientNotificationReadMutation();
+    const markAllNotificationsReadMutation = useMarkAllClientNotificationsReadMutation();
+    const notificationItems = clientNotificationsPaged?.items ?? [];
 
-    // Route Guard logic
     useEffect(() => {
         const token = localStorage.getItem('token');
         if (!token || isTokenExpired()) {
@@ -167,7 +165,7 @@ export const AdminLayout: React.FC = () => {
                                 {item.message || 'Không có nội dung chi tiết.'}
                             </div>
                             <div style={{ marginTop: 6, color: '#94a3b8', fontSize: '0.72rem' }}>
-                                Người nhận: {item.userDisplayName} - {formatDateTimeToMinute(item.createdAt) || 'N/A'}
+                                {formatDateTimeToMinute(item.createdAt) || 'N/A'}
                             </div>
                         </button>
                     ))}
@@ -231,7 +229,7 @@ export const AdminLayout: React.FC = () => {
     ];
 
     return (
-        <Layout style={{ minHeight: '100vh', fontFamily: 'var(--font-sans)', display: 'flex' }}>
+        <Layout style={{ minHeight: '100vh', display: 'flex' }}>
             <Sider
                 trigger={null}
                 collapsible
@@ -290,7 +288,7 @@ export const AdminLayout: React.FC = () => {
                             onOpenChange={setIsNotificationOpen}
                             content={notificationPopoverContent}
                         >
-                            <Badge count={adminNotificationStats?.unread ?? 0} size="small">
+                            <Badge count={clientNotificationStats?.unread ?? 0} size="small">
                                 <Button
                                     type="text"
                                     icon={<BellOutlined />}

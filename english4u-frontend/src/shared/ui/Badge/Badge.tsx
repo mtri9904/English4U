@@ -17,7 +17,7 @@ const variantStyles: Record<BadgeVariant, React.CSSProperties> = {
 
 export function Badge({ variant = 'primary', children, dot = false }: BadgeProps) {
     return (
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', fontSize: '0.75rem', fontWeight: 600, borderRadius: 'var(--radius-full)', fontFamily: 'var(--font-sans)', ...variantStyles[variant] }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', fontSize: '0.75rem', fontWeight: 600, borderRadius: 'var(--radius-full)', ...variantStyles[variant] }}>
             {dot && <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'currentColor', flexShrink: 0 }} />}
             {children}
         </span>

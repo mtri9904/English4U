@@ -5,41 +5,41 @@ import {
     Search, RefreshCw, Eye, CheckCircle2, Clock3,
     XCircle, Activity, Award, Users, BookOpen,
     ChevronLeft, ChevronRight, Calendar, Timer,
-    BarChart2, Hash, Target, AlignLeft,
+    Hash, Target, AlignLeft,
 } from 'lucide-react';
 import { useAdminAttemptDetailQuery, useAdminAttemptsQuery } from '../api/attempt.api';
 import type { AdminAttemptAnswerDto, AdminAttemptListItemDto } from '../types/attempt.types';
 import { formatDateTimeToMinute } from '@/shared/lib/dateTime';
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+
 const PAGE_SIZE = 10;
 
 const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string; dot: string; icon: React.ElementType }> = {
-    Completed:  { label: 'Hoàn thành', bg: '#d1fae5', text: '#065f46', dot: '#10b981', icon: CheckCircle2 },
-    InProgress: { label: 'Đang thi',   bg: '#dbeafe', text: '#1e40af', dot: '#3b82f6', icon: Clock3 },
-    Submitted:  { label: 'Đã nộp',     bg: '#fef3c7', text: '#92400e', dot: '#f59e0b', icon: CheckCircle2 },
-    Abandoned:  { label: 'Bỏ dở',      bg: '#fee2e2', text: '#991b1b', dot: '#ef4444', icon: XCircle },
+    Completed: { label: 'Hoàn thành', bg: '#d1fae5', text: '#065f46', dot: '#10b981', icon: CheckCircle2 },
+    InProgress: { label: 'Đang thi', bg: '#dbeafe', text: '#1e40af', dot: '#3b82f6', icon: Clock3 },
+    Submitted: { label: 'Đã nộp', bg: '#fef3c7', text: '#92400e', dot: '#f59e0b', icon: CheckCircle2 },
+    Abandoned: { label: 'Bỏ dở', bg: '#fee2e2', text: '#991b1b', dot: '#ef4444', icon: XCircle },
     NotStarted: { label: 'Chưa bắt đầu', bg: '#f1f5f9', text: '#475569', dot: '#94a3b8', icon: Clock3 },
 };
 
 const SKILL_CONFIG: Record<string, { label: string; bg: string; text: string }> = {
-    Reading:   { label: 'Reading',   bg: '#ede9fe', text: '#6d28d9' },
+    Reading: { label: 'Reading', bg: '#ede9fe', text: '#6d28d9' },
     Listening: { label: 'Listening', bg: '#dbeafe', text: '#1d4ed8' },
-    Writing:   { label: 'Writing',   bg: '#fef3c7', text: '#92400e' },
-    Speaking:  { label: 'Speaking',  bg: '#fce7f3', text: '#9d174d' },
-    FullTest:  { label: 'Full Test', bg: '#d1fae5', text: '#065f46' },
+    Writing: { label: 'Writing', bg: '#fef3c7', text: '#92400e' },
+    Speaking: { label: 'Speaking', bg: '#fce7f3', text: '#9d174d' },
+    FullTest: { label: 'Full Test', bg: '#d1fae5', text: '#065f46' },
 };
 
 const STATUS_OPTIONS = [
     { value: 'ALL', label: 'Tất cả trạng thái' },
-    { value: 'Completed',  label: 'Hoàn thành' },
+    { value: 'Completed', label: 'Hoàn thành' },
     { value: 'InProgress', label: 'Đang thi' },
-    { value: 'Submitted',  label: 'Đã nộp' },
-    { value: 'Abandoned',  label: 'Bỏ dở' },
+    { value: 'Submitted', label: 'Đã nộp' },
+    { value: 'Abandoned', label: 'Bỏ dở' },
     { value: 'NotStarted', label: 'Chưa bắt đầu' },
 ];
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+
 const formatSeconds = (v?: number | null) => {
     if (v == null) return 'Không giới hạn';
     const m = Math.floor(Math.max(0, v) / 60);
@@ -48,9 +48,9 @@ const formatSeconds = (v?: number | null) => {
 };
 
 const getStatus = (key: string) => STATUS_CONFIG[key] ?? { label: key, bg: '#f1f5f9', text: '#475569', dot: '#94a3b8', icon: Clock3 };
-const getSkill  = (key: string) => SKILL_CONFIG[key]  ?? { label: key, bg: '#f1f5f9', text: '#64748b' };
+const getSkill = (key: string) => SKILL_CONFIG[key] ?? { label: key, bg: '#f1f5f9', text: '#64748b' };
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+
 function StatusBadge({ status }: { status: string }) {
     const cfg = getStatus(status);
     const Icon = cfg.icon;
@@ -112,12 +112,12 @@ function MiniStat({ label, value, icon: Icon, color }: MiniStatProps) {
     );
 }
 
-// ─── Main Page ────────────────────────────────────────────────────────────────
+
 export const AttemptManagementPage = () => {
-    const [search, setSearch]             = useState('');
-    const [selectedStatus, setStatus]     = useState('ALL');
+    const [search, setSearch] = useState('');
+    const [selectedStatus, setStatus] = useState('ALL');
     const [selectedSessionId, setSession] = useState('');
-    const [page, setPage]                 = useState(1);
+    const [page, setPage] = useState(1);
 
     const queryParams = useMemo(() => ({
         search: search.trim() || undefined,
@@ -125,27 +125,27 @@ export const AttemptManagementPage = () => {
     }), [search, selectedStatus]);
 
     const { data: attempts = [], isLoading, refetch, isFetching } = useAdminAttemptsQuery(queryParams);
-    const { data: detail, isLoading: isDetailLoading }           = useAdminAttemptDetailQuery(selectedSessionId, !!selectedSessionId);
+    const { data: detail, isLoading: isDetailLoading } = useAdminAttemptDetailQuery(selectedSessionId, !!selectedSessionId);
 
-    // ── Stats ──
+
     const stats = useMemo(() => {
-        const completed  = attempts.filter(a => a.status === 'Completed').length;
+        const completed = attempts.filter(a => a.status === 'Completed').length;
         const inProgress = attempts.filter(a => a.status === 'InProgress').length;
-        const abandoned  = attempts.filter(a => a.status === 'Abandoned').length;
-        const withBand   = attempts.filter((a): a is AdminAttemptListItemDto & { totalBandScore: number } => a.totalBandScore != null);
-        const avgBand    = withBand.length ? (withBand.reduce((s, a) => s + a.totalBandScore, 0) / withBand.length) : null;
+        const abandoned = attempts.filter(a => a.status === 'Abandoned').length;
+        const withBand = attempts.filter((a): a is AdminAttemptListItemDto & { totalBandScore: number } => a.totalBandScore != null);
+        const avgBand = withBand.length ? (withBand.reduce((s, a) => s + a.totalBandScore, 0) / withBand.length) : null;
         const uniqueUsers = new Set(attempts.map(a => a.userId)).size;
         return { total: attempts.length, completed, inProgress, abandoned, avgBand, uniqueUsers };
     }, [attempts]);
 
-    // ── Pagination ──
+
     const totalPages = Math.ceil(attempts.length / PAGE_SIZE);
-    const paginated  = attempts.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+    const paginated = attempts.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
     const handleSearch = (v: string) => { setSearch(v); setPage(1); };
     const handleStatus = (v: string) => { setStatus(v); setPage(1); };
 
-    // ─── Drawer detail ───────────────────────────────────────────────────────
+
     const DetailDrawer = () => {
         if (!selectedSessionId) return null;
         return (
@@ -177,19 +177,19 @@ export const AttemptManagementPage = () => {
                 ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-                        {/* Info card */}
+
                         <div style={{ background: '#fff', borderRadius: 16, padding: 20, border: '1px solid #f1f5f9' }}>
                             <div style={{ fontWeight: 700, color: '#0f172a', marginBottom: 14, fontSize: '0.9rem' }}>Thông tin chung</div>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 20px' }}>
                                 {[
-                                    { icon: Users,    label: 'Học viên',    value: `${detail.userDisplayName}` },
-                                    { icon: BookOpen, label: 'Đề thi',      value: detail.examTitle },
-                                    { icon: Target,   label: 'Kỹ năng',     value: <SkillBadge skill={detail.skillType} /> },
-                                    { icon: Activity, label: 'Trạng thái',  value: <StatusBadge status={detail.status} /> },
-                                    { icon: Calendar, label: 'Bắt đầu',     value: formatDateTimeToMinute(detail.startedAt) || '—' },
-                                    { icon: Calendar, label: 'Kết thúc',    value: formatDateTimeToMinute(detail.endedAt) || 'Chưa nộp' },
-                                    { icon: Timer,    label: 'Thời gian còn', value: formatSeconds(detail.timeRemaining) },
-                                    { icon: Hash,     label: 'Đang dừng tại', value: detail.resumeQuestionNumber ? `Câu ${detail.resumeQuestionNumber}` : '—' },
+                                    { icon: Users, label: 'Học viên', value: `${detail.userDisplayName}` },
+                                    { icon: BookOpen, label: 'Đề thi', value: detail.examTitle },
+                                    { icon: Target, label: 'Kỹ năng', value: <SkillBadge skill={detail.skillType} /> },
+                                    { icon: Activity, label: 'Trạng thái', value: <StatusBadge status={detail.status} /> },
+                                    { icon: Calendar, label: 'Bắt đầu', value: formatDateTimeToMinute(detail.startedAt) || '—' },
+                                    { icon: Calendar, label: 'Kết thúc', value: formatDateTimeToMinute(detail.endedAt) || 'Chưa nộp' },
+                                    { icon: Timer, label: 'Thời gian còn', value: formatSeconds(detail.timeRemaining) },
+                                    { icon: Hash, label: 'Đang dừng tại', value: detail.resumeQuestionNumber ? `Câu ${detail.resumeQuestionNumber}` : '—' },
                                 ].map(({ icon: Ic, label, value }) => (
                                     <div key={label} style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
                                         <Ic size={14} color="#94a3b8" style={{ marginTop: 2, flexShrink: 0 }} />
@@ -202,14 +202,14 @@ export const AttemptManagementPage = () => {
                             </div>
                         </div>
 
-                        {/* Score stats */}
+
                         {detail.result && (
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
                                 {[
                                     { label: 'Đã trả lời', value: `${detail.answeredQuestions}/${detail.totalQuestions}`, color: '#6366f1' },
-                                    { label: 'Band score',  value: detail.result.totalBandScore?.toFixed(1) ?? '—',        color: '#8b5cf6' },
-                                    { label: 'Câu đúng',    value: detail.result.correctQuestions,                         color: '#10b981' },
-                                    { label: 'Accuracy',    value: `${detail.result.accuracyPercent ?? 0}%`,               color: '#f59e0b' },
+                                    { label: 'Band score', value: detail.result.totalBandScore?.toFixed(1) ?? '—', color: '#8b5cf6' },
+                                    { label: 'Câu đúng', value: detail.result.correctQuestions, color: '#10b981' },
+                                    { label: 'Accuracy', value: `${detail.result.accuracyPercent ?? 0}%`, color: '#f59e0b' },
                                 ].map(({ label, value, color }) => (
                                     <div key={label} style={{ background: '#fff', borderRadius: 14, padding: '14px 12px', border: '1px solid #f1f5f9', textAlign: 'center' }}>
                                         <div style={{ fontSize: '1.5rem', fontWeight: 800, color }}>{value}</div>
@@ -219,7 +219,7 @@ export const AttemptManagementPage = () => {
                             </div>
                         )}
 
-                        {/* Answers list */}
+
                         <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #f1f5f9', overflow: 'hidden' }}>
                             <div style={{ padding: '14px 20px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', gap: 8 }}>
                                 <AlignLeft size={15} color="#6366f1" />
@@ -281,13 +281,13 @@ export const AttemptManagementPage = () => {
             style={{ display: 'flex', flexDirection: 'column', gap: 24 }}
         >
 
-            {/* ── Hero Header ─────────────────────────────────────────── */}
+
             <div style={{
                 background: 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 60%, #312e81 100%)',
                 borderRadius: 24, padding: '32px 36px',
                 position: 'relative', overflow: 'hidden',
             }}>
-                {/* Decorative circles */}
+
                 {[{ w: 240, top: -80, right: -40, op: 0.06 }, { w: 160, top: 20, right: 120, op: 0.05 }].map((c, i) => (
                     <div key={i} style={{
                         position: 'absolute', top: c.top, right: c.right,
@@ -311,23 +311,23 @@ export const AttemptManagementPage = () => {
                 </div>
             </div>
 
-            {/* ── Stat Cards ──────────────────────────────────────────── */}
+
             <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-                <MiniStat label="Tổng lượt thi"  value={stats.total}            icon={Activity}      color="#6366f1" />
-                <MiniStat label="Hoàn thành"      value={stats.completed}        icon={CheckCircle2}  color="#10b981" />
-                <MiniStat label="Đang thi"        value={stats.inProgress}       icon={Clock3}        color="#3b82f6" />
-                <MiniStat label="Bỏ dở"           value={stats.abandoned}        icon={XCircle}       color="#ef4444" />
-                <MiniStat label="Band TB"         value={stats.avgBand != null ? stats.avgBand.toFixed(1) : '—'} icon={Award} color="#f59e0b" />
-                <MiniStat label="Học viên"        value={stats.uniqueUsers}      icon={Users}         color="#8b5cf6" />
+                <MiniStat label="Tổng lượt thi" value={stats.total} icon={Activity} color="#6366f1" />
+                <MiniStat label="Hoàn thành" value={stats.completed} icon={CheckCircle2} color="#10b981" />
+                <MiniStat label="Đang thi" value={stats.inProgress} icon={Clock3} color="#3b82f6" />
+                <MiniStat label="Bỏ dở" value={stats.abandoned} icon={XCircle} color="#ef4444" />
+                <MiniStat label="Band TB" value={stats.avgBand != null ? stats.avgBand.toFixed(1) : '—'} icon={Award} color="#f59e0b" />
+                <MiniStat label="Học viên" value={stats.uniqueUsers} icon={Users} color="#8b5cf6" />
             </div>
 
-            {/* ── Table Card ──────────────────────────────────────────── */}
+
             <div style={{ background: '#fff', borderRadius: 20, border: '1px solid #f1f5f9', boxShadow: '0 1px 3px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.04)', overflow: 'hidden' }}>
 
-                {/* Toolbar */}
+
                 <div style={{ padding: '18px 24px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', justifyContent: 'space-between' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                        {/* Search */}
+
                         <div style={{ position: 'relative' }}>
                             <Search size={15} color="#94a3b8" style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
                             <input
@@ -346,7 +346,7 @@ export const AttemptManagementPage = () => {
                             />
                         </div>
 
-                        {/* Status filter */}
+
                         <select
                             value={selectedStatus}
                             onChange={e => handleStatus(e.target.value)}
@@ -360,7 +360,7 @@ export const AttemptManagementPage = () => {
                         </select>
                     </div>
 
-                    {/* Refresh */}
+
                     <motion.button
                         whileHover={{ scale: 1.04 }}
                         whileTap={{ scale: 0.97 }}
@@ -378,7 +378,7 @@ export const AttemptManagementPage = () => {
                     </motion.button>
                 </div>
 
-                {/* Table */}
+
                 {isLoading ? (
                     <div style={{ padding: 24 }}>
                         <Skeleton active paragraph={{ rows: 8 }} />
@@ -414,7 +414,7 @@ export const AttemptManagementPage = () => {
                                                 onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                                                 style={{ borderBottom: '1px solid #f8fafc', cursor: 'default', transition: 'background 0.15s' }}
                                             >
-                                                {/* Học viên */}
+
                                                 <td style={{ padding: '13px 16px' }}>
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                                                         <div style={{
@@ -432,7 +432,7 @@ export const AttemptManagementPage = () => {
                                                     </div>
                                                 </td>
 
-                                                {/* Đề thi */}
+
                                                 <td style={{ padding: '13px 16px', maxWidth: 220 }}>
                                                     <div style={{ fontWeight: 600, color: '#0f172a', fontSize: '0.875rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.examTitle}</div>
                                                     <div style={{ display: 'flex', gap: 5, marginTop: 4 }}>
@@ -443,7 +443,7 @@ export const AttemptManagementPage = () => {
                                                     </div>
                                                 </td>
 
-                                                {/* Tiến độ */}
+
                                                 <td style={{ padding: '13px 16px' }}>
                                                     <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.875rem' }}>
                                                         {a.answeredQuestions}/{a.totalQuestions}
@@ -458,12 +458,12 @@ export const AttemptManagementPage = () => {
                                                     </div>
                                                 </td>
 
-                                                {/* Trạng thái */}
+
                                                 <td style={{ padding: '13px 16px' }}>
                                                     <StatusBadge status={a.status} />
                                                 </td>
 
-                                                {/* Band */}
+
                                                 <td style={{ padding: '13px 16px' }}>
                                                     <span style={{
                                                         fontWeight: 800, fontSize: '1rem',
@@ -473,7 +473,7 @@ export const AttemptManagementPage = () => {
                                                     </span>
                                                 </td>
 
-                                                {/* Bắt đầu */}
+
                                                 <td style={{ padding: '13px 16px', color: '#64748b', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                                                         <Calendar size={12} color="#94a3b8" />
@@ -481,7 +481,7 @@ export const AttemptManagementPage = () => {
                                                     </div>
                                                 </td>
 
-                                                {/* Action */}
+
                                                 <td style={{ padding: '13px 16px' }}>
                                                     <motion.button
                                                         whileHover={{ scale: 1.06 }}
@@ -506,7 +506,7 @@ export const AttemptManagementPage = () => {
                             </table>
                         </div>
 
-                        {/* Pagination */}
+
                         {totalPages > 1 && (
                             <div style={{ padding: '14px 24px', borderTop: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                 <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>

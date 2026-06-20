@@ -1,4 +1,3 @@
-import React from 'react';
 import { RouterProvider } from 'react-router-dom';
 import { AntdProvider } from './providers/AntdProvider';
 import { QueryProvider } from './providers/QueryProvider';

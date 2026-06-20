@@ -177,7 +177,6 @@ export const ClientSpeakingSessionPage = () => {
         permissionState,
         audioLevel,
         isRecording,
-        elapsedSeconds,
         lastRecording,
         errorMessage: recorderErrorMessage,
         requestPermission,
@@ -259,7 +258,7 @@ export const ClientSpeakingSessionPage = () => {
             lastActiveTimeRef.current = Date.now();
         }
 
-        const threshold = 0.025;
+        const threshold = 0.08;
         const silenceTimeout = 5000;
 
         if (audioLevel >= threshold) {

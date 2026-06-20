@@ -43,7 +43,7 @@ export function HeroSection() {
                     <div style={{ display: 'flex', gap: 24, paddingTop: 32, borderTop: '1px solid var(--color-border)' }}>
                         {[{ value: '50K+', label: 'Học viên', icon: '👥' }, { value: '95%', label: 'Tỷ lệ đỗ', icon: '🎯' }, { value: '4.9★', label: 'Đánh giá', icon: '⭐' }].map((s) => (
                             <div key={s.label}>
-                                <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, fontSize: '1.625rem', fontWeight: 800, color: 'var(--color-text-primary)', lineHeight: 1, fontFamily: 'var(--font-sans)' }}>
+                                <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, fontSize: '1.625rem', fontWeight: 800, color: 'var(--color-text-primary)', lineHeight: 1 }}>
                                     <span style={{ fontSize: '1.1rem' }}>{s.icon}</span>{s.value}
                                 </div>
                                 <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-secondary)', marginTop: 4 }}>{s.label}</div>
@@ -153,7 +153,6 @@ function RocketButton() {
                 borderRadius: '12px',
                 border: 'none',
                 cursor: 'pointer',
-                fontFamily: 'var(--font-sans)',
                 boxShadow: '0 8px 24px rgba(19,125,197,0.3)',
                 overflow: 'hidden',
                 display: 'inline-flex',

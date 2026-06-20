@@ -27,16 +27,24 @@ internal static class GeminiModelOutputSanitizer
 
         normalized = StripCodeFenceWrapper(normalized);
 
-        var finalSection = ExtractAfterFinalMarker(normalized);
-        if (!string.IsNullOrWhiteSpace(finalSection))
+        var startChatIndex = normalized.IndexOf("[START_CHAT]", StringComparison.Ordinal);
+        if (startChatIndex >= 0)
         {
-            normalized = finalSection;
+            normalized = normalized[startChatIndex..].Trim();
         }
-
-        var answerSection = ExtractUserFacingAnswerSection(normalized);
-        if (!string.IsNullOrWhiteSpace(answerSection))
+        else
         {
-            normalized = answerSection;
+            var finalSection = ExtractAfterFinalMarker(normalized);
+            if (!string.IsNullOrWhiteSpace(finalSection))
+            {
+                normalized = finalSection;
+            }
+
+            var answerSection = ExtractUserFacingAnswerSection(normalized);
+            if (!string.IsNullOrWhiteSpace(answerSection))
+            {
+                normalized = answerSection;
+            }
         }
 
         var lines = normalized
@@ -183,6 +191,11 @@ internal static class GeminiModelOutputSanitizer
             return false;
         }
 
+        if (trimmed.Contains("[START_CHAT]", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
         var rawPrefixes = new[]
         {
             "Step 1",
@@ -311,6 +324,11 @@ internal static class GeminiModelOutputSanitizer
     {
         var trimmed = line.Trim();
         if (string.IsNullOrWhiteSpace(trimmed))
+        {
+            return false;
+        }
+
+        if (trimmed.Contains("[START_CHAT]", StringComparison.Ordinal))
         {
             return false;
         }
