@@ -404,10 +404,14 @@ public sealed partial class GemmaPdfExamGenerationService
         var groupRanges = QuestionRangeBoundaryRegex()
             .Matches(normalized)
             .Cast<Match>()
-            .Select(match => new
+            .Select(match =>
             {
-                Start = ParseOcrQuestionNumber(match.Groups["start"].Value),
-                End = ParseOcrQuestionNumber(match.Groups["end"].Value)
+                TryParseBoundaryQuestions(match, out var start, out var end);
+                return new
+                {
+                    Start = start,
+                    End = end
+                };
             })
             .Where(range => IsPlausiblePassageQuestionRange(range.Start, range.End))
             .Where(range => passageNumber switch

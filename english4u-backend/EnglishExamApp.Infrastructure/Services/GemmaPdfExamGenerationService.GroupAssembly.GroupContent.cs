@@ -62,9 +62,7 @@ public sealed partial class GemmaPdfExamGenerationService
         var rangeMatch = QuestionRangeBoundaryRegex().Match(firstLine);
         if (rangeMatch.Success)
         {
-            var start = ParseOcrQuestionNumber(rangeMatch.Groups["start"].Value);
-            var end = ParseOcrQuestionNumber(rangeMatch.Groups["end"].Value);
-            if (start > 0 && end >= start)
+            if (TryParseBoundaryQuestions(rangeMatch, out var start, out var end))
             {
                 return $"RANGE:{start}-{end}";
             }

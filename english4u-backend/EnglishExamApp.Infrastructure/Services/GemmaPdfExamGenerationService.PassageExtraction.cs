@@ -106,11 +106,15 @@ public sealed partial class GemmaPdfExamGenerationService
         var headingMatches = QuestionRangeBoundaryRegex()
             .Matches(preparedPassageText)
             .Cast<Match>()
-            .Select(match => new
+            .Select(match =>
             {
-                Match = match,
-                StartQuestion = ParseOcrQuestionNumber(match.Groups["start"].Value),
-                EndQuestion = ParseOcrQuestionNumber(match.Groups["end"].Value)
+                TryParseBoundaryQuestions(match, out var startQuestion, out var endQuestion);
+                return new
+                {
+                    Match = match,
+                    StartQuestion = startQuestion,
+                    EndQuestion = endQuestion
+                };
             })
             .Where(item => item.StartQuestion > 0 &&
                            item.EndQuestion >= item.StartQuestion &&

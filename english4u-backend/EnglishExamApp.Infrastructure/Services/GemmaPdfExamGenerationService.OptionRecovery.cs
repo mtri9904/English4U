@@ -153,10 +153,14 @@ public sealed partial class GemmaPdfExamGenerationService
         var rangeSegments = QuestionRangeBoundaryRegex()
             .Matches(normalizedText)
             .Cast<Match>()
-            .Select(match => new QuestionRangeSegment(
-                StartQuestion: ParseOcrQuestionNumber(match.Groups["start"].Value),
-                EndQuestion: ParseOcrQuestionNumber(match.Groups["end"].Value),
-                StartIndex: match.Index))
+            .Select(match =>
+            {
+                TryParseBoundaryQuestions(match, out var start, out var end);
+                return new QuestionRangeSegment(
+                    StartQuestion: start,
+                    EndQuestion: end,
+                    StartIndex: match.Index);
+            })
             .Where(segment =>
                 segment.StartQuestion >= 1 &&
                 segment.StartQuestion <= 40 &&
@@ -381,10 +385,14 @@ public sealed partial class GemmaPdfExamGenerationService
         var rangeSegments = QuestionRangeBoundaryRegex()
             .Matches(normalizedText)
             .Cast<Match>()
-            .Select(match => new QuestionRangeSegment(
-                StartQuestion: ParseOcrQuestionNumber(match.Groups["start"].Value),
-                EndQuestion: ParseOcrQuestionNumber(match.Groups["end"].Value),
-                StartIndex: match.Index))
+            .Select(match =>
+            {
+                TryParseBoundaryQuestions(match, out var start, out var end);
+                return new QuestionRangeSegment(
+                    StartQuestion: start,
+                    EndQuestion: end,
+                    StartIndex: match.Index);
+            })
             .Where(segment =>
                 segment.StartQuestion >= 1 &&
                 segment.StartQuestion <= 40 &&

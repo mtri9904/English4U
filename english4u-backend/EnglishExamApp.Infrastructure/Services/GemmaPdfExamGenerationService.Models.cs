@@ -104,7 +104,7 @@ public sealed partial class GemmaPdfExamGenerationService
     [GeneratedRegex(@"(?im)^\s*(?:\d{1,2}\s*[).:\-]\s*[A-Za-z0-9][^\n]*|\d{1,2}\s+[A-Za-z][^\n]*)$")]
     private static partial Regex AnswerEntryLineRegex();
 
-    [GeneratedRegex(@"(?i)(?:(?<=^)|(?<=[^A-Za-z])|(?<=[a-z]))Questions?\s*(?<start>[0-9OoIl\|]{1,2})\s*(?:-|–|—|‑|−|to)\s*(?<end>[0-9OoIl\|]{1,2})(?![0-9OoIl\|])")]
+    [GeneratedRegex(@"(?i)(?:(?<=^)|(?<=[^A-Za-z])|(?<=[a-z]))Questions?\s*(?<start>[0-9OoIl\|]{1,2})\s*(?:-|–|—|‑|−|to)\s*(?<end>[0-9OoIl\|]{1,4})(?=\b|[A-Za-z])")]
     private static partial Regex QuestionRangeBoundaryRegex();
 
     [GeneratedRegex(@"(?i)\bQuestion\s*(?<number>[0-9OoIl\|]{1,3})(?=\b|[A-Za-z])")]

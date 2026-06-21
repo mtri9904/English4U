@@ -588,10 +588,37 @@ public sealed partial class GemmaPdfExamGenerationService
         }
 
         startQuestion = ParseOcrQuestionNumber(match.Groups["start"].Value);
-        endQuestion = ParseOcrQuestionNumber(match.Groups["end"].Value);
-        return startQuestion is >= 1 and <= 45 &&
-               endQuestion >= startQuestion &&
-               endQuestion <= 45;
+        if (startQuestion is < 1 or > 45)
+        {
+            return false;
+        }
+
+        var rawEndToken = match.Groups["end"].Value;
+        if (string.IsNullOrWhiteSpace(rawEndToken))
+        {
+            return false;
+        }
+
+        var normalizedEnd = rawEndToken
+            .Trim()
+            .Replace('O', '0')
+            .Replace('o', '0')
+            .Replace('I', '1')
+            .Replace('l', '1')
+            .Replace('|', '1');
+
+        for (var length = Math.Min(2, normalizedEnd.Length); length >= 1; length--)
+        {
+            if (int.TryParse(normalizedEnd[..length], out var candidate) &&
+                candidate >= startQuestion &&
+                candidate <= 45)
+            {
+                endQuestion = candidate;
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool TryParseSingleBoundaryQuestion(Match match, out int questionNumber)

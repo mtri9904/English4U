@@ -155,17 +155,18 @@ public sealed partial class GemmaPdfExamGenerationService
             var matches = QuestionRangeBoundaryRegex().Matches(text);
             foreach (Match match in matches)
             {
-                var startVal = ParseOcrQuestionNumber(match.Groups["start"].Value);
-                var endVal = ParseOcrQuestionNumber(match.Groups["end"].Value);
-                bool isPlausible = false;
-                if (i == 0) isPlausible = (startVal >= 1 && endVal <= 20);
-                else if (i == 1) isPlausible = (startVal >= 10 && endVal <= 32);
-                else if (i == 2) isPlausible = (startVal >= 25 && endVal <= 45);
-
-                if (isPlausible && startVal <= endVal)
+                if (TryParseBoundaryQuestions(match, out var startVal, out var endVal))
                 {
-                    detectedStarts[i].Add(startVal);
-                    detectedEnds[i].Add(endVal);
+                    bool isPlausible = false;
+                    if (i == 0) isPlausible = (startVal >= 1 && endVal <= 20);
+                    else if (i == 1) isPlausible = (startVal >= 10 && endVal <= 32);
+                    else if (i == 2) isPlausible = (startVal >= 25 && endVal <= 45);
+
+                    if (isPlausible)
+                    {
+                        detectedStarts[i].Add(startVal);
+                        detectedEnds[i].Add(endVal);
+                    }
                 }
             }
         }

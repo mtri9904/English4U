@@ -1203,7 +1203,7 @@ internal static partial class ReadingQuestionGroupOutlineParser
     [GeneratedRegex(@"(?i)\b(?:you\s+should\s+spend\s+about\s+\d+\s+minutes?|which\s+are\s+based\s+on\s*(?:this\s+passage|(?:this\s+)?reading\s+passage)|based\s+on\s*(?:this\s+passage|(?:this\s+)?reading\s+passage)|reading\s+passage\s*(?-i:[0-9OoIl\|]){1,2}\s+below)\b")]
     private static partial Regex GlobalQuestionRangeHeaderRegex();
 
-    [GeneratedRegex(@"(?i)(?:(?<=^)|(?<=[^A-Za-z])|(?<=[a-z]))Questions?\s*(?<start>(?-i:[0-9OoIl\|]){1,2})\s*(?:-|–|—|‑|−|to)\s*(?<end>(?-i:[0-9OoIl\|]){1,3})(?=\b|[A-Za-z])")]
+    [GeneratedRegex(@"(?i)(?:(?<=^)|(?<=[^A-Za-z])|(?<=[a-z]))Questions?\s*(?<start>(?-i:[0-9OoIl\|]){1,2})\s*(?:-|–|—|‑|−|to)\s*(?<end>(?-i:[0-9OoIl\|]){1,4})(?=\b|[A-Za-z])")]
     private static partial Regex LooseQuestionRangeBoundaryRegex();
 
     [GeneratedRegex(@"(?i)\bQuestion\s*(?<number>(?-i:[0-9OoIl\|]){1,3})(?=\b|[A-Za-z])")]
