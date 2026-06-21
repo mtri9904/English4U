@@ -313,24 +313,35 @@ public sealed partial class GemmaPdfExamGenerationService
             return content;
         }
 
-        var inlineBoundaryMatch = InlinePassageQuestionBoundaryRegex().Match(content);
-        if (inlineBoundaryMatch.Success && inlineBoundaryMatch.Index > 0)
+        var threshold = Math.Min(1000, content.Length / 3);
+
+        var inlineMatches = InlinePassageQuestionBoundaryRegex().Matches(content);
+        foreach (Match match in inlineMatches)
         {
-            var inlineTrimmed = content[..inlineBoundaryMatch.Index].TrimEnd();
-            if (!string.IsNullOrWhiteSpace(inlineTrimmed))
+            if (match.Success && match.Index >= threshold)
             {
-                return inlineTrimmed;
+                var inlineTrimmed = content[..match.Index].TrimEnd();
+                if (!string.IsNullOrWhiteSpace(inlineTrimmed))
+                {
+                    return inlineTrimmed;
+                }
             }
         }
 
-        var boundaryMatch = PassageQuestionBoundaryLineRegex().Match(content);
-        if (!boundaryMatch.Success || boundaryMatch.Index <= 0)
+        var lineMatches = PassageQuestionBoundaryLineRegex().Matches(content);
+        foreach (Match match in lineMatches)
         {
-            return content;
+            if (match.Success && match.Index >= threshold)
+            {
+                var trimmed = content[..match.Index].TrimEnd();
+                if (!string.IsNullOrWhiteSpace(trimmed))
+                {
+                    return trimmed;
+                }
+            }
         }
 
-        var trimmed = content[..boundaryMatch.Index].TrimEnd();
-        return string.IsNullOrWhiteSpace(trimmed) ? content : trimmed;
+        return content;
     }
 
     private static string NormalizePassageParagraphBreaks(string content)
