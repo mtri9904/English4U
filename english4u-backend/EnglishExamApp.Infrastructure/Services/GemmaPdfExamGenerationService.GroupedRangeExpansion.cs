@@ -89,7 +89,15 @@ public sealed partial class GemmaPdfExamGenerationService
                     continue;
                 }
 
-                var rowAnswers = BuildMultiBlankRowAnswers(question, placeholderNumbers, answerKeyMap);
+                var hasAllPlaceholders = placeholderNumbers.All(num =>
+                    questions.Any(q => ParseQuestionNumber(ReadJsonAsText(q.QuestionNumber)) == num));
+                if (hasAllPlaceholders)
+                {
+                    expandedQuestions.Add(question);
+                    continue;
+                }
+
+                var rowAnswers = BuildMultiBlankRowAnswers(question, placeholderNumbers, answerKeyMap, questions);
                 for (var index = 0; index < placeholderNumbers.Count; index++)
                 {
                     var questionNumber = placeholderNumbers[index];
@@ -138,11 +146,30 @@ public sealed partial class GemmaPdfExamGenerationService
     private static List<string> BuildMultiBlankRowAnswers(
         GemmaQuestionPayload template,
         IReadOnlyList<int> placeholderNumbers,
-        IReadOnlyDictionary<int, string> answerKeyMap)
+        IReadOnlyDictionary<int, string> answerKeyMap,
+        IReadOnlyList<GemmaQuestionPayload> originalQuestions)
     {
         var answerKeyTokens = placeholderNumbers
-            .Select(number => answerKeyMap.TryGetValue(number, out var answer) ? NormalizeSingleAnswerToken(answer) : string.Empty)
+            .Select(number =>
+            {
+                if (answerKeyMap.TryGetValue(number, out var answer) && !string.IsNullOrWhiteSpace(answer))
+                {
+                    return NormalizeSingleAnswerToken(answer);
+                }
+
+                var originalQ = originalQuestions.FirstOrDefault(q => ParseQuestionNumber(ReadJsonAsText(q.QuestionNumber)) == number);
+                if (originalQ != null)
+                {
+                    var origAnswer = ReadJsonAsText(originalQ.Answer);
+                    if (!string.IsNullOrWhiteSpace(origAnswer))
+                    {
+                        return origAnswer.Trim();
+                    }
+                }
+                return string.Empty;
+            })
             .ToList();
+
         if (answerKeyTokens.All(answer => !string.IsNullOrWhiteSpace(answer)))
         {
             return answerKeyTokens;
@@ -288,10 +315,18 @@ public sealed partial class GemmaPdfExamGenerationService
 
     private static string NormalizeSingleAnswerToken(string? answer)
     {
+        if (string.IsNullOrWhiteSpace(answer))
+        {
+            return string.Empty;
+        }
         var tokens = SplitAnswerTokensOrdered(answer)
             .Where(IsSingleLetterAnswerToken)
             .ToList();
-        return tokens.Count == 1 ? tokens[0] : string.Empty;
+        if (tokens.Count == 1)
+        {
+            return tokens[0];
+        }
+        return answer.Trim();
     }
 
     private static List<GroupedQuestionRange> ExtractExpandableGroupedQuestionRanges(string rawPassageText)

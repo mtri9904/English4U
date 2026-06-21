@@ -56,6 +56,7 @@ public sealed record CreateQuestionGroupDto(
     string? AssetsData,
     int? StartQuestion,
     int? EndQuestion,
+    string? OptionLabelType,
     List<CreateQuestionDto> Questions);
 
 public sealed record CreateQuestionDto(

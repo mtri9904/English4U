@@ -9,6 +9,7 @@ public class QuestionGroup
     public string? Instruction { get; set; }
     public int? StartQuestion { get; set; }
     public int? EndQuestion { get; set; }
+    public string? OptionLabelType { get; set; }
 
     public string? ContentData { get; set; }
     public string? AssetsData { get; set; }

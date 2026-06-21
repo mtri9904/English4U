@@ -146,6 +146,7 @@ public sealed record PracticeSessionQuestionGroupDto(
     string? AssetsData,
     int? StartQuestion,
     int? EndQuestion,
+    string? OptionLabelType,
     IReadOnlyList<PracticeSessionQuestionDto> Questions);
 
 public sealed record PracticeSessionReadingPassageDto(

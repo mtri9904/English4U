@@ -104,7 +104,26 @@ public sealed partial class GemmaPdfExamGenerationService
             text = CutStorageTextAtQuestionInstructionMarkers(text, questionNumber);
         }
 
+        var tableRowsMatch = Regex.Match(text, @"\[Table (?:Rows|Structure):\s*(?<rows>(?:[^\[\]]|\[Q\s*\d+\]|\[\s*EMPTY\s*\]|\\n|\n)*)\]", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        string? protectedTableRows = null;
+        string? originalTableRows = null;
+        if (tableRowsMatch.Success)
+        {
+            originalTableRows = tableRowsMatch.Value;
+            protectedTableRows = originalTableRows
+                .Replace("\n", "__TABLE_ROW_NL__")
+                .Replace("\\n", "__TABLE_ROW_NL__");
+            text = text.Replace(originalTableRows, protectedTableRows);
+        }
+
         text = NormalizeExtractedSpacing(text).Trim();
+
+        if (protectedTableRows != null && originalTableRows != null)
+        {
+            var restoredTableRows = protectedTableRows.Replace("__TABLE_ROW_NL__", "\n");
+            text = text.Replace(protectedTableRows, restoredTableRows);
+        }
+
         return string.IsNullOrWhiteSpace(text) ? null : text;
     }
 

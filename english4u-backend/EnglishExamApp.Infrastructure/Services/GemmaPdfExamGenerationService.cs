@@ -39,9 +39,9 @@ public sealed partial class GemmaPdfExamGenerationService(
     private const int MaxGemmaApiTransientRetries = 5;
     private const int DefaultDelayBetweenPassageCallsMs = 6000;
     private const int RawReviewMaxApiRetries = 0;
-    private const int MaxPassageInputCharacters = 12000;
-    private const int MaxSegmentInputCharacters = 6500;
-    private const int MaxSegmentSharedPassageContextCharacters = 3500;
+    private const int MaxPassageInputCharacters = 30000;
+    private const int MaxSegmentInputCharacters = 25000;
+    private const int MaxSegmentSharedPassageContextCharacters = 20000;
     private const int SegmentDelayBetweenCallsMs = 1500;
     private const int RawReviewDelayBetweenAiCallsMs = 900;
     private const int MaxFallbackAnswerKeyCharacters = 14000;

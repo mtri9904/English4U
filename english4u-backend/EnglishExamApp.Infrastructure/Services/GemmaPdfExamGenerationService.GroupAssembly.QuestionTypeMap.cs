@@ -172,10 +172,10 @@ public sealed partial class GemmaPdfExamGenerationService
     }
 
     private static bool IsOptionBasedType(string mappedQuestionType) =>
-        mappedQuestionType is "MCQ_SINGLE" or "MCQ_MULTIPLE" or "MCQ_CHOOSE_N" or "TFNG" or "YNNG" or "MATCHING_INFO" or "MATCHING_FEATURES" or "MATCHING_VISUALS" or "MATCHING_HEADINGS" or "FLOWCHART_COMPLETION" or "SUMMARY_COMPLETION" or "TABLE_COMPLETION" or "MAP_LABELLING";
+        mappedQuestionType is "MCQ_SINGLE" or "MCQ_MULTIPLE" or "MCQ_CHOOSE_N" or "TFNG" or "YNNG" or "MATCHING_INFO" or "MATCHING_FEATURES" or "MATCHING_VISUALS" or "MATCHING_HEADINGS" or "FLOWCHART_COMPLETION" or "SUMMARY_COMPLETION" or "TABLE_COMPLETION" or "MATCHING_TABLE" or "MAP_LABELLING";
 
     private static bool IsCompletionTemplateType(string mappedQuestionType) =>
-        mappedQuestionType is "SENTENCE_COMPLETION" or "SUMMARY_COMPLETION" or "TABLE_COMPLETION" or "FLOWCHART_COMPLETION" or "MAP_LABELLING";
+        mappedQuestionType is "SENTENCE_COMPLETION" or "SUMMARY_COMPLETION" or "TABLE_COMPLETION" or "MATCHING_TABLE" or "FLOWCHART_COMPLETION" or "MAP_LABELLING";
 
     private static bool IsCompletionTemplateType(string mappedQuestionType, string? questionText, int? questionNumber)
     {
@@ -329,6 +329,7 @@ public sealed partial class GemmaPdfExamGenerationService
             "SENTENCECOMPLETION" => "SENTENCE_COMPLETION",
             "SUMMARYCOMPLETION" => "SUMMARY_COMPLETION",
             "TABLECOMPLETION" => "TABLE_COMPLETION",
+            "MATCHINGTABLE" => "MATCHING_TABLE",
             "MATCHING" => "MATCHING_INFO",
             "MATCHINGINFO" => "MATCHING_INFO",
             "MATCHINGINFORMATION" => "MATCHING_INFO",

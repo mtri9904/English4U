@@ -80,7 +80,8 @@ public sealed partial class GemmaPdfExamGenerationService
     {
         if (!string.IsNullOrWhiteSpace(sharedInstruction))
         {
-            var cleaned = Regex.Replace(sharedInstruction, @"\[Table Headers:\s*.*?\]", string.Empty, RegexOptions.IgnoreCase).Trim();
+            var cleaned = Regex.Replace(sharedInstruction, @"\[Table Headers:\s*[^\]]*\]", string.Empty, RegexOptions.IgnoreCase).Trim();
+            cleaned = Regex.Replace(cleaned, @"\[Table (?:Rows|Structure):\s*(?:[^\[\]]|\[Q\s*\d+\]|\[\s*EMPTY\s*\]|\\n|\n)*\]", string.Empty, RegexOptions.IgnoreCase | RegexOptions.Singleline).Trim();
             if (!string.IsNullOrWhiteSpace(cleaned))
             {
                 return cleaned;
@@ -88,6 +89,70 @@ public sealed partial class GemmaPdfExamGenerationService
         }
 
         return BuildInstruction(mappedQuestionType);
+    }
+
+    private static List<string[]> ApplyRowMergingAlgorithm(List<string[]> rowsList, int maxCols)
+    {
+        var mergedRows = new List<string[]>();
+        var usedIndices = new HashSet<int>();
+
+        for (int i = 0; i < rowsList.Count; i++)
+        {
+            if (usedIndices.Contains(i))
+            {
+                continue;
+            }
+
+            var currentMergedRow = (string[])rowsList[i].Clone();
+
+            for (int j = i + 1; j < rowsList.Count; j++)
+            {
+                if (usedIndices.Contains(j))
+                {
+                    continue;
+                }
+
+                var candidateRow = rowsList[j];
+
+                var labelA = currentMergedRow[0]?.Trim() ?? string.Empty;
+                var labelB = candidateRow[0]?.Trim() ?? string.Empty;
+
+                if (!string.Equals(labelA, labelB, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var canMerge = true;
+                for (int col = 1; col < maxCols; col++)
+                {
+                    var cellA = currentMergedRow[col] ?? string.Empty;
+                    var cellB = candidateRow[col] ?? string.Empty;
+
+                    if (!string.IsNullOrEmpty(cellA) && !string.IsNullOrEmpty(cellB))
+                    {
+                        canMerge = false;
+                        break;
+                    }
+                }
+
+                if (canMerge)
+                {
+                    for (int col = 1; col < maxCols; col++)
+                    {
+                        if (string.IsNullOrEmpty(currentMergedRow[col]) && !string.IsNullOrEmpty(candidateRow[col]))
+                        {
+                            currentMergedRow[col] = candidateRow[col];
+                        }
+                    }
+                    usedIndices.Add(j);
+                }
+            }
+
+            mergedRows.Add(currentMergedRow);
+            usedIndices.Add(i);
+        }
+
+        return mergedRows;
     }
 
     private static string? BuildGroupContentData(
@@ -125,13 +190,14 @@ public sealed partial class GemmaPdfExamGenerationService
             questions[index] = questions[index] with { Content = null };
         }
 
-        if (string.Equals(mappedQuestionType, "TABLE_COMPLETION", StringComparison.Ordinal) &&
+        if ((string.Equals(mappedQuestionType, "TABLE_COMPLETION", StringComparison.Ordinal) ||
+             string.Equals(mappedQuestionType, "MATCHING_TABLE", StringComparison.Ordinal)) &&
             templateLines.Any(line => line.Contains('|')))
         {
             string[]? tableHeaders = null;
             if (!string.IsNullOrWhiteSpace(sharedInstruction))
             {
-                var match = Regex.Match(sharedInstruction, @"\[Table Headers:\s*(?<headers>.*?)\]", RegexOptions.IgnoreCase);
+                var match = Regex.Match(sharedInstruction, @"\[Table Headers:\s*(?<headers>[^\]]*)\]", RegexOptions.IgnoreCase);
                 if (match.Success)
                 {
                     tableHeaders = match.Groups["headers"].Value.Split('|').Select(h => h.Trim()).ToArray();
@@ -140,17 +206,165 @@ public sealed partial class GemmaPdfExamGenerationService
 
             var rowsList = new List<string[]>();
             var maxCols = 0;
-            foreach (var line in templateLines)
+            var hasRowsFromInstruction = false;
+
+            if (!string.IsNullOrWhiteSpace(sharedInstruction))
             {
-                var cells = line.Split('|').Select(c =>
+                var rowsMatch = Regex.Match(sharedInstruction, @"\[Table (?:Rows|Structure):\s*(?<rows>(?:[^\[\]]|\[Q\s*\d+\]|\[\s*EMPTY\s*\]|\\n|\n)*)\]", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+                if (rowsMatch.Success)
                 {
-                    var trimmed = c.Trim();
-                    return string.Equals(trimmed, "[EMPTY]", StringComparison.OrdinalIgnoreCase) ? string.Empty : trimmed;
-                }).ToArray();
-                rowsList.Add(cells);
-                if (cells.Length > maxCols)
+                    var rawRowsStr = rowsMatch.Groups["rows"].Value;
+                    var rawRows = rawRowsStr.Replace("\\n", "\n").Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                    foreach (var r in rawRows)
+                    {
+                        var cells = r.Split('|').Select(c =>
+                        {
+                            var trimmed = c.Trim();
+                            return string.Equals(trimmed, "[EMPTY]", StringComparison.OrdinalIgnoreCase) ? string.Empty : trimmed;
+                        }).ToArray();
+
+                        if (cells.Length > maxCols)
+                        {
+                            maxCols = cells.Length;
+                        }
+                        rowsList.Add(cells);
+                    }
+                    hasRowsFromInstruction = rowsList.Count > 0;
+                }
+            }
+
+            if (!hasRowsFromInstruction)
+            {
+                var tempRows = new List<string[]>();
+                foreach (var line in templateLines)
                 {
-                    maxCols = cells.Length;
+                    var cells = line.Split('|').Select(c =>
+                    {
+                        var trimmed = c.Trim();
+                        return string.Equals(trimmed, "[EMPTY]", StringComparison.OrdinalIgnoreCase) ? string.Empty : trimmed;
+                    }).ToArray();
+                    tempRows.Add(cells);
+                    if (cells.Length > maxCols)
+                    {
+                        maxCols = cells.Length;
+                    }
+                }
+
+                string[]? matchingHeaders = null;
+                if (tableHeaders != null && tableHeaders.Length > 0)
+                {
+                    matchingHeaders = (string[])tableHeaders.Clone();
+                    if (matchingHeaders.Length == maxCols - 1 &&
+                        tempRows.Any(row => row.Length == maxCols && !LooksLikeQuestionPlaceholderOnly(row[0])))
+                    {
+                        matchingHeaders = [string.Empty, .. matchingHeaders];
+                    }
+                }
+
+                if (matchingHeaders == null || matchingHeaders.Length == 0)
+                {
+                    matchingHeaders = new string[maxCols];
+                    for (int col = 1; col < maxCols; col++)
+                    {
+                        var colValues = tempRows
+                            .Select(row => row.Length > col ? row[col]?.Trim() : string.Empty)
+                            .Where(val => !string.IsNullOrEmpty(val) && !LooksLikeQuestionPlaceholderOnly(val) && val.Length < 30)
+                            .ToList();
+
+                        if (colValues.Count > 0)
+                        {
+                            var mostFrequent = colValues
+                                .GroupBy(v => v, StringComparer.OrdinalIgnoreCase)
+                                .OrderByDescending(g => g.Count())
+                                .FirstOrDefault();
+
+                            if (mostFrequent != null && (mostFrequent.Count() >= 2 || colValues.Count == 1))
+                            {
+                                matchingHeaders[col] = mostFrequent.Key ?? string.Empty;
+                            }
+                            else
+                            {
+                                matchingHeaders[col] = string.Empty;
+                            }
+                        }
+                        else
+                        {
+                            matchingHeaders[col] = string.Empty;
+                        }
+                    }
+                }
+
+                for (int i = 0; i < tempRows.Count; i++)
+                {
+                    if (tempRows[i].Length < maxCols)
+                    {
+                        var expanded = new string[maxCols];
+                        Array.Copy(tempRows[i], expanded, tempRows[i].Length);
+                        for (int j = tempRows[i].Length; j < maxCols; j++)
+                        {
+                            expanded[j] = string.Empty;
+                        }
+                        tempRows[i] = expanded;
+                    }
+
+                    if (matchingHeaders != null)
+                    {
+                        for (int col = 1; col < maxCols; col++)
+                        {
+                            if (col >= matchingHeaders.Length) continue;
+
+                            var currentCell = tempRows[i][col]?.Trim() ?? string.Empty;
+                            var currentHeader = matchingHeaders[col]?.Trim() ?? string.Empty;
+
+                            if (string.IsNullOrEmpty(currentHeader)) continue;
+
+                            for (int otherCol = 1; otherCol < maxCols; otherCol++)
+                            {
+                                if (otherCol == col) continue;
+
+                                var otherCell = tempRows[i][otherCol]?.Trim() ?? string.Empty;
+
+                                if (string.Equals(otherCell, matchingHeaders[otherCol], StringComparison.OrdinalIgnoreCase) &&
+                                    LooksLikeQuestionPlaceholderOnly(currentCell))
+                                {
+                                    tempRows[i][otherCol] = currentCell;
+                                    tempRows[i][col] = string.Empty;
+                                    break;
+                                }
+                            }
+                        }
+
+                        for (int col = 1; col < maxCols; col++)
+                        {
+                            if (col >= matchingHeaders.Length) continue;
+                            var cellVal = tempRows[i][col]?.Trim() ?? string.Empty;
+                            var headerVal = matchingHeaders[col]?.Trim() ?? string.Empty;
+                            if (!string.IsNullOrEmpty(cellVal) &&
+                                !string.IsNullOrEmpty(headerVal) &&
+                                string.Equals(cellVal, headerVal, StringComparison.OrdinalIgnoreCase))
+                            {
+                                tempRows[i][col] = string.Empty;
+                            }
+                        }
+                    }
+                }
+
+                rowsList = ApplyRowMergingAlgorithm(tempRows, maxCols);
+            }
+            else
+            {
+                for (int i = 0; i < rowsList.Count; i++)
+                {
+                    if (rowsList[i].Length < maxCols)
+                    {
+                        var expanded = new string[maxCols];
+                        Array.Copy(rowsList[i], expanded, rowsList[i].Length);
+                        for (int j = rowsList[i].Length; j < maxCols; j++)
+                        {
+                            expanded[j] = string.Empty;
+                        }
+                        rowsList[i] = expanded;
+                    }
                 }
             }
 
@@ -174,23 +388,7 @@ public sealed partial class GemmaPdfExamGenerationService
                     normalizedRows.Add(headerRow);
                 }
 
-                foreach (var row in rowsList)
-                {
-                    if (row.Length < maxCols)
-                    {
-                        var newRow = new string[maxCols];
-                        Array.Copy(row, newRow, row.Length);
-                        for (int k = row.Length; k < maxCols; k++)
-                        {
-                            newRow[k] = string.Empty;
-                        }
-                        normalizedRows.Add(newRow);
-                    }
-                    else
-                    {
-                        normalizedRows.Add(row);
-                    }
-                }
+                normalizedRows.AddRange(rowsList);
 
                 var tablePayload = new
                 {

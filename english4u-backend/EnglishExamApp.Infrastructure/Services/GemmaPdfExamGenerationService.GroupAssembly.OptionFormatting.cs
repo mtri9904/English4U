@@ -447,11 +447,6 @@ public sealed partial class GemmaPdfExamGenerationService
 
     private static bool ShouldStripOptionLabelPrefix(string mappedQuestionType, IReadOnlyList<string> options)
     {
-        if (mappedQuestionType is not "MCQ_SINGLE" and not "MCQ_MULTIPLE" and not "MCQ_CHOOSE_N" and not "FLOWCHART_COMPLETION" and not "SUMMARY_COMPLETION" and not "TABLE_COMPLETION")
-        {
-            return false;
-        }
-
         if (options.Count < 2)
         {
             return false;

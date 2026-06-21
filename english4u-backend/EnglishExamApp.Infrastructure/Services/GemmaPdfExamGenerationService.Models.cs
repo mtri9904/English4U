@@ -131,19 +131,19 @@ public sealed partial class GemmaPdfExamGenerationService
     [GeneratedRegex(@"(?m)(?<=\b[A-Z])\.\s*\n\s*(?=[A-Z]\.)")]
     private static partial Regex BrokenAbbreviationAcrossLinesRegex();
 
-    [GeneratedRegex(@"(?m)^\s*\*\*(?<label>[A-H])(?:\s*[).:\-]|[.])?\s*\*\*\s*(?<text>\S.*)$")]
+    [GeneratedRegex(@"(?m)^[ \t]*\*\*(?<label>[A-H])(?:[ \t]*[).:\-]|[.])?[ \t]*\*\*[ \t]*(?<text>\S.*)$")]
     private static partial Regex MarkdownLabeledPassageLineRegex();
 
-    [GeneratedRegex(@"(?m)^\s*(?<label>[A-H])(?:(?:\s*[).:\-]|[.])\s*|\s+)(?<text>\S.*)$")]
+    [GeneratedRegex(@"(?m)^[ \t]*(?<label>[A-H])(?:(?:[ \t]*[).:\-]|[.])[ \t]*|[ \t]+)(?<text>\S.*)$")]
     private static partial Regex LabeledPassageLineRegex();
 
-    [GeneratedRegex(@"(?m)^\s*\*\*(?<label>[A-H])(?:\s*[).:\-]|[.])?\s*\*\*\s*$")]
+    [GeneratedRegex(@"(?m)^[ \t]*\*\*(?<label>[A-H])(?:[ \t]*[).:\-]|[.])?[ \t]*\*\*[ \t]*$")]
     private static partial Regex StandaloneMarkdownLabeledPassageLineRegex();
 
-    [GeneratedRegex(@"(?m)^\s*(?<label>[A-H])(?:\s*[).:\-]|[.])?\s*$")]
+    [GeneratedRegex(@"(?m)^[ \t]*(?<label>[A-H])(?:[ \t]*[).:\-]|[.])?[ \t]*$")]
     private static partial Regex StandaloneLabeledPassageLineRegex();
 
-    [GeneratedRegex(@"(?m)(?<!^)(?<!\n\n)(?=^\*\*[A-H](?:\s*[).:\-]|[.])?\s*\*\*)")]
+    [GeneratedRegex(@"(?m)(?<!^)(?<!\n\n)(?=^[ \t]*(?:\*\*[A-H](?:[ \t]*[).:\-]|[.])?[ \t]*\*\*|\*\*[A-H]\*\*\.|[A-H](?:[ \t]*[).:\-]|[.])?)(?:[ \t]|\S))")]
     private static partial Regex MissingBlankLineBeforeLabeledPassageRegex();
 
     [GeneratedRegex(@"(?<quote>[’'""”])\s+(?<speaker>[A-Z][\p{L}'’\.-]+(?:\s+[A-Z][\p{L}'’\.-]+){1,6}\s+\((?:[^()\n]{3,220})\))")]

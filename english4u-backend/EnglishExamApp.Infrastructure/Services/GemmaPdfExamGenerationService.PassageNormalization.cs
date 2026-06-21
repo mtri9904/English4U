@@ -229,6 +229,26 @@ public sealed partial class GemmaPdfExamGenerationService
     private static string BuildQuestionGroupRangeBoundaryToken(int startQuestion, int endQuestion) =>
         $"RANGE:{startQuestion}-{endQuestion}";
 
+    private static string NormalizeAiPassageContent(string? passageContent, string? passageTitle = null)
+    {
+        if (string.IsNullOrWhiteSpace(passageContent))
+        {
+            return string.Empty;
+        }
+
+        var normalized = UnescapeExtractedText(passageContent)
+            .Replace("\r\n", "\n")
+            .Replace('\r', '\n');
+
+        normalized = Regex.Replace(normalized, @"[ \t]+", " ");
+        normalized = Regex.Replace(normalized, @"[ \t]+\n", "\n");
+        normalized = Regex.Replace(normalized, @"\n[ \t]+", "\n");
+        normalized = RemoveLeadingRepeatedPassageTitle(normalized, passageTitle);
+        normalized = Regex.Replace(normalized, @"\n{3,}", "\n\n");
+
+        return normalized.Trim();
+    }
+
     private static string NormalizePassageContent(string? passageContent, string? passageTitle = null)
     {
         if (string.IsNullOrWhiteSpace(passageContent))
@@ -333,7 +353,7 @@ public sealed partial class GemmaPdfExamGenerationService
                 "\n\n");
             normalized = Regex.Replace(
                 normalized,
-                @"(?m)^\s*\*\*(?<label>[A-H])(?:\s*[).:\-]|[.])?\s*\*\*\s*\n\s*(?<text>\S.*)$",
+                @"(?m)^[ \t]*\*\*(?<label>[A-H])(?:[ \t]*[).:\-]|[.])?[ \t]*\*\*[ \t]*\n[ \t]*(?<text>\S.*)$",
                 match =>
                 {
                     var label = match.Groups["label"].Value.Trim();
@@ -342,7 +362,7 @@ public sealed partial class GemmaPdfExamGenerationService
                 });
             normalized = Regex.Replace(
                 normalized,
-                @"(?m)^\s*(?<label>[A-H])(?:(?:\s*[).:\-]|[.])\s*|\s+)\n\s*(?<text>\S.*)$",
+                @"(?m)^[ \t]*(?<label>[A-H])(?:(?:[ \t]*[).:\-]|[.])[ \t]*|[ \t]+)\n[ \t]*(?<text>\S.*)$",
                 match =>
                 {
                     var label = match.Groups["label"].Value.Trim();
@@ -487,7 +507,7 @@ public sealed partial class GemmaPdfExamGenerationService
         foreach (var rawLine in lines)
         {
             var line = rawLine.Trim();
-            var labelMatch = Regex.Match(line, @"^\*\*(?<label>[A-H])\.\*\*$", RegexOptions.IgnoreCase);
+            var labelMatch = Regex.Match(line, @"^\*\*(?<label>[A-H])\.\*\*$" + "|" + @"^\*\*(?<label>[A-H])\*\*\.$", RegexOptions.IgnoreCase);
             if (labelMatch.Success)
             {
                 var label = char.ToUpperInvariant(labelMatch.Groups["label"].Value[0]);

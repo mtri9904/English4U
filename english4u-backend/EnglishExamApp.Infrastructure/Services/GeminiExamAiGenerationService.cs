@@ -685,7 +685,14 @@ public sealed class GeminiExamAiGenerationService(
 
             foreach (var g in questionGroups)
             {
-                var optionLabelType = g.Key.GroupType == "MATCHING_HEADINGS" ? "roman" : "alpha";
+                var hasOptions = g.Any(q => q.Options != null && q.Options.Count > 0);
+                var finalGroupType = g.Key.GroupType;
+                if (finalGroupType == "TABLE_COMPLETION" && hasOptions)
+                {
+                    finalGroupType = "MATCHING_TABLE";
+                }
+
+                var optionLabelType = finalGroupType == "MATCHING_HEADINGS" ? "roman" : "alpha";
                 var createQuestions = g.Select(q => new CreateQuestionDto(
                     QuestionNumber: q.QuestionNumber,
                     Content: q.Content,
@@ -704,12 +711,13 @@ public sealed class GeminiExamAiGenerationService(
                 var endQ = g.Max(q => q.QuestionNumber);
 
                 groups.Add(new CreateQuestionGroupDto(
-                    GroupType: g.Key.GroupType,
+                    GroupType: finalGroupType,
                     Instruction: g.Key.Instruction,
                     ContentData: g.Key.ContentData,
                     AssetsData: null,
                     StartQuestion: startQ,
                     EndQuestion: endQ,
+                    OptionLabelType: optionLabelType,
                     Questions: createQuestions
                 ));
             }

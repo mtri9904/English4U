@@ -65,7 +65,7 @@ export const buildReadingPassageDisplaySegments = (value?: string | null): Readi
         }
 
         paragraphNumber += 1;
-        const cleanBlock = block.replace(/^\s*(?:\*\*)?[A-H]\.?(?:\*\*)?\s*/i, '');
+        const cleanBlock = block.replace(/^\s*(?:\*\*)?[A-H](?:\.|\b)(?:\*\*)?\s*/i, '');
         return {
             kind: 'paragraph',
             paragraphNumber,

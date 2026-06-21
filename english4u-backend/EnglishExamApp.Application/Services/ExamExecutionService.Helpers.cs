@@ -157,7 +157,7 @@ public sealed partial class ExamExecutionService
     private static bool IsFlexibleFillBlankGroupType(string? groupType)
     {
         var normalized = (groupType ?? string.Empty).Trim().ToUpperInvariant();
-        return normalized is "SENTENCE_COMPLETION" or "SUMMARY_COMPLETION" or "TABLE_COMPLETION" or "FLOWCHART_COMPLETION" or "SHORT_ANSWER" or "SHORT_ANSWER_QUESTIONS";
+        return normalized is "SENTENCE_COMPLETION" or "SUMMARY_COMPLETION" or "TABLE_COMPLETION" or "MATCHING_TABLE" or "FLOWCHART_COMPLETION" or "SHORT_ANSWER" or "SHORT_ANSWER_QUESTIONS";
     }
 
     private static bool IsAlternativeSingleSelectionMatchingGroupType(string? groupType)

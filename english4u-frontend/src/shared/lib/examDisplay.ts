@@ -115,88 +115,10 @@ type QuestionLike = {
 
 type QuestionGroupLike = {
     optionLabelType?: OptionLabelType | null;
+    groupType?: string | null;
     instruction?: string | null;
     contentData?: string | null;
     questions?: QuestionLike[] | null;
-};
-
-const ROMAN_LABEL_TOKENS = new Set([
-    'i',
-    'ii',
-    'iii',
-    'iv',
-    'v',
-    'vi',
-    'vii',
-    'viii',
-    'ix',
-    'x',
-    'xi',
-    'xii',
-    'xiii',
-    'xiv',
-    'xv',
-    'xvi',
-    'xvii',
-    'xviii',
-    'xix',
-    'xx',
-]);
-
-const sanitizeLabelToken = (value: string) =>
-    value.trim().replace(/^[([{\s]+|[\])}.,;:\s]+$/g, '').toLowerCase();
-
-const isRomanLabelToken = (value?: string | null) => {
-    const trimmed = (value ?? '').trim().replace(/^[([{\s]+|[\])}.,;:\s]+$/g, '');
-    if (!trimmed || trimmed !== trimmed.toLowerCase()) {
-        return false;
-    }
-
-    return ROMAN_LABEL_TOKENS.has(sanitizeLabelToken(trimmed));
-};
-
-const parsePromptText = (contentData?: string | null) => {
-    if (!contentData) {
-        return '';
-    }
-
-    try {
-        const parsed = JSON.parse(contentData) as unknown;
-        if (typeof parsed === 'string') {
-            return parsed;
-        }
-
-        if (parsed && typeof parsed === 'object') {
-            const prompt = (parsed as { prompt?: unknown }).prompt;
-            if (typeof prompt === 'string') {
-                return prompt;
-            }
-        }
-    } catch {
-        return contentData;
-    }
-
-    return contentData;
-};
-
-const getSharedOptions = (group: QuestionGroupLike) =>
-    group.questions?.find((question) => (question.options?.length ?? 0) > 0)?.options ?? [];
-
-const hasSequentialAlphaOptionBank = (options: Array<{ optionText?: string | null }>) => {
-    if (options.length < 2) {
-        return false;
-    }
-
-    let labelledCount = 0;
-    for (let index = 0; index < options.length; index += 1) {
-        const expectedLabel = String.fromCharCode(65 + index);
-        const text = options[index]?.optionText?.trim() ?? '';
-        if (new RegExp(`^${expectedLabel}\\s*(?:[.)\\:-]\\s*|\\s+)\\S`, 'i').test(text)) {
-            labelledCount += 1;
-        }
-    }
-
-    return labelledCount >= Math.min(options.length, 4);
 };
 
 export const inferQuestionGroupOptionLabelType = (group: QuestionGroupLike): OptionLabelType => {
@@ -204,31 +126,8 @@ export const inferQuestionGroupOptionLabelType = (group: QuestionGroupLike): Opt
         return group.optionLabelType;
     }
 
-    const combinedInstruction = [
-        group.instruction ?? '',
-        parsePromptText(group.contentData),
-        group.contentData ?? '',
-    ].join(' ');
-
-    if (/\b(?:appropriate|correct)\s+numbers?\b/i.test(combinedInstruction) ||
-        /\bi\s*[-–]\s*(?:v|vi|vii|viii|ix|x|xi|xii|xiii|xiv|xv|xvi|xvii|xviii|xix|xx)\b/i.test(combinedInstruction)) {
-        return 'roman';
-    }
-
-    const sharedOptions = getSharedOptions(group);
-    if (hasSequentialAlphaOptionBank(sharedOptions)) {
-        return 'alpha';
-    }
-
-    if (sharedOptions.some((option) => /^((?:ix|iv|v?i{1,3}|x{1,2}))\s*[).:\-]/i.test(option.optionText ?? ''))) {
-        return 'roman';
-    }
-
-    const answers = group.questions
-        ?.map((question) => question.correctAnswer ?? '')
-        .flatMap((answer) => answer.split('|')) ?? [];
-
-    if (answers.some((answer) => isRomanLabelToken(answer))) {
+    const gType = (group.groupType ?? '').toUpperCase();
+    if (gType === 'MATCHING_HEADINGS') {
         return 'roman';
     }
 

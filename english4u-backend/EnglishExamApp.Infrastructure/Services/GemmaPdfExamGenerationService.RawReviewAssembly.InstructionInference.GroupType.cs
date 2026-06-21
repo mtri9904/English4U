@@ -285,12 +285,16 @@ public sealed partial class GemmaPdfExamGenerationService
 
         if (hasTableInstruction)
         {
-            return ("TABLE_COMPLETION", "Detected from instruction: table completion.");
+            return (hasSelectableAnswerBank || hasSharedOptionMechanism)
+                ? ("MATCHING_TABLE", "Detected from instruction: table completion plus selectable answer bank/list of words/options.")
+                : ("TABLE_COMPLETION", "Detected from instruction: table completion.");
         }
 
         if (hasGenericCompleteFollowingInstruction && hasTableLikeBlock)
         {
-            return ("TABLE_COMPLETION", "Detected from generic complete-the-following instruction plus table-like headers/content structure.");
+            return (hasSelectableAnswerBank || hasSharedOptionMechanism)
+                ? ("MATCHING_TABLE", "Detected from generic complete-the-following instruction plus table-like headers/content structure and selectable answer bank/options.")
+                : ("TABLE_COMPLETION", "Detected from generic complete-the-following instruction plus table-like headers/content structure.");
         }
 
         if (Regex.IsMatch(instructionText, @"(?i)\blabel\s+the\s+(diagram|map)\b"))
@@ -383,6 +387,7 @@ public sealed partial class GemmaPdfExamGenerationService
             "FILLINBLANKS" or "FILL_IN_BLANKS" or "FILLINBLANK" or "FILL_IN_BLANK" or "SENTENCECOMPLETION" => "SENTENCE_COMPLETION",
             "SUMMARYCOMPLETION" => "SUMMARY_COMPLETION",
             "TABLECOMPLETION" => "TABLE_COMPLETION",
+            "MATCHINGTABLE" => "MATCHING_TABLE",
             "MATCHING_INFORMATION" => "MATCHING_INFO",
             "MATCHING_ENDINGS" or "SENTENCE_ENDINGS" or "MATCHING_SENTENCE_ENDINGS" => "MATCHING_FEATURES",
             "MATCHING_CLASSIFICATION" or "CLASSIFICATION" => "MATCHING_FEATURES",

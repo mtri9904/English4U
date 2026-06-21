@@ -273,12 +273,15 @@ public sealed partial class GemmaPdfExamGenerationService
                 {
                     try
                     {
+                        var promptPath = Path.Combine(debugDirectory, $"00-prompt-passage-{passageNumber}.txt");
+                        await File.WriteAllTextAsync(promptPath, prompt, CancellationToken.None);
+
                         var rawJsonPath = Path.Combine(debugDirectory, $"00-raw-gemini-passage-{passageNumber}.json");
                         await File.WriteAllTextAsync(rawJsonPath, json, CancellationToken.None);
                     }
                     catch (Exception logEx)
                     {
-                        logger.LogWarning(logEx, "Failed to write raw json for passage {PassageNumber} to debug directory", passageNumber);
+                        logger.LogWarning(logEx, "Failed to write raw json or prompt for passage {PassageNumber} to debug directory", passageNumber);
                     }
                 }
             }
@@ -619,16 +622,17 @@ public sealed partial class GemmaPdfExamGenerationService
         - If a cell contains multiple lines of text, DO NOT separate them into multiple columns with `|`. Keep them in the same column, separated by a space.
         - Every table blank [Qn] MUST be returned as its own JSON question object. If one row contains [Q1] and [Q2], return question 1 and question 2 separately; both may repeat the same full row text.
         - The number of JSON question objects for a table group must equal the count of numbered blanks, not the count of visible table rows.
-        - At the END of the "instruction" field, append the table headers as: `[Table Headers: Col1 | Col2 | Col3]`
-        - If a header cell is empty, leave it blank between pipes: `[Table Headers: | Col2 | Col3]`
+        - At the END of the "instruction" field of the questions in the group, you MUST append:
+          1. The table headers: `[Table Headers: Col1 | Col2 | Col3]` (leave blank between pipes if empty).
+          2. The full table rows structure representing all rows of the table from top to bottom (including rows with no question blanks, using `\n` to separate rows): `[Table Rows: Row1Col1 | Row1Col2 | Row1Col3 \n Row2Col1 | [Q1] | [EMPTY] \n Row3Col1 | [EMPTY] | [Q2]]`
         - Example 1 (Table with 3 columns):
           Header row is "| Parents | Percentage of children left-handed" (3 columns, first empty):
-          - instruction ends with: `[Table Headers: | Parents | Percentage of children left-handed]`
+          - instruction ends with: `[Table Headers: | Parents | Percentage of children left-handed] [Table Rows: Both parents right-handed | [EMPTY] | [Q8] \n One parent left-handed | [EMPTY] | [Q9]]`
           - Q8: `Both parents right-handed | [EMPTY] | [Q8]`
           - Q9: `One parent left-handed | [EMPTY] | [Q9]`
         - Example 2 (Table with 2 columns):
           Header row is "| Percentage of children left-handed" (2 columns, first empty):
-          - instruction ends with: `[Table Headers: | Percentage of children left-handed]`
+          - instruction ends with: `[Table Headers: | Percentage of children left-handed] [Table Rows: One parent left-handed One parent right-handed | [Q8] \n Both parents left-handed | [Q9] \n Both parents right-handed | [Q10]]`
           - Q8: `One parent left-handed One parent right-handed | [Q8]`
           - Q9: `Both parents left-handed | [Q9]`
           - Q10: `Both parents right-handed | [Q10]`
@@ -680,9 +684,9 @@ public sealed partial class GemmaPdfExamGenerationService
                 {
                   "question_number": "1",
                   "question_type": "TrueFalseNotGiven | YesNoNotGiven | MultipleChoice | MultipleChoiceMultiple | MultipleChoiceChooseN | MatchingInfo | MatchingFeatures | MatchingHeadings | FillInBlanks | SummaryCompletion | TableCompletion | FlowchartCompletion | MapLabelling",
-                  "instruction": "exact shared instruction for this question group",
+                  "instruction": "exact shared instruction. CRITICAL: For TableCompletion, you MUST append '[Table Headers: HeaderCol1 | HeaderCol2]' and '[Table Rows: Row1Col1 | [Q1] \\n Row2Col1 | [Q2]]' representing the entire original table structure to the end of this string.",
                   "question_group": "Questions X-Y exact printed group range",
-                  "question_text": "exact question text only; for FillInBlanks include [Qn] at the exact blank position and preserve text after the blank",
+                  "question_text": "exact question text. For TableCompletion, this MUST be the exact table row text containing the blank, formatted with '|' separators (e.g., 'RowTextCol1 | [Q1] | [EMPTY]')",
                   "options": ["A. exact option text", "B. exact option text"],
                   "answer": "exact answer from answer key if visible, else empty string",
                   "explanation": ""
@@ -794,12 +798,9 @@ public sealed partial class GemmaPdfExamGenerationService
         - Empty cells → `[EMPTY]`, blank cells → `[Qn]`, text cells → exact text.
         - Every table blank [Qn] MUST be returned as its own JSON question object. If one row contains [Q1] and [Q2], return question 1 and question 2 separately; both may repeat the same full row text.
         - The number of JSON question objects for a table group must equal the count of numbered blanks, not the count of visible table rows.
-        - Append to instruction: `[Table Headers: Col1 | Col2]` (empty header = blank between pipes).
-        - Example 2-column table:
-          instruction ends with: `[Table Headers: | Percentage of children left-handed]`
-          Q8: `One parent left-handed One parent right-handed | [Q8]`
-          Q9: `Both parents left-handed | [Q9]`
-          Q10: `Both parents right-handed | [Q10]`
+        - Append to the end of the instruction: 
+          1. `[Table Headers: Col1 | Col2]` (empty header = blank between pipes).
+          2. `[Table Rows: Row1Col1 | [Q8] \n Row2Col1 | [Q9] \n Row3Col1 | [Q10]]` (representing the entire table rows from top to bottom, including rows that do not have question blanks, separating rows with `\n`).
 
         ===== FLOWCHART/DIAGRAM RULES =====
         For FlowchartCompletion/MapLabelling:
@@ -824,11 +825,12 @@ public sealed partial class GemmaPdfExamGenerationService
         - For Matching Features/Classification questions that have a letter-to-entity mapping guide (e.g. "Write: A - for Dr. Aplin, B - for Dr. Roberts..."), you MUST classify them as "MatchingFeatures" and copy the full mapping list into the "options" array of EACH question in that group (e.g., ["A - for Dr. Aplin", "B - for Dr. Roberts", "C - for Dr. Speare"] or ["A. Dr. Aplin", "B. Dr. Roberts", "C. Dr. Speare"]). DO NOT leave "options" empty.
         - For completion questions (FlowchartCompletion, MapLabelling, FillInBlanks, SummaryCompletion, TableCompletion): Each question object in the JSON MUST contain its own independent "question_text" corresponding to ONLY that specific question number (e.g. Q1 contains "[Q1] Z-axis motor", Q2 contains "[Q2] hot end of extruder", etc.). You MUST NOT concatenate or repeat the entire text block of the group into each question object. Keep them strictly separated.
         - passage_content = complete article text only, no questions/answers/footers.
+        - CRITICAL: Extract the ENTIRE reading passage from its very beginning to its very end. Do not truncate the passage. Ensure all paragraphs across all pages of the passage are fully extracted into "passage_content".
+        - IMPORTANT: Under no circumstances should you generate or add paragraph labels (A, B, C, etc.) if the PDF passage paragraphs do not already have them. Only output paragraph labels if they are explicitly present at the beginning of paragraphs in the PDF. If the PDF passage is a normal passage without paragraph labels, keep it strictly as normal paragraphs without adding any labels.
         - In passage_content, check paragraph endings: OCR/PDF rendering often glues the next paragraph's label (e.g. "B.", "C.", or "**B.**") to the end of the current paragraph. You MUST strip this trailing next-paragraph label from the end of the current paragraph.
         - For structured paragraphs starting with a label (e.g. A, B, C...), format it strictly as "**A.**" on a new line followed by the paragraph text. Avoid duplicate standalone labels like "A." followed by "**A.**" for the same paragraph.
         - Preserve paragraph breaks in passage_content.
         - No Review/Explanation/Solution text in questions.
-
         JSON schema:
         {
           "passage_title": "string",
@@ -837,9 +839,9 @@ public sealed partial class GemmaPdfExamGenerationService
             {
               "question_number": "{{startQuestion}}",
               "question_type": "TrueFalseNotGiven | YesNoNotGiven | MultipleChoice | MultipleChoiceMultiple | MultipleChoiceChooseN | MatchingInfo | MatchingFeatures | MatchingHeadings | FillInBlanks | SummaryCompletion | TableCompletion | FlowchartCompletion | MapLabelling",
-              "instruction": "exact shared instruction for this question group",
+              "instruction": "exact shared instruction. CRITICAL: For TableCompletion, you MUST append '[Table Headers: HeaderCol1 | HeaderCol2]' and '[Table Rows: Row1Col1 | [Q1] \\n Row2Col1 | [Q2]]' representing the entire original table structure to the end of this string.",
               "question_group": "Questions X-Y exact printed group range",
-              "question_text": "see rules above for each type",
+              "question_text": "exact question text. For TableCompletion, this MUST be the exact table row text containing the blank, formatted with '|' separators (e.g., 'RowTextCol1 | [Q1] | [EMPTY]')",
               "options": ["A. exact option text", "B. exact option text"],
               "answer": "exact answer from answer key if visible, else empty string",
               "explanation": ""

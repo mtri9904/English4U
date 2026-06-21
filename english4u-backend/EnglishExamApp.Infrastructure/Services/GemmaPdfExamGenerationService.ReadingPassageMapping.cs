@@ -42,7 +42,7 @@ public sealed partial class GemmaPdfExamGenerationService
         var passageTitle = string.IsNullOrWhiteSpace(payload.PassageTitle)
             ? $"Reading Passage {passageNumber}"
             : payload.PassageTitle.Trim();
-        var aiPassageContent = NormalizePassageContent(payload.PassageContent, passageTitle);
+        var aiPassageContent = NormalizeAiPassageContent(payload.PassageContent, passageTitle);
         var rawPassageContent = NormalizePassageContent(rawPassageText, passageTitle);
         var passageContent = FinalizePassageContent(
             aiPassageContent,
@@ -147,6 +147,7 @@ public sealed partial class GemmaPdfExamGenerationService
                 AssetsData: assetsData,
                 StartQuestion: startQuestion,
                 EndQuestion: endQuestion,
+                OptionLabelType: string.Equals(finalGroupType, "MATCHING_HEADINGS", StringComparison.OrdinalIgnoreCase) ? "roman" : "alpha",
                 Questions: normalizedQuestions));
         }
 

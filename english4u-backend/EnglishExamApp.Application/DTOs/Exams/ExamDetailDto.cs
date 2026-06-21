@@ -66,6 +66,7 @@ public sealed record QuestionGroupDto(
     string? AssetsData,
     int? StartQuestion,
     int? EndQuestion,
+    string? OptionLabelType,
     IReadOnlyList<QuestionDto> Questions);
 
 public sealed record QuestionDto(

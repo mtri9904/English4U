@@ -33,7 +33,7 @@ import {
     WritingSectionEditor,
 } from './exam-editor/SectionEditors';
 import { getCleanPastedInputValue } from '@/shared/utils/input';
-import { getEffectiveMcqGroupType, normalizeSkillType } from '@/shared/lib/examDisplay';
+import { getEffectiveMcqGroupType, normalizeSkillType, inferQuestionGroupOptionLabelType } from '@/shared/lib/examDisplay';
 
 const normalizeQuestionGroupType = (group: CreateQuestionGroupDto): CreateQuestionGroupDto => {
     const effectiveType = getEffectiveMcqGroupType({
@@ -43,7 +43,13 @@ const normalizeQuestionGroupType = (group: CreateQuestionGroupDto): CreateQuesti
         hasQuestionContent: group.questions.some((question) => !!question.content?.trim()),
     });
 
-    return effectiveType ? { ...group, groupType: effectiveType } : group;
+    const labelType = inferQuestionGroupOptionLabelType(group);
+
+    return {
+        ...group,
+        groupType: effectiveType || group.groupType,
+        optionLabelType: labelType,
+    };
 };
 
 const normalizeSectionQuestionTypes = (section: CreateSectionDto): CreateSectionDto => ({

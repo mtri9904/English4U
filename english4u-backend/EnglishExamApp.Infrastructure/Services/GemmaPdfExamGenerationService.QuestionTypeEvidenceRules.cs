@@ -63,6 +63,10 @@ public sealed partial class GemmaPdfExamGenerationService
 
         if (LooksLikeTableCompletionInstruction(evidenceText))
         {
+            if (HasSharedCompletionOptionBank(instruction, options))
+            {
+                return "MATCHING_TABLE";
+            }
             return "TABLE_COMPLETION";
         }
 
@@ -124,8 +128,12 @@ public sealed partial class GemmaPdfExamGenerationService
                 return "SUMMARY_COMPLETION";
             }
 
-            if (mappedQuestionType is "FLOWCHART_COMPLETION" or "TABLE_COMPLETION" or "MAP_LABELLING" or "SUMMARY_COMPLETION")
+            if (mappedQuestionType is "FLOWCHART_COMPLETION" or "TABLE_COMPLETION" or "MATCHING_TABLE" or "MAP_LABELLING" or "SUMMARY_COMPLETION")
             {
+                if (mappedQuestionType == "TABLE_COMPLETION" && HasSharedCompletionOptionBank(instruction, options))
+                {
+                    return "MATCHING_TABLE";
+                }
                 return mappedQuestionType;
             }
 

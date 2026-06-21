@@ -7,7 +7,7 @@ import { formatTranscriptRangeLabel, parseListeningTranscriptEnvelope } from '@/
 import { useExamDetailQuery } from '../api/exam.api';
 import { BookOutlined, QuestionCircleOutlined, ArrowLeftOutlined, SoundOutlined, VerticalAlignTopOutlined } from '@ant-design/icons';
 import type { QuestionGroupDto, QuestionDto, QuestionOptionDto, SectionDetailDto } from '../types/exam.types';
-import { getEffectiveMcqGroupType, getQuestionTypeLabel } from '@/shared/lib/examDisplay';
+import { getEffectiveMcqGroupType, getQuestionTypeLabel, inferQuestionGroupOptionLabelType as inferOptionLabelType } from '@/shared/lib/examDisplay';
 import { TruthValueDefinitionTable } from '@/shared/components/TruthValueDefinitionTable';
 import { parseWritingTaskAssetsData } from '@/shared/lib/writingTaskAssets';
 
@@ -177,41 +177,7 @@ const hasSequentialAlphaOptionBank = (options: QuestionOptionDto[]) => {
     return labelledCount >= Math.min(options.length, 4);
 };
 
-const inferOptionLabelType = (group: QuestionGroupDto): 'alpha' | 'roman' => {
-    if (group.optionLabelType === 'roman') {
-        return 'roman';
-    }
 
-    const parsedContent = parseMultiSelectContent(group.contentData);
-    const combinedInstruction = [
-        group.instruction ?? '',
-        parsedContent.prompt,
-        group.contentData ?? '',
-    ].join(' ');
-
-    if (/\b(?:appropriate|correct)\s+numbers?\b/i.test(combinedInstruction) ||
-        /\bi\s*[-–]\s*(?:v|vi|vii|viii|ix|x)\b/i.test(combinedInstruction)) {
-        return 'roman';
-    }
-
-    const firstOptions = getSharedGroupOptions(group);
-    if (hasSequentialAlphaOptionBank(firstOptions)) {
-        return 'alpha';
-    }
-
-    if (firstOptions.some((option) => /^((?:ix|iv|v?i{1,3}|x))\s*[).:\-]/i.test(option.optionText || ''))) {
-        return 'roman';
-    }
-
-    const answers = group.questions
-        .map((question) => question.correctAnswer ?? '')
-        .flatMap((answer) => answer.split('|'));
-    if (answers.some((answer) => isRomanLabelToken(answer))) {
-        return 'roman';
-    }
-
-    return 'alpha';
-};
 
 const countTokenOccurrences = (text: string, token: string) => {
     if (!text || !token) {
@@ -692,7 +658,7 @@ const normalizeReadingPassageMarkdown = (text: string, questionGroups: QuestionG
 
     return paragraphBlocks
         .map((block, index) => {
-            const cleanBlock = block.replace(/^\s*(?:\*\*)?[A-H]\.?(?:\*\*)?\s*/i, '');
+            const cleanBlock = block.replace(/^\s*(?:\*\*)?[A-H](?:\.|\b)(?:\*\*)?\s*/i, '');
             return `**${getOptionLabel(index, 'alpha')}.**\n\n${cleanBlock}`;
         })
         .join('\n\n');

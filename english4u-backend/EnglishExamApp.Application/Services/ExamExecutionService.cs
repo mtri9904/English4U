@@ -1410,6 +1410,7 @@ public sealed partial class ExamExecutionService(
                                         group.AssetsData,
                                         group.StartQuestion,
                                         group.EndQuestion,
+                                        group.OptionLabelType,
                                         group.Questions
                                             .OrderBy(question => question.QuestionNumber)
                                             .Select(question => new PracticeSessionQuestionDto(
@@ -1447,6 +1448,7 @@ public sealed partial class ExamExecutionService(
                                         group.AssetsData,
                                         group.StartQuestion,
                                         group.EndQuestion,
+                                        group.OptionLabelType,
                                         group.Questions
                                             .OrderBy(question => question.QuestionNumber)
                                             .Select(question => new PracticeSessionQuestionDto(

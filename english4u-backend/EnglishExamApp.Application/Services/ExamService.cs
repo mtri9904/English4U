@@ -143,6 +143,7 @@ public class ExamService(
                             .OrderBy(g => g.StartQuestion ?? (g.Questions.Any() ? g.Questions.Min(q => q.QuestionNumber) : 0))
                             .Select(g => new QuestionGroupDto(
                                 g.Id, g.GroupType, g.Instruction, g.ContentData, g.AssetsData, g.StartQuestion, g.EndQuestion,
+                                g.OptionLabelType,
                                 g.Questions.OrderBy(q => q.QuestionNumber).Select(q => new QuestionDto(
                                     q.Id, q.QuestionNumber, q.Content, q.CorrectAnswer, q.Explanation, q.Points,
                                     q.QuestionOptions.OrderBy(o => o.OrderIndex).Select(o => new QuestionOptionDto(
@@ -158,6 +159,7 @@ public class ExamService(
                             .OrderBy(g => g.StartQuestion ?? (g.Questions.Any() ? g.Questions.Min(q => q.QuestionNumber) : 0))
                             .Select(g => new QuestionGroupDto(
                                 g.Id, g.GroupType, g.Instruction, g.ContentData, g.AssetsData, g.StartQuestion, g.EndQuestion,
+                                g.OptionLabelType,
                                 g.Questions.OrderBy(q => q.QuestionNumber).Select(q => new QuestionDto(
                                     q.Id, q.QuestionNumber, q.Content, q.CorrectAnswer, q.Explanation, q.Points,
                                     q.QuestionOptions.OrderBy(o => o.OrderIndex).Select(o => new QuestionOptionDto(
@@ -727,7 +729,8 @@ public class ExamService(
                 ContentData = gDto.ContentData,
                 AssetsData = gDto.AssetsData,
                 StartQuestion = gDto.StartQuestion,
-                EndQuestion = gDto.EndQuestion
+                EndQuestion = gDto.EndQuestion,
+                OptionLabelType = gDto.OptionLabelType
             };
             context.QuestionGroups.Add(group);
 
