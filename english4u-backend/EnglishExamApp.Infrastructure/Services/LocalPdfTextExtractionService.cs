@@ -54,9 +54,7 @@ public sealed class LocalPdfTextExtractionService(
 
     private List<PdfExtractedPage> ExtractPages(byte[] pdfBytes, string fileName)
     {
-        var renderedImages = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
-            ? TryRenderPageImages(pdfBytes, fileName)
-            : [];
+        var renderedImages = TryRenderPageImages(pdfBytes, fileName);
         var pages = new List<PdfExtractedPage>();
 
         using var document = PdfDocument.Open(new MemoryStream(pdfBytes));
@@ -95,16 +93,11 @@ public sealed class LocalPdfTextExtractionService(
         return words;
     }
 
-    [SupportedOSPlatform("windows")]
     private Dictionary<int, List<PdfExtractedPageImage>> TryRenderPageImages(
         byte[] pdfBytes,
         string fileName)
     {
         var result = new Dictionary<int, List<PdfExtractedPageImage>>();
-        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            return result;
-        }
 
         try
         {

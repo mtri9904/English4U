@@ -89,8 +89,7 @@ public sealed partial class GemmaPdfExamGenerationService
     {
         if (!UseGeminiDiagramCropAssist() ||
             candidates.Count == 0 ||
-            pdfBytes.Length == 0 ||
-            !OperatingSystem.IsWindows())
+            pdfBytes.Length == 0)
         {
             return null;
         }
@@ -196,8 +195,7 @@ public sealed partial class GemmaPdfExamGenerationService
         CancellationToken cancellationToken)
     {
         if (!UseGeminiDiagramCropAssist() ||
-            pdfBytes.Length == 0 ||
-            !OperatingSystem.IsWindows())
+            pdfBytes.Length == 0)
         {
             return null;
         }
