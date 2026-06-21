@@ -32,6 +32,17 @@ public sealed partial class GemmaPdfExamGenerationService
         QuestionGroupBuilder builder,
         CancellationToken cancellationToken)
     {
+        var debugDir = ActiveDebugDirectory.Value;
+        if (!string.IsNullOrWhiteSpace(debugDir))
+        {
+            try
+            {
+                var initLogPath = Path.Combine(debugDir, $"repair-init-{builder.RawContext?.StartQuestion}-{builder.RawContext?.EndQuestion}.txt");
+                File.WriteAllText(initLogPath, $"QuestionsCount: {questions?.Count}\nPassageContentEmpty: {string.IsNullOrWhiteSpace(passageContent)}\nRawBlockTextEmpty: {string.IsNullOrWhiteSpace(builder.RawBlockText)}\nRawBlockText: {builder.RawBlockText}\nGroupType: {builder.GroupType}", Encoding.UTF8);
+            }
+            catch {}
+        }
+
         if (questions.Count <= 1 ||
             string.IsNullOrWhiteSpace(passageContent) ||
             string.IsNullOrWhiteSpace(builder.RawBlockText))
@@ -41,13 +52,49 @@ public sealed partial class GemmaPdfExamGenerationService
 
         try
         {
+            var rawBlockTextForPrompt = builder.RawBlockText!;
+            var startQ = builder.RawContext?.StartQuestion;
+            var endQ = builder.RawContext?.EndQuestion;
+            if (startQ.HasValue && endQ.HasValue &&
+                IsHeaderOnlyBlockText(rawBlockTextForPrompt))
+            {
+                var extracted = TryExtractInlineQuestionBodyFromRawPassage(
+                    rawPassageText, startQ.Value, endQ.Value);
+                if (!string.IsNullOrWhiteSpace(extracted))
+                {
+                    rawBlockTextForPrompt = extracted;
+                }
+            }
+
             var prompt = BuildSentenceCompletionTemplateRepairPrompt(
                 passageContent,
                 builder.RawInstruction,
-                builder.RawBlockText,
+                rawBlockTextForPrompt,
                 builder.RawContext?.QuestionPreview,
                 questions);
             var rawResponse = await RequestGemmaJsonCompletionWithRetryAsync(prompt, cancellationToken);
+
+            if (!string.IsNullOrWhiteSpace(debugDir))
+            {
+                try
+                {
+                    var debugFilePath = Path.Combine(debugDir, $"repair-sentence-completion-{builder.RawContext?.StartQuestion}-{builder.RawContext?.EndQuestion}.txt");
+                    var debugContent = new StringBuilder();
+                    debugContent.AppendLine($"=== START QUESTION RANGE: {builder.RawContext?.StartQuestion}-{builder.RawContext?.EndQuestion} ===");
+                    debugContent.AppendLine("=== RAW BLOCK TEXT ===");
+                    debugContent.AppendLine(builder.RawBlockText);
+                    debugContent.AppendLine("=== PROMPT ===");
+                    debugContent.AppendLine(prompt);
+                    debugContent.AppendLine("=== RAW RESPONSE ===");
+                    debugContent.AppendLine(rawResponse);
+                    File.WriteAllText(debugFilePath, debugContent.ToString(), Encoding.UTF8);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Failed to write repair-sentence-completion debug file.");
+                }
+            }
+
             if (!TryDeserializeSentenceCompletionTemplateMap(rawResponse, out var templateMap, out var parseError))
             {
                 logger.LogWarning(
@@ -127,27 +174,34 @@ public sealed partial class GemmaPdfExamGenerationService
             JsonOptions);
 
         return $$"""
-            Báº¡n lÃ  bá»™ mÃ¡y tÃ¡i dá»±ng SENTENCE_COMPLETION cho Ä‘á» IELTS Reading.
+            Bản dịch và tái dựng các câu hỏi điền từ (Sentence/Summary Completion) cho đề IELTS Reading.
 
-            NHIá»†M Vá»¤:
-            - DÃ¹ng PASSAGE + QUESTION_BLOCK_RAW + ANSWER Ä‘á»ƒ xÃ¡c Ä‘á»‹nh chÃ­nh xÃ¡c vá»‹ trÃ­ Ã´ trá»‘ng cá»§a tá»«ng cÃ¢u.
-            - Vá»›i má»—i question_number, tráº£ láº¡i Ä‘Ãºng má»™t sentence template Ä‘Ã£ chÃ¨n token [Qx] vÃ o chá»— cáº§n Ä‘iá»n.
+            NHIỆM VỤ:
+            - Dựa vào PASSAGE, QUESTION_BLOCK_RAW và danh sách ANSWER để dựng lại chính xác văn bản chứa các ô trống [Qn].
+            - Trả về danh sách templates tương ứng với từng question_number.
 
-            QUY Táº®C Cá»¨NG:
-            - Má»—i template pháº£i chá»©a ÄÃšNG 1 token cÃ³ dáº¡ng [Qn] tÆ°Æ¡ng á»©ng question_number cá»§a chÃ­nh nÃ³.
-            - KhÃ´ng Ä‘Æ°á»£c thÃªm token thá»© hai, khÃ´ng Ä‘Æ°á»£c giá»¯ cÃ¡c token [Qm] khÃ¡c, khÃ´ng Ä‘Æ°á»£c Ä‘á»ƒ "___" náº¿u Ä‘Ã£ cÃ³ [Qn].
-            - KhÃ´ng Ä‘Æ°á»£c Ä‘áº·t [Qn] á»Ÿ cuá»‘i cÃ¢u náº¿u Ã´ trá»‘ng thá»±c táº¿ náº±m á»Ÿ giá»¯a cÃ¢u.
-            - Giá»¯ wording gáº§n Ä‘á» gá»‘c nháº¥t cÃ³ thá»ƒ; chá»‰ sá»­a lá»—i OCR, dÃ­nh chá»¯, máº¥t khoáº£ng tráº¯ng khi hiá»ƒn nhiÃªn.
-            - ÄÆ°á»£c phÃ©p dÃ¹ng ANSWER Ä‘á»ƒ Ä‘á»c hiá»ƒu vÃ  xÃ¡c Ä‘á»‹nh tá»«/cá»¥m tá»« nÃ o Ä‘ang bá»‹ thiáº¿u rá»“i Ä‘áº·t [Qn] Ä‘Ãºng vá»‹ trÃ­.
-            - Náº¿u raw block bá»‹ lá»—i kiá»ƒu sá»‘ cÃ¢u chÃ¨n vÃ o giá»¯a cÃ¢u, pháº£i hiá»ƒu Ä‘Ã³ lÃ  sá»‘ cÃ¢u chá»© khÃ´ng pháº£i ná»™i dung cÃ¢u.
-            - KhÃ´ng tráº£ lá»i giáº£i thÃ­ch, khÃ´ng paraphrase toÃ n bá»™ sentence, khÃ´ng thÃªm instruction.
+            QUY TẮC BẢO TOÀN ĐOẠN VĂN:
+            - Nếu QUESTION_BLOCK_RAW là một đoạn văn tóm tắt liên tục (Summary) có chứa các câu trung gian (câu bình thường không có ô trống), bạn PHẢI đính kèm câu trung gian đó vào template của câu hỏi [Qn] đứng ngay trước hoặc ngay sau nó.
+            - Mục tiêu là khi ghép nối tất cả các template lại theo thứ tự từ nhỏ đến lớn, chúng ta sẽ thu được một đoạn văn hoàn chỉnh, liền mạch, không bị mất mát bất kỳ câu nào từ QUESTION_BLOCK_RAW gốc.
 
-            TRáº¢ Vá»€ DUY NHáº¤T JSON:
+            QUY TẮC CẤU TRÚC TEMPLATE:
+            - Mỗi template tương ứng với question_number chỉ được phép chứa duy nhất một token [Qn] đại diện cho câu hỏi đó. Không được để lộ token của các câu hỏi khác trong cùng một template.
+            - Không được tự ý rút gọn hoặc paraphrase văn bản gốc. Giữ nguyên wording của QUESTION_BLOCK_RAW, chỉ làm sạch các lỗi dính chữ hoặc lỗi OCR.
+
+            VÍ DỤ MINH HỌA:
+            Nếu QUESTION_BLOCK_RAW có chứa câu trung gian không có ô trống ở giữa câu 4 và câu 5:
+            "Money can buy you just about anything. Whether on a personal or national 4, your bank balance won't make you happier. Once the basic criteria of a roof over your head have been met, money ceases to play a part. One of the most important factors in achieving happiness is the extent of our social 5..."
+            
+            Kết quả mong muốn:
             {
               "templates": [
                 {
-                  "question_number": 1,
-                  "template": "A decrease in crime in the Netherlands and parts of the US is attributable more to the [Q1] than to their incarceration."
+                  "question_number": 4,
+                  "template": "Money can buy you just about anything. Whether on a personal or national [Q4], your bank balance won't make you happier. Once the basic criteria of a roof over your head have been met, money ceases to play a part."
+                },
+                {
+                  "question_number": 5,
+                  "template": "One of the most important factors in achieving happiness is the extent of our social [Q5]..."
                 }
               ]
             }
@@ -323,6 +377,70 @@ public sealed partial class GemmaPdfExamGenerationService
         }
 
         var wordCount = Regex.Matches(withoutToken, @"[A-Za-z][A-Za-z'â€™\-]*").Count;
-        return wordCount >= 4 && normalized.Length <= 320;
+        return wordCount >= 4 && normalized.Length <= 600;
+    }
+
+    private static bool IsHeaderOnlyBlockText(string? blockText)
+    {
+        if (string.IsNullOrWhiteSpace(blockText)) return true;
+        var normalized = Regex.Replace(blockText.Trim(), @"\s+", " ");
+        return Regex.IsMatch(normalized, @"(?i)^questions?\s+\d{1,2}\s*[-\u2013\u2014]\s*\d{1,2}\s*$") ||
+               Regex.IsMatch(normalized, @"(?i)^question\s+\d{1,2}\s*$");
+    }
+
+    private static string? TryExtractInlineQuestionBodyFromRawPassage(
+        string? rawPassageText,
+        int startQuestion,
+        int endQuestion)
+    {
+        if (string.IsNullOrWhiteSpace(rawPassageText) || startQuestion <= 0 || endQuestion < startQuestion)
+            return null;
+
+        var normalized = rawPassageText.Replace("\r\n", "\n").Replace('\r', '\n');
+        var startPat = $@"(?<!\d){Regex.Escape(startQuestion.ToString())}(?!\d)(?!\s*[-\u2013]\s*\d)";
+        var endPat = $@"(?<!\d){Regex.Escape(endQuestion.ToString())}(?!\d)(?!\s*[-\u2013]\s*\d)";
+
+        Match? selectedStart = null;
+        foreach (Match m in Regex.Matches(normalized, startPat))
+        {
+            var beforeSnippet = normalized[Math.Max(0, m.Index - 20)..m.Index];
+            if (Regex.IsMatch(beforeSnippet, @"(?i)questions?\s*$"))
+                continue;
+
+            var window = normalized[m.Index..Math.Min(normalized.Length, m.Index + 2000)];
+            if (!Regex.IsMatch(window, endPat))
+                continue;
+
+            selectedStart = m;
+            break;
+        }
+
+        if (selectedStart is null) return null;
+
+        var fromStart = normalized[selectedStart.Index..];
+        var endMatches = Regex.Matches(fromStart, endPat);
+        if (endMatches.Count == 0) return null;
+
+        var lastEnd = endMatches[^1];
+        var absEnd = selectedStart.Index + lastEnd.Index + lastEnd.Length;
+
+        var dotIdx = normalized.IndexOf('.', absEnd);
+        if (dotIdx >= 0 && dotIdx - absEnd < 200)
+            absEnd = dotIdx + 1;
+
+        var lookbackStart = Math.Max(0, selectedStart.Index - 500);
+        var prefixText = normalized[lookbackStart..selectedStart.Index];
+        var contextStart = lookbackStart;
+        var sentenceBoundaries = Regex.Matches(prefixText, @"(?<=\.\s{0,3})[A-Z]|(?<=\n)[A-Z]");
+        if (sentenceBoundaries.Count > 0)
+        {
+            var pickIndex = sentenceBoundaries.Count >= 2
+                ? sentenceBoundaries[sentenceBoundaries.Count - 2].Index
+                : sentenceBoundaries[^1].Index;
+            contextStart = lookbackStart + pickIndex;
+        }
+
+        var body = normalized[contextStart..Math.Min(normalized.Length, absEnd)].Trim();
+        return body.Length > 30 ? body : null;
     }
 }
