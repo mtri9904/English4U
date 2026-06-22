@@ -381,7 +381,8 @@ public sealed partial class GemmaPdfExamGenerationService
         IReadOnlyList<PdfRawVisualPreviewItemDto>? VisualPreviewItems,
         string? VisualPreviewNote,
         int? DiagramPreviewPageNumber,
-        string? DiagramPreviewNote);
+        string? DiagramPreviewNote,
+        string? TableData = null);
 
     private sealed class GemmaPassagePayload
     {
@@ -420,6 +421,9 @@ public sealed partial class GemmaPdfExamGenerationService
 
         [JsonPropertyName("question_group")]
         public JsonElement? QuestionGroup { get; set; }
+
+        [JsonPropertyName("table_data")]
+        public JsonElement? TableData { get; set; }
     }
 
     private sealed record GeminiPassageContentRepairPayload(

@@ -613,30 +613,16 @@ public sealed partial class GemmaPdfExamGenerationService
 
         ===== TABLE EXTRACTION RULES =====
         For TableCompletion questions, you MUST follow these rules precisely:
-        - Each question's "question_text" represents ONE ROW of the table, with ALL columns separated by pipe `|`.
-        - You MUST preserve the EXACT number of columns in every row. Every question in the group must have the exact same number of pipes.
-        - The visible PDF table header is required data. Put the full header row in `[Table Headers: ...]`; never omit it even when the first header cell is blank.
-        - Do NOT flatten a real table into plain sentence rows. Preserve cells/columns with `|` so the backend can rebuild the table.
-        - If a cell is EMPTY (no text, no blank), write `[EMPTY]` for that cell.
-        - If a cell contains a question blank, write `[Qn]` (e.g., `[Q8]`).
-        - If a cell contains text, copy the exact text from the PDF.
-        - If a cell contains multiple lines of text, DO NOT separate them into multiple columns with `|`. Keep them in the same column, separated by a space.
-        - Every table blank [Qn] MUST be returned as its own JSON question object. If one row contains [Q1] and [Q2], return question 1 and question 2 separately; both may repeat the same full row text.
-        - The number of JSON question objects for a table group must equal the count of numbered blanks, not the count of visible table rows.
-        - At the END of the "instruction" field of the questions in the group, you MUST append:
-          1. The table headers: `[Table Headers: Col1 | Col2 | Col3]` (leave blank between pipes if empty).
-          2. The full table rows structure representing all rows of the table from top to bottom (including rows with no question blanks, using `\n` to separate rows): `[Table Rows: Row1Col1 | Row1Col2 | Row1Col3 \n Row2Col1 | [Q1] | [EMPTY] \n Row3Col1 | [EMPTY] | [Q2]]`
-        - Example 1 (Table with 3 columns):
-          Header row is "| Parents | Percentage of children left-handed" (3 columns, first empty):
-          - instruction ends with: `[Table Headers: | Parents | Percentage of children left-handed] [Table Rows: Both parents right-handed | [EMPTY] | [Q8] \n One parent left-handed | [EMPTY] | [Q9]]`
-          - Q8: `Both parents right-handed | [EMPTY] | [Q8]`
-          - Q9: `One parent left-handed | [EMPTY] | [Q9]`
-        - Example 2 (Table with 2 columns):
-          Header row is "| Percentage of children left-handed" (2 columns, first empty):
-          - instruction ends with: `[Table Headers: | Percentage of children left-handed] [Table Rows: One parent left-handed One parent right-handed | [Q8] \n Both parents left-handed | [Q9] \n Both parents right-handed | [Q10]]`
-          - Q8: `One parent left-handed One parent right-handed | [Q8]`
-          - Q9: `Both parents left-handed | [Q9]`
-          - Q10: `Both parents right-handed | [Q10]`
+        - For every TableCompletion group, you MUST return a `table_data` JSON object in the first question of that group (other questions in the same group can have `table_data: null`).
+        - The `table_data` object MUST match this schema: `{"headers": ["", "Header Col 2", "Header Col 3"], "rows": [["Row 1 Col 1", "[Q8]", "Row 1 Col 3"], ["Row 2 Col 1", "Row 2 Col 2", "Row 2 Col 3"]]}`.
+        - The number of elements in the `headers` array MUST be exactly equal to the number of elements in each row of the `rows` array.
+        - If a column header is blank (e.g., the first column has row labels but no column title), you MUST include an empty string `""` at the corresponding position in the `headers` array.
+        - `headers` is an array of strings representing the visible PDF table header columns. Do not omit headers.
+        - `rows` is a two-dimensional array of strings `string[][]` representing the table rows.
+        - Empty cells in the table → write `""` (empty string).
+        - Cells containing a question blank → write `"[Qn]"` (e.g. `"[Q8]"`).
+        - Cells containing text → copy the exact text from the PDF.
+        - Each table blank `[Qn]` MUST be returned as its own JSON question object.
 
         ===== FLOWCHART/DIAGRAM RULES =====
         For FlowchartCompletion and MapLabelling questions:
@@ -671,6 +657,7 @@ public sealed partial class GemmaPdfExamGenerationService
         - For MCQ, include exact options in reading order. Keep the option letter prefix, e.g. "A. text".
         - For passage_content, include only the reading passage/article text, not questions, answers, page footers, URLs, or explanations.
         - Do not repeat passage_title inside passage_content. The title belongs only in passage_title.
+        - CRITICAL: If the reading passage has subheadings, section headings, or bold section titles within the text (e.g., "Who Benefits from Art Therapy", "What an Art Therapy Session Involves", "The Regulation of Art Therapy"), you MUST extract and preserve them in "passage_content". Format each subheading in bold on its own line (e.g. **Who Benefits from Art Therapy**), followed by a paragraph break before the paragraph text. Never omit or discard them.
         - Preserve paragraph breaks in passage_content. If the article has normal paragraphs without A/B/C/D labels, keep each paragraph separated by a newline.
         - passage_content MUST include the complete article from its title through the last paragraph before the first question block for that passage. Do not stop after the first page or first few paragraphs.
         - If Reading Passage text continues on later pages before its questions, include those later paragraphs too.
@@ -685,12 +672,18 @@ public sealed partial class GemmaPdfExamGenerationService
                 {
                   "question_number": "1",
                   "question_type": "TrueFalseNotGiven | YesNoNotGiven | MultipleChoice | MultipleChoiceMultiple | MultipleChoiceChooseN | MatchingInfo | MatchingFeatures | MatchingHeadings | FillInBlanks | SummaryCompletion | TableCompletion | FlowchartCompletion | MapLabelling",
-                  "instruction": "exact shared instruction. CRITICAL: For TableCompletion, you MUST append '[Table Headers: HeaderCol1 | HeaderCol2]' and '[Table Rows: Row1Col1 | [Q1] \\n Row2Col1 | [Q2]]' representing the entire original table structure to the end of this string.",
+                  "instruction": "exact shared instruction.",
                   "question_group": "Questions X-Y exact printed group range",
-                  "question_text": "exact question text. For TableCompletion, this MUST be the exact table row text containing the blank, formatted with '|' separators (e.g., 'RowTextCol1 | [Q1] | [EMPTY]')",
+                  "question_text": "exact question text.",
                   "options": ["A. exact option text", "B. exact option text"],
                   "answer": "exact answer from answer key if visible, else empty string",
-                  "explanation": ""
+                  "explanation": "",
+                  "table_data": {
+                    "headers": ["Col 1", "Col 2"],
+                    "rows": [
+                      ["Row Text", "[Q1]"]
+                    ]
+                  }
                 }
               ]
             }
@@ -702,7 +695,7 @@ public sealed partial class GemmaPdfExamGenerationService
         - Exactly questions 1 through 40, no missing and no duplicates.
         - Every question has question_group matching its printed "Questions X-Y" group.
         - Every completion question_text contains its own [Qn] token.
-        - TableCompletion question_text uses `|` to separate columns with [EMPTY] for blank cells.
+        - TableCompletion uses the table_data JSON field with [Qn] for blanks.
         - FlowchartCompletion/MapLabelling question_text preserves visible diagram text and contains its own [Qn] token.
         - No page footer or URL text in passage_content/question_text/options.
         - No "Review and Explanations", "Keywords in Questions", "Similar words in Passage", or "Answer:" text in passage_content/question_text/options.
@@ -792,16 +785,16 @@ public sealed partial class GemmaPdfExamGenerationService
 
         ===== TABLE RULES =====
         For TableCompletion:
-        - question_text = ONE ROW with ALL columns separated by `|` (preserving the exact same number of columns for all rows).
-        - Preserve the visible table header in `[Table Headers: ...]`; do not omit blank header cells.
-        - Do NOT flatten table layout into prose.
-        - Multi-line text inside one cell must NOT be split with `|`. Keep it in one cell separated by space.
-        - Empty cells → `[EMPTY]`, blank cells → `[Qn]`, text cells → exact text.
-        - Every table blank [Qn] MUST be returned as its own JSON question object. If one row contains [Q1] and [Q2], return question 1 and question 2 separately; both may repeat the same full row text.
-        - The number of JSON question objects for a table group must equal the count of numbered blanks, not the count of visible table rows.
-        - Append to the end of the instruction: 
-          1. `[Table Headers: Col1 | Col2]` (empty header = blank between pipes).
-          2. `[Table Rows: Row1Col1 | [Q8] \n Row2Col1 | [Q9] \n Row3Col1 | [Q10]]` (representing the entire table rows from top to bottom, including rows that do not have question blanks, separating rows with `\n`).
+        - For every TableCompletion group, you MUST return a `table_data` JSON object in the first question of that group (other questions in the same group can have `table_data: null`).
+        - The `table_data` object MUST match this schema: `{"headers": ["", "Header Col 2", "Header Col 3"], "rows": [["Row 1 Col 1", "[Q8]", "Row 1 Col 3"], ["Row 2 Col 1", "Row 2 Col 2", "Row 2 Col 3"]]}`.
+        - The number of elements in the `headers` array MUST be exactly equal to the number of elements in each row of the `rows` array.
+        - If a column header is blank (e.g., the first column has row labels but no column title), you MUST include an empty string `""` at the corresponding position in the `headers` array.
+        - `headers` is an array of strings representing the visible PDF table header columns. Do not omit headers.
+        - `rows` is a two-dimensional array of strings `string[][]` representing the table rows.
+        - Empty cells in the table → write `""` (empty string).
+        - Cells containing a question blank → write `"[Qn]"` (e.g. `"[Q8]"`).
+        - Cells containing text → copy the exact text from the PDF.
+        - Each table blank `[Qn]` MUST be returned as its own JSON question object.
 
         ===== FLOWCHART/DIAGRAM RULES =====
         For FlowchartCompletion/MapLabelling:
@@ -826,6 +819,7 @@ public sealed partial class GemmaPdfExamGenerationService
         - For Matching Features/Classification questions that have a letter-to-entity mapping guide (e.g. "Write: A - for Dr. Aplin, B - for Dr. Roberts..."), you MUST classify them as "MatchingFeatures" and copy the full mapping list into the "options" array of EACH question in that group (e.g., ["A - for Dr. Aplin", "B - for Dr. Roberts", "C - for Dr. Speare"] or ["A. Dr. Aplin", "B. Dr. Roberts", "C. Dr. Speare"]). DO NOT leave "options" empty.
         - For completion questions (FlowchartCompletion, MapLabelling, FillInBlanks, SummaryCompletion, TableCompletion): Each question object in the JSON MUST contain its own independent "question_text" corresponding to ONLY that specific question number (e.g. Q1 contains "[Q1] Z-axis motor", Q2 contains "[Q2] hot end of extruder", etc.). You MUST NOT concatenate or repeat the entire text block of the group into each question object. Keep them strictly separated.
         - passage_content = complete article text only, no questions/answers/footers.
+        - CRITICAL: If the reading passage has subheadings, section headings, or bold section titles within the text (e.g., "Who Benefits from Art Therapy", "What an Art Therapy Session Involves", "The Regulation of Art Therapy"), you MUST extract and preserve them in "passage_content". Format each subheading in bold on its own line (e.g. **Who Benefits from Art Therapy**), followed by a paragraph break before the paragraph text. Never omit or discard them.
         - CRITICAL: Extract the ENTIRE reading passage from its very beginning to its very end. Do not truncate the passage. Ensure all paragraphs across all pages of the passage are fully extracted into "passage_content".
         - IMPORTANT: Under no circumstances should you generate or add paragraph labels (A, B, C, etc.) if the PDF passage paragraphs do not already have them. Only output paragraph labels if they are explicitly present at the beginning of paragraphs in the PDF. If the PDF passage is a normal passage without paragraph labels, keep it strictly as normal paragraphs without adding any labels.
         - In passage_content, check paragraph endings: OCR/PDF rendering often glues the next paragraph's label (e.g. "B.", "C.", or "**B.**") to the end of the current paragraph. You MUST strip this trailing next-paragraph label from the end of the current paragraph.
@@ -840,12 +834,18 @@ public sealed partial class GemmaPdfExamGenerationService
             {
               "question_number": "{{startQuestion}}",
               "question_type": "TrueFalseNotGiven | YesNoNotGiven | MultipleChoice | MultipleChoiceMultiple | MultipleChoiceChooseN | MatchingInfo | MatchingFeatures | MatchingHeadings | FillInBlanks | SummaryCompletion | TableCompletion | FlowchartCompletion | MapLabelling",
-              "instruction": "exact shared instruction. CRITICAL: For TableCompletion, you MUST append '[Table Headers: HeaderCol1 | HeaderCol2]' and '[Table Rows: Row1Col1 | [Q1] \\n Row2Col1 | [Q2]]' representing the entire original table structure to the end of this string.",
+              "instruction": "exact shared instruction.",
               "question_group": "Questions X-Y exact printed group range",
-              "question_text": "exact question text. For TableCompletion, this MUST be the exact table row text containing the blank, formatted with '|' separators (e.g., 'RowTextCol1 | [Q1] | [EMPTY]')",
+              "question_text": "exact question text.",
               "options": ["A. exact option text", "B. exact option text"],
               "answer": "exact answer from answer key if visible, else empty string",
-              "explanation": ""
+              "explanation": "",
+              "table_data": {
+                "headers": ["Col 1", "Col 2"],
+                "rows": [
+                  ["Row Text", "[Q1]"]
+                ]
+              }
             }
           ]
         }
@@ -854,7 +854,7 @@ public sealed partial class GemmaPdfExamGenerationService
         - Exactly questions {{startQuestion}} through {{endQuestion}}, no missing and no duplicates.
         - Every question has question_group matching its printed "Questions X-Y" group.
         - Every completion question_text contains its own [Qn] token.
-        - TableCompletion uses `|` separators and `[EMPTY]` for blank cells.
+        - TableCompletion uses the table_data JSON field with [Qn] for blanks.
         - FlowchartCompletion/MapLabelling question_text preserves visible diagram text and contains its own [Qn] token.
         - The response must be complete valid JSON ending with the closing brace.
         """";

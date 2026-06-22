@@ -61,6 +61,11 @@ public sealed partial class GemmaPdfExamGenerationService
             }
         }
 
+        if (LooksLikeMatchingSentenceEndingsInstruction(evidenceText, options))
+        {
+            return "MATCHING_FEATURES";
+        }
+
         if (LooksLikeTableCompletionInstruction(evidenceText))
         {
             if (HasSharedCompletionOptionBank(instruction, options))
@@ -106,10 +111,7 @@ public sealed partial class GemmaPdfExamGenerationService
             return "MATCHING_INFO";
         }
 
-        if (LooksLikeMatchingSentenceEndingsInstruction(evidenceText, options))
-        {
-            return "MATCHING_FEATURES";
-        }
+
 
         if (IsMatchingType(mappedQuestionType) && HasMeaningfulChoiceOptions(options))
         {
@@ -272,9 +274,27 @@ public sealed partial class GemmaPdfExamGenerationService
             return false;
         }
 
-        return Regex.IsMatch(
+        var hasTableKeywords = Regex.IsMatch(
             evidenceText,
-            @"(?i)\bcomplete\s+the\s+table\b|\btable\s+below\b|\btable\s+completion\b|\[table\s+headers\s*:");
+            @"(?i)\bcomplete\s+the\s+table\b|\btable\s+below\b|\btable\s+completion\b");
+
+        var hasTableHeadersMarker = Regex.IsMatch(
+            evidenceText,
+            @"(?i)\[table\s+headers\s*:");
+
+        if (hasTableHeadersMarker && !hasTableKeywords)
+        {
+            if (Regex.IsMatch(evidenceText, @"(?i)\b(match|classify)\b"))
+            {
+                return false;
+            }
+            if (Regex.IsMatch(evidenceText, @"(?i)\bcomplete\s+each\s+sentence\b|\bcomplete\s+the\s+following\s+sentences\b|\bcomplete\s+the\s+sentences\b|\bcomplete\s+each\s+of\s+the\s+following\s+sentences\b|\bsentence\s+endings?\b"))
+            {
+                return false;
+            }
+        }
+
+        return hasTableKeywords || hasTableHeadersMarker;
     }
 
     private static bool HasExplicitMcqInstruction(string evidenceText)

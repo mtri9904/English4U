@@ -196,6 +196,17 @@ public sealed partial class GemmaPdfExamGenerationService
                 : fallbackContext?.BoundaryToken;
         var startQuestion = parsedGroupRange?.Start ?? parsedQuestionNumber ?? fallbackContext?.StartQuestion ?? 0;
         var endQuestion = parsedGroupRange?.End ?? parsedQuestionNumber ?? fallbackContext?.EndQuestion ?? startQuestion;
+        string? tableDataStr = null;
+        if (question.TableData.HasValue && question.TableData.Value.ValueKind != JsonValueKind.Null && question.TableData.Value.ValueKind != JsonValueKind.Undefined)
+        {
+            tableDataStr = question.TableData.Value.ValueKind == JsonValueKind.String
+                ? question.TableData.Value.GetString()
+                : JsonSerializer.Serialize(question.TableData.Value, JsonOptions);
+        }
+        else
+        {
+            tableDataStr = fallbackContext?.TableData;
+        }
         return new RawQuestionGroupContext(
             StartQuestion: startQuestion,
             EndQuestion: endQuestion,
@@ -207,7 +218,8 @@ public sealed partial class GemmaPdfExamGenerationService
             VisualPreviewItems: fallbackContext?.VisualPreviewItems,
             VisualPreviewNote: fallbackContext?.VisualPreviewNote,
             DiagramPreviewPageNumber: fallbackContext?.DiagramPreviewPageNumber,
-            DiagramPreviewNote: fallbackContext?.DiagramPreviewNote);
+            DiagramPreviewNote: fallbackContext?.DiagramPreviewNote,
+            TableData: tableDataStr);
     }
 
     private static (int Start, int End)? TryParseGeminiQuestionGroupRange(string? questionGroup)

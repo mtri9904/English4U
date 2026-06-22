@@ -171,12 +171,42 @@ public sealed partial class GemmaPdfExamGenerationService
             return null;
         }
 
-        var templateLines = questions
+        var templateLines = new List<string>();
+        var coveredPlaceholders = new HashSet<int>();
+        var sortedQuestions = questions
             .OrderBy(question => question.QuestionNumber ?? int.MaxValue)
-            .Select(BuildSentenceCompletionTemplateLine)
-            .Where(line => !string.IsNullOrWhiteSpace(line))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
+
+        foreach (var q in sortedQuestions)
+        {
+            if (!q.QuestionNumber.HasValue)
+            {
+                continue;
+            }
+
+            var qNum = q.QuestionNumber.Value;
+            if (coveredPlaceholders.Contains(qNum))
+            {
+                continue;
+            }
+
+            var line = BuildSentenceCompletionTemplateLine(q);
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                continue;
+            }
+
+            templateLines.Add(line);
+
+            var matches = Regex.Matches(line, @"\[Q(?<num>\d+)\]", RegexOptions.IgnoreCase);
+            foreach (Match match in matches)
+            {
+                if (int.TryParse(match.Groups["num"].Value, out var num))
+                {
+                    coveredPlaceholders.Add(num);
+                }
+            }
+        }
 
         if (templateLines.Count == 0)
         {
@@ -186,6 +216,116 @@ public sealed partial class GemmaPdfExamGenerationService
         for (var index = 0; index < questions.Count; index++)
         {
             questions[index] = questions[index] with { Content = null };
+        }
+
+        if (string.Equals(mappedQuestionType, "TABLE_COMPLETION", StringComparison.Ordinal) ||
+            string.Equals(mappedQuestionType, "MATCHING_TABLE", StringComparison.Ordinal))
+        {
+            var rawTableJson = builder.RawContext?.TableData;
+            if (!string.IsNullOrWhiteSpace(rawTableJson))
+            {
+                try
+                {
+                    using var doc = JsonDocument.Parse(rawTableJson);
+                    var root = doc.RootElement;
+                    List<string[]> rowsList = null;
+                    string[]? tableHeaders = null;
+
+                    if (root.ValueKind == JsonValueKind.Array)
+                    {
+                        var allRows = new List<string[]>();
+                        foreach (var rowEl in root.EnumerateArray())
+                        {
+                            if (rowEl.ValueKind == JsonValueKind.Array)
+                            {
+                                var cells = rowEl.EnumerateArray()
+                                    .Select(c => c.ValueKind == JsonValueKind.String ? c.GetString() ?? string.Empty : string.Empty)
+                                    .ToArray();
+                                allRows.Add(cells);
+                            }
+                        }
+                        if (allRows.Count > 0)
+                        {
+                            tableHeaders = allRows[0];
+                            rowsList = allRows.Skip(1).ToList();
+                        }
+                    }
+                    else if (root.ValueKind == JsonValueKind.Object)
+                    {
+                        if (root.TryGetProperty("headers", out var headersEl) && headersEl.ValueKind == JsonValueKind.Array)
+                        {
+                            tableHeaders = headersEl.EnumerateArray()
+                                .Select(c => c.ValueKind == JsonValueKind.String ? c.GetString() ?? string.Empty : string.Empty)
+                                .ToArray();
+                        }
+                        if (root.TryGetProperty("rows", out var rowsEl) && rowsEl.ValueKind == JsonValueKind.Array)
+                        {
+                            rowsList = new List<string[]>();
+                            foreach (var rowEl in rowsEl.EnumerateArray())
+                            {
+                                if (rowEl.ValueKind == JsonValueKind.Array)
+                                {
+                                    var cells = rowEl.EnumerateArray()
+                                        .Select(c => c.ValueKind == JsonValueKind.String ? c.GetString() ?? string.Empty : string.Empty)
+                                        .ToArray();
+                                    rowsList.Add(cells);
+                                }
+                            }
+                        }
+                    }
+
+                    if (rowsList != null && rowsList.Count > 0)
+                    {
+                        var maxCols = rowsList.Max(r => r.Length);
+                        if (tableHeaders != null)
+                        {
+                            maxCols = Math.Max(maxCols, tableHeaders.Length);
+                        }
+
+                        var normalizedRows = new List<string[]>();
+                        if (tableHeaders != null && tableHeaders.Length > 0)
+                        {
+                            var headerRow = new string[maxCols];
+                            for (int i = 0; i < maxCols; i++)
+                            {
+                                var cellVal = i < tableHeaders.Length ? tableHeaders[i] : string.Empty;
+                                headerRow[i] = string.IsNullOrWhiteSpace(cellVal) ? string.Empty : $"**{cellVal}**";
+                            }
+                            normalizedRows.Add(headerRow);
+                        }
+
+                        foreach (var row in rowsList)
+                        {
+                            if (row.Length < maxCols)
+                            {
+                                var expanded = new string[maxCols];
+                                Array.Copy(row, expanded, row.Length);
+                                for (int j = row.Length; j < maxCols; j++)
+                                {
+                                    expanded[j] = string.Empty;
+                                }
+                                normalizedRows.Add(expanded);
+                            }
+                            else
+                            {
+                                normalizedRows.Add(row);
+                            }
+                        }
+
+                        var tablePayload = new
+                        {
+                            layout = "table",
+                            title = string.Empty,
+                            rows = normalizedRows
+                        };
+
+                        return JsonSerializer.Serialize(tablePayload, JsonOptions);
+                    }
+                }
+                catch
+                {
+                }
+            }
         }
 
         if ((string.Equals(mappedQuestionType, "TABLE_COMPLETION", StringComparison.Ordinal) ||

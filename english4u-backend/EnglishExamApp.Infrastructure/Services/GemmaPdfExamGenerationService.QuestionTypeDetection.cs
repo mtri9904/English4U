@@ -597,7 +597,19 @@ public sealed partial class GemmaPdfExamGenerationService
             })
             .ToList();
 
-        if (labeledOptions.Count(x => x.HasLabel) < 2)
+        var labeledCount = labeledOptions.Count(x => x.HasLabel);
+        if (labeledCount < 2)
+        {
+            return optionsElement;
+        }
+
+        var labelsList = labeledOptions
+            .Where(x => x.HasLabel)
+            .Select(x => char.ToUpperInvariant(x.Label))
+            .OrderBy(x => x)
+            .ToList();
+
+        if (!AreSequentialOptionLabels(labelsList))
         {
             return optionsElement;
         }

@@ -486,6 +486,14 @@ public sealed class GeminiExamAiGenerationService(
 
             foreach (var q in group.Questions)
             {
+                var qContentData = contentDataStr;
+                if (q.TableData.HasValue && q.TableData.Value.ValueKind != JsonValueKind.Null && q.TableData.Value.ValueKind != JsonValueKind.Undefined)
+                {
+                    qContentData = q.TableData.Value.ValueKind == JsonValueKind.String
+                        ? q.TableData.Value.GetString()
+                        : JsonSerializer.Serialize(q.TableData.Value, JsonOptions);
+                }
+
                 questionsList.Add(new GeneratedQuestion(
                     QuestionNumber: q.QuestionNumber,
                     Content: q.Content,
@@ -496,7 +504,7 @@ public sealed class GeminiExamAiGenerationService(
                     GroupType: group.GroupType,
                     Instruction: group.Instruction,
                     PassageNumber: passage.PassageNumber,
-                    ContentData: contentDataStr
+                    ContentData: qContentData
                 ));
                 questionNumberCounter.Value++;
             }
@@ -1144,7 +1152,8 @@ public sealed class GeminiExamAiGenerationService(
         List<string>? Options,
         string CorrectAnswer,
         string Evidence,
-        string Explanation);
+        string Explanation,
+        [property: JsonPropertyName("table_data")] JsonElement? TableData);
 
     private sealed record GeneratedQuestion(
         int QuestionNumber,
