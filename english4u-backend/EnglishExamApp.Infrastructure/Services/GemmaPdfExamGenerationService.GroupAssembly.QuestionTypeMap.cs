@@ -343,6 +343,8 @@ public sealed partial class GemmaPdfExamGenerationService
             "MAPLABELING" => "MAP_LABELLING",
             "DIAGRAMLABELLING" => "MAP_LABELLING",
             "DIAGRAMLABELING" => "MAP_LABELLING",
+            "SHORTANSWER" => "SHORT_ANSWER",
+            "SHORTANSWERQUESTION" => "SHORT_ANSWER",
             _ => null
         };
     }

@@ -51,7 +51,7 @@ export const GalaxyBackground: React.FC = () => {
                 this.baseY = y;
                 this.size = Math.random() * 2 + 0.5;
                 this.density = (Math.random() * 30) + 1;
-                this.vx = (Math.random() - 0.5) * 0.5; // Tốc độ trôi ngẫu nhiên
+                this.vx = (Math.random() - 0.5) * 0.5;
                 this.vy = (Math.random() - 0.5) * 0.5;
             }
 
@@ -65,11 +65,9 @@ export const GalaxyBackground: React.FC = () => {
             }
 
             update() {
-                // Di chuyển đều tạo hiệu ứng dải ngân hà
                 this.baseX += this.vx;
                 this.baseY += this.vy;
 
-                // Để không bị bay ra khỏi màn hình
                 if (this.baseX > width) this.baseX = 0;
                 else if (this.baseX < 0) this.baseX = width;
                 if (this.baseY > height) this.baseY = 0;
@@ -79,7 +77,6 @@ export const GalaxyBackground: React.FC = () => {
                 let dy = mouse.y - this.y;
                 let distance = Math.sqrt(dx * dx + dy * dy);
 
-                // Lực đẩy tương tác với chuột
                 let forceDirectionX = dx / distance;
                 let forceDirectionY = dy / distance;
                 let maxDistance = mouse.radius;
@@ -105,7 +102,6 @@ export const GalaxyBackground: React.FC = () => {
 
         const init = () => {
             particles = [];
-            // Số lượng particle tự điều chỉnh theo độ phân giải màn hình
             let numberOfParticles = (width * height) / 9000;
             for (let i = 0; i < numberOfParticles; i++) {
                 let x = Math.random() * width;
@@ -124,7 +120,6 @@ export const GalaxyBackground: React.FC = () => {
 
                     if (distance < 110) {
                         opacityValue = 1 - (distance / 110);
-                        // Tạo đường nối màu xanh biển sáng mờ
                         ctx.strokeStyle = `rgba(14, 165, 233, ${opacityValue * 0.3})`;
                         ctx.lineWidth = 1;
                         ctx.beginPath();
@@ -169,7 +164,7 @@ export const GalaxyBackground: React.FC = () => {
                 height: '100vh',
                 zIndex: 0,
                 pointerEvents: 'none',
-                background: 'radial-gradient(ellipse at bottom, #1b2735 0%, #090a0f 100%)' // Gradient bầu trời đêm
+                background: 'radial-gradient(ellipse at bottom, #1b2735 0%, #090a0f 100%)'
             }}
         />
     );

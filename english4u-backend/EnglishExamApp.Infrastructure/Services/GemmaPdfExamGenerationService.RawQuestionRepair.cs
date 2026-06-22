@@ -709,6 +709,7 @@ public sealed partial class GemmaPdfExamGenerationService
         "MATCHING_VISUALS" => "MatchingVisuals",
         "FLOWCHART_COMPLETION" => "FlowchartCompletion",
         "MAP_LABELLING" => "MapLabelling",
+        "SHORT_ANSWER" => "ShortAnswer",
         _ => "MultipleChoice"
     };
 }

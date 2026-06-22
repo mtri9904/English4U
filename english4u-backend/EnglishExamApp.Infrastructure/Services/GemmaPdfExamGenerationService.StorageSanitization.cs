@@ -35,6 +35,7 @@ public sealed partial class GemmaPdfExamGenerationService
         cleaned = StripLeadingReviewAnswerPrefix(cleaned, questionNumber);
         cleaned = StripLeadingQuestionNumber(cleaned, questionNumber);
         cleaned = DropLeadingPassageBlob(cleaned, questionNumber);
+        cleaned = StripTrailingOptionBank(cleaned);
         return string.IsNullOrWhiteSpace(cleaned) ? null : cleaned.Trim();
     }
 
@@ -243,6 +244,116 @@ public sealed partial class GemmaPdfExamGenerationService
         if (Regex.IsMatch(text, @"(?i)\breading\s+passage\b") && text.Length > 180)
         {
             return string.Empty;
+        }
+
+        return text;
+    }
+
+    private static string StripTrailingOptionBank(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return text;
+        }
+
+        var lines = text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+        if (lines.Length < 3)
+        {
+            return text;
+        }
+
+        var isLabelLine = new bool[lines.Length];
+        var lineLabels = new char[lines.Length];
+
+        for (int i = 0; i < lines.Length; i++)
+        {
+            var trimmed = lines[i].Trim();
+            var match = Regex.Match(trimmed, @"^\*?\*?(?<label>[A-Z])(?:\s*[).:\-]\s*|\s+)\S+");
+            if (match.Success)
+            {
+                isLabelLine[i] = true;
+                lineLabels[i] = match.Groups["label"].Value[0];
+            }
+        }
+
+        int bankStart = -1;
+        int bankEnd = -1;
+
+        for (int i = 0; i < lines.Length; i++)
+        {
+            if (isLabelLine[i] && lineLabels[i] == 'A')
+            {
+                int currentIdx = i;
+                char expectedLabel = 'B';
+                int lastFoundIdx = i;
+
+                for (int j = i + 1; j < lines.Length; j++)
+                {
+                    if (string.IsNullOrWhiteSpace(lines[j]))
+                    {
+                        continue;
+                    }
+
+                    if (isLabelLine[j] && lineLabels[j] == expectedLabel)
+                    {
+                        lastFoundIdx = j;
+                        expectedLabel = (char)(expectedLabel + 1);
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+
+                if (expectedLabel >= 'D')
+                {
+                    bankStart = i;
+                    bankEnd = lastFoundIdx;
+                    break;
+                }
+            }
+        }
+
+        if (bankStart != -1 && bankEnd != -1)
+        {
+            var resultLines = new List<string>();
+            var isAtStart = true;
+            for (int i = 0; i < bankStart; i++)
+            {
+                if (!string.IsNullOrWhiteSpace(lines[i]))
+                {
+                    isAtStart = false;
+                    break;
+                }
+            }
+
+            if (isAtStart)
+            {
+                for (int i = bankEnd + 1; i < lines.Length; i++)
+                {
+                    resultLines.Add(lines[i]);
+                }
+                return string.Join("\n", resultLines).Trim();
+            }
+
+            var isAtEnd = true;
+            for (int i = bankEnd + 1; i < lines.Length; i++)
+            {
+                if (!string.IsNullOrWhiteSpace(lines[i]))
+                {
+                    isAtEnd = false;
+                    break;
+                }
+            }
+
+            if (isAtEnd)
+            {
+                for (int i = 0; i < bankStart; i++)
+                {
+                    resultLines.Add(lines[i]);
+                }
+                return string.Join("\n", resultLines).Trim();
+            }
         }
 
         return text;

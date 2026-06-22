@@ -602,8 +602,10 @@ public sealed partial class GemmaPdfExamGenerationService
         11. TableCompletion — Questions where blanks appear INSIDE A TABLE in the PDF. See TABLE RULES below.
         12. FlowchartCompletion — Questions where blanks appear inside a FLOWCHART, DIAGRAM, PROCESS CHART, or any actual visual diagram in the PDF. IMPORTANT: A visual diagram must have graphic connections, flowchart arrows, or structured layout shapes. If the questions are simply running text sentences or a chronological list of sentences (even if wrapped inside a rectangular border frame or labeled as a timeline), you MUST classify them as FillInBlanks/SummaryCompletion instead of FlowchartCompletion. Only use FlowchartCompletion when there is an actual flowchart/diagram/beehive graphic to be displayed.
         13. MapLabelling — Questions where the student labels parts of a MAP, PLAN, or LAYOUT diagram. The instruction says "label the map/plan below". Similar to FlowchartCompletion but specifically for spatial maps/plans.
+        14. ShortAnswer — Questions asking for direct answers (usually starting with What, How, Why, Who, By how much... and ending with ?). The question_text MUST NOT contain any [Qn] blank tokens.
 
         IMPORTANT TYPE DISAMBIGUATION:
+        - If the question asks a direct question (e.g. "What is produced...?") rather than completing a sentence, classify it as ShortAnswer. Do not insert [Qn] into ShortAnswer question_text.
         - If the instruction says "diagram below", "flow chart below", "chart below", "label the diagram", "complete the diagram" AND there is an actual visual diagram/graphic structure in the PDF → use FlowchartCompletion. If the PDF content is just sequential text sentences wrapped in a simple border frame with no arrows or graphic connections, use FillInBlanks.
         - If blanks are inside a TABLE → use TableCompletion, NOT FillInBlanks.
         - If blanks are in running text sentences/paragraphs → use FillInBlanks or SummaryCompletion.
@@ -645,6 +647,7 @@ public sealed partial class GemmaPdfExamGenerationService
         - Preserve passage wording, question wording, instruction wording, and answer option wording.
         - In each completion "question_text", replace the printed blank/question number with [Qn], where n is that question number.
         - Keep all text before AND after the blank in completion questions. Never move [Qn] to the end unless the PDF blank is actually at the end.
+        - CRITICAL: For completion questions (FlowchartCompletion, MapLabelling, FillInBlanks, SummaryCompletion): If the questions in the group form a continuous summary paragraph (Summary), the FIRST question object of that group MUST contain the entire complete summary text block (including all sentences that do not contain any blanks, and all [Qn] tokens for the entire group) in its "question_text" field. The subsequent questions in the same group can have simple text or just their own sentence.
         - Example: if the PDF says "He often did not go to classes and used the time to study physics 10 ____ or to play music.", return "He often did not go to classes and used the time to study physics [Q10] or to play music."
         - Do not mix Review/Explanation/Solution text into passages, questions, instructions, or options.
         - Use Review/Solution/Answer Key only for the "answer" field.
@@ -671,7 +674,7 @@ public sealed partial class GemmaPdfExamGenerationService
               "questions": [
                 {
                   "question_number": "1",
-                  "question_type": "TrueFalseNotGiven | YesNoNotGiven | MultipleChoice | MultipleChoiceMultiple | MultipleChoiceChooseN | MatchingInfo | MatchingFeatures | MatchingHeadings | FillInBlanks | SummaryCompletion | TableCompletion | FlowchartCompletion | MapLabelling",
+                  "question_type": "TrueFalseNotGiven | YesNoNotGiven | MultipleChoice | MultipleChoiceMultiple | MultipleChoiceChooseN | MatchingInfo | MatchingFeatures | MatchingHeadings | FillInBlanks | SummaryCompletion | TableCompletion | FlowchartCompletion | MapLabelling | ShortAnswer",
                   "instruction": "exact shared instruction.",
                   "question_group": "Questions X-Y exact printed group range",
                   "question_text": "exact question text.",
@@ -778,8 +781,10 @@ public sealed partial class GemmaPdfExamGenerationService
         - TableCompletion — blanks inside a TABLE
         - FlowchartCompletion — blanks inside a FLOWCHART, DIAGRAM, or process graphic where the answers are actual words, numbers, or phrases (optionally chosen from a word/phrase bank, not simple letters like A, B, C, D).
         - MapLabelling — labels/blanks on a MAP, PLAN, or DIAGRAM where the answers / options are purely single letters like A, B, C, D, E... representing labeled points on the graphic. Each question has its own text (e.g. "Q1. library", "Q2. post office").
+        - ShortAnswer — direct question prompts that end with a question mark (?), requiring a short answer. The question_text MUST NOT contain any [Qn] blank tokens.
 
         KEY:
+        - Classify as ShortAnswer if the question asks a direct question (e.g. "What is produced...?") rather than completing a sentence. Do not insert [Qn] into ShortAnswer question_text.
         - Classify as MapLabelling if the question group requires matching numbered questions to lettered locations/points on a diagram/map/plan (answers are letters A, B, C, D...).
         - Classify as FlowchartCompletion if the question group is to complete steps/boxes in a flowchart/diagram with actual words/numbers (or choosing words/phrases from a box).
 
@@ -817,7 +822,7 @@ public sealed partial class GemmaPdfExamGenerationService
         - For shared option banks, repeat the same options for every question in the group.
         - For MCQ, include exact options with letter prefix.
         - For Matching Features/Classification questions that have a letter-to-entity mapping guide (e.g. "Write: A - for Dr. Aplin, B - for Dr. Roberts..."), you MUST classify them as "MatchingFeatures" and copy the full mapping list into the "options" array of EACH question in that group (e.g., ["A - for Dr. Aplin", "B - for Dr. Roberts", "C - for Dr. Speare"] or ["A. Dr. Aplin", "B. Dr. Roberts", "C. Dr. Speare"]). DO NOT leave "options" empty.
-        - For completion questions (FlowchartCompletion, MapLabelling, FillInBlanks, SummaryCompletion, TableCompletion): Each question object in the JSON MUST contain its own independent "question_text" corresponding to ONLY that specific question number (e.g. Q1 contains "[Q1] Z-axis motor", Q2 contains "[Q2] hot end of extruder", etc.). You MUST NOT concatenate or repeat the entire text block of the group into each question object. Keep them strictly separated.
+        - For completion questions (FlowchartCompletion, MapLabelling, FillInBlanks, SummaryCompletion): If the questions in the group form a continuous summary paragraph (Summary), the FIRST question object of that group MUST contain the entire complete summary text block (including all sentences that do not contain any blanks, and all [Qn] tokens for the entire group) in its "question_text" field. The subsequent questions in the same group can have simple text or just their own sentence. Only use independent separate sentences for each question if they are truly separate, non-continuous questions in the PDF.
         - passage_content = complete article text only, no questions/answers/footers.
         - CRITICAL: If the reading passage has subheadings, section headings, or bold section titles within the text (e.g., "Who Benefits from Art Therapy", "What an Art Therapy Session Involves", "The Regulation of Art Therapy"), you MUST extract and preserve them in "passage_content". Format each subheading in bold on its own line (e.g. **Who Benefits from Art Therapy**), followed by a paragraph break before the paragraph text. Never omit or discard them.
         - CRITICAL: Extract the ENTIRE reading passage from its very beginning to its very end. Do not truncate the passage. Ensure all paragraphs across all pages of the passage are fully extracted into "passage_content".

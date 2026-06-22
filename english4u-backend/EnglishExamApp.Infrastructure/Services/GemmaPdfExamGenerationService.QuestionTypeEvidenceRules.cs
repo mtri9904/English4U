@@ -120,7 +120,7 @@ public sealed partial class GemmaPdfExamGenerationService
 
         if (LooksLikeCompletionInstruction(evidenceText) || FillInBlankInstructionRegex().IsMatch(evidenceText))
         {
-            if (mappedQuestionType is "TFNG" or "YNNG" || IsMcqType(mappedQuestionType) || IsMatchingType(mappedQuestionType))
+            if (mappedQuestionType is "TFNG" or "YNNG" or "SHORT_ANSWER" || IsMcqType(mappedQuestionType) || IsMatchingType(mappedQuestionType))
             {
                 return mappedQuestionType;
             }
@@ -135,6 +135,10 @@ public sealed partial class GemmaPdfExamGenerationService
                 if (mappedQuestionType == "TABLE_COMPLETION" && HasSharedCompletionOptionBank(instruction, options))
                 {
                     return "MATCHING_TABLE";
+                }
+                if (mappedQuestionType == "SUMMARY_COMPLETION")
+                {
+                    return "SENTENCE_COMPLETION";
                 }
                 return mappedQuestionType;
             }

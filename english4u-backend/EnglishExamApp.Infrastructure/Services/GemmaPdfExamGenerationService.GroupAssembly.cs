@@ -46,6 +46,8 @@ public sealed partial class GemmaPdfExamGenerationService
             })
             .ToList();
 
+        normalizedQuestions = DistributeSharedOptionBankIfMissing(effectiveGroupType, normalizedQuestions);
+
         if (string.Equals(effectiveGroupType, "SENTENCE_COMPLETION", StringComparison.Ordinal))
         {
             normalizedQuestions = RepairSentenceCompletionQuestionSet(normalizedQuestions, rawBlockText);

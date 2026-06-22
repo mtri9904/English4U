@@ -522,4 +522,52 @@ public sealed partial class GemmaPdfExamGenerationService
         }
         return optionText.Trim();
     }
+
+    private static List<CreateQuestionDto> DistributeSharedOptionBankIfMissing(
+        string mappedQuestionType,
+        List<CreateQuestionDto> questions)
+    {
+        if (questions.Count <= 1)
+        {
+            return questions;
+        }
+
+        var questionWithOpts = questions
+            .FirstOrDefault(q => q.Options != null && q.Options.Count > 0);
+
+        if (questionWithOpts == null)
+        {
+            return questions;
+        }
+
+        var sharedOptionsTextList = questionWithOpts.Options
+            .Select(o => o.OptionText ?? string.Empty)
+            .Where(text => !string.IsNullOrWhiteSpace(text))
+            .ToList();
+
+        if (sharedOptionsTextList.Count == 0)
+        {
+            return questions;
+        }
+
+        if (IsMatchingType(mappedQuestionType) || 
+            mappedQuestionType is "SUMMARY_COMPLETION" or "FLOWCHART_COMPLETION" or "TABLE_COMPLETION" or "MATCHING_TABLE" or "MAP_LABELLING")
+        {
+            return questions
+                .Select(question =>
+                {
+                    if (question.Options == null || question.Options.Count == 0)
+                    {
+                        return question with
+                        {
+                            Options = BuildOptions(sharedOptionsTextList, mappedQuestionType, question.CorrectAnswer)
+                        };
+                    }
+                    return question;
+                })
+                .ToList();
+        }
+
+        return questions;
+    }
 }
