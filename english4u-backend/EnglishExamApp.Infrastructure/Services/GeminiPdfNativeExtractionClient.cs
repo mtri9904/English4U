@@ -37,7 +37,6 @@ public sealed class GeminiPdfNativeExtractionClient(
 
     private readonly int _maxOutputTokens = Math.Clamp(
         configuration.GetValue<int?>("GeminiPdfNativeExtraction:MaxOutputTokens") ??
-        configuration.GetValue<int?>("GemmaExamGeneration:MaxOutputTokens") ??
         65536,
         8192,
         65536);
@@ -55,7 +54,9 @@ public sealed class GeminiPdfNativeExtractionClient(
             {
                 return await ExtractExamJsonInternalAsync(pdfBytes, fileName, prompt, temperatures[i], cancellationToken);
             }
-            catch (InvalidOperationException ex) when (ex.Message.Contains("Finish reason: RECITATION"))
+            catch (InvalidOperationException ex) when (
+                ex.Message.Contains("Finish reason: RECITATION") || 
+                ex.Message.Contains("MAX_TOKENS"))
             {
                 if (i == temperatures.Length - 1)
                 {
@@ -126,6 +127,19 @@ public sealed class GeminiPdfNativeExtractionClient(
 
         if (string.Equals(finishReason, "MAX_TOKENS", StringComparison.OrdinalIgnoreCase))
         {
+            try
+            {
+                var debugDir = @"c:\Users\Hande\OneDrive\Documents\DoAnTotNghiep\English4U\english4u-backend\scratch_debug";
+                Directory.CreateDirectory(debugDir);
+                var debugPath = Path.Combine(debugDir, $"truncated_output_{DateTime.UtcNow:yyyyMMdd_HHmmss}.json");
+                File.WriteAllText(debugPath, text);
+                Console.WriteLine($"[DEBUG-LLM] Truncated output saved to {debugPath}. Length: {text.Length} characters.");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[DEBUG-LLM] Failed to save truncated output: {ex.Message}");
+            }
+
             throw new InvalidOperationException(
                 $"Gemini native PDF extraction output was truncated (MAX_TOKENS) for {fileName}. The PDF may be too long for a single request. Will retry per passage.");
         }

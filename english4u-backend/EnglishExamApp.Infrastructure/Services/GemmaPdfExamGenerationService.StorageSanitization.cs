@@ -241,7 +241,7 @@ public sealed partial class GemmaPdfExamGenerationService
             return text[questionMarker.Index..].Trim();
         }
 
-        if (Regex.IsMatch(text, @"(?i)\breading\s+passage\b") && text.Length > 180)
+        if (Regex.IsMatch(text, @"(?i)^\s*reading\s+passage\b") && text.Length > 180)
         {
             return string.Empty;
         }

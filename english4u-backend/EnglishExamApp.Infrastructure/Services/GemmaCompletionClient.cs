@@ -10,6 +10,7 @@ namespace EnglishExamApp.Infrastructure.Services;
 public interface IGemmaCompletionClient
 {
     Task<string> CompleteAsync(string prompt, CancellationToken cancellationToken);
+    Task<string> CompleteWithModelAsync(string prompt, string model, CancellationToken cancellationToken);
 }
 
 public sealed class GemmaCompletionClient(
@@ -44,7 +45,12 @@ public sealed class GemmaCompletionClient(
 
     private readonly bool? _sendAuthorizationHeader = configuration.GetValue<bool?>("GemmaExamGeneration:SendAuthorizationHeader");
 
-    public async Task<string> CompleteAsync(string prompt, CancellationToken cancellationToken)
+    public Task<string> CompleteAsync(string prompt, CancellationToken cancellationToken)
+    {
+        return CompleteWithModelAsync(prompt, _model, cancellationToken);
+    }
+
+    public async Task<string> CompleteWithModelAsync(string prompt, string model, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(_apiKey) && ShouldSendAuthorizationHeader())
         {
@@ -57,7 +63,7 @@ public sealed class GemmaCompletionClient(
         }
 
         var requestPayload = new OpenAiChatCompletionRequest(
-            Model: _model,
+            Model: model,
             Messages:
             [
                 new OpenAiChatMessage("user", prompt)

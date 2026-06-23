@@ -472,8 +472,26 @@ public sealed partial class GemmaPdfExamGenerationService
             }
             else if (unresolvedAnswerCount > 0 && answerKeyMap.Count == 0)
             {
-                logger.LogWarning(
-                    "Skip fallback answer mapping because deterministic answer-key extraction found 0 entries for {FileName}.",
+                currentProgress = Math.Max(currentProgress, 94);
+                await PublishProgressAsync(
+                    documentUpload.Id,
+                    uploadedBy,
+                    status: "processing",
+                    progressPercent: currentProgress,
+                    stage: "answer_ai_solving",
+                    message: "Không tìm thấy Answer Key trong PDF. Đang kích hoạt AI (Gemma 4 31B) để tự giải đề thi.",
+                    totalPassages: parsedPassages.Count,
+                    clientRequestId: clientRequestId,
+                    cancellationToken: cancellationToken);
+
+                var solvedAnswersCount = await TrySolveExamWithAiAsync(
+                    parsedPassages,
+                    verifiedAnswerQuestionNumbers,
+                    cancellationToken);
+
+                logger.LogInformation(
+                    "Solved {SolvedAnswersCount} question(s) using AI (Gemma 4 31B) because no PDF answer key was found for {FileName}.",
+                    solvedAnswersCount,
                     fileName);
             }
 
@@ -676,7 +694,155 @@ public sealed partial class GemmaPdfExamGenerationService
             throw;
         }
     }
-private static string BuildVirtualPdfUrl(string fileName)
+
+    private async Task<int> TrySolveExamWithAiAsync(
+        List<GemmaPassagePayload> parsedPassages,
+        HashSet<int> verifiedAnswerQuestionNumbers,
+        CancellationToken cancellationToken)
+    {
+        int solvedCount = 0;
+
+        for (var i = 0; i < parsedPassages.Count; i++)
+        {
+            var passage = parsedPassages[i];
+            if (passage.Questions is null || passage.Questions.Count == 0)
+            {
+                continue;
+            }
+
+            var passageQuestions = passage.Questions
+                .Select(q => new
+                {
+                    QuestionNumber = ParseQuestionNumber(ReadJsonAsText(q.QuestionNumber)) ?? 0,
+                    QuestionType = TryMapQuestionType(ReadJsonAsText(q.QuestionType)),
+                    Instruction = ReadJsonAsText(q.Instruction),
+                    QuestionText = ReadJsonAsText(q.QuestionText),
+                    Options = ExtractOptions(q.Options)
+                })
+                .Where(q => q.QuestionNumber > 0)
+                .ToList();
+
+            if (passageQuestions.Count == 0)
+            {
+                continue;
+            }
+
+            var passageStructure = new
+            {
+                PassageNumber = i + 1,
+                Title = passage.PassageTitle,
+                Content = passage.PassageContent,
+                Questions = passageQuestions
+            };
+
+            var prompt = $$"""
+            You are an elite IELTS Academic Reading Expert. You will solve the questions for the Reading Passage below.
+
+            Passage and Questions details in JSON:
+            {{JsonSerializer.Serialize(passageStructure, JsonOptions)}}
+
+            TASK:
+            1. Read the passage content carefully.
+            2. Solve all listed questions independently. Base your answers strictly on the evidence in the text.
+            3. For each question, output your solved answer and a brief logical explanation/reasoning in Vietnamese.
+
+            RULES FOR SOLVED ANSWERS:
+            - For True/False/Not Given, output exactly "TRUE", "FALSE", or "NOT GIVEN".
+            - For Yes/No/Not Given, output exactly "YES", "NO", or "NOT GIVEN".
+            - For Multiple Choice (MultipleChoice), output exactly the uppercase letter representing the correct option (e.g. "A", "B", "C", "D").
+            - For MultipleChoiceChooseN, output exactly the uppercase letter representing the correct option (e.g. "A", "B", "C", "D").
+            - For MatchingHeadings, output exactly the lowercase roman numeral representing the correct heading from the options (e.g. "i", "ii", "iii", "iv"...).
+            - For MatchingInfo, MatchingFeatures, output exactly the uppercase letter representing the matched paragraph or feature (e.g. "A", "B", "C"...).
+            - For SummaryCompletion / TableCompletion / FlowchartCompletion / MapLabelling / FillInBlanks:
+              + If there are options / word bank provided in the question's options array, output exactly the uppercase letter (e.g. "A", "B", "C"...) corresponding to the correct choice.
+              + If there are no options, output exactly the word or phrase extracted from the passage (case-insensitive, maximum 3 words).
+
+            You MUST respond ONLY in raw JSON matching the following schema. No code fences (like ```json), no markdown wrappers.
+
+            Schema:
+            {
+              "answers": [
+                {
+                  "questionNumber": 1,
+                  "solvedAnswer": "TRUE",
+                  "reasoning": "Giải thích ngắn gọn lý do chọn đáp án dựa trên nội dung bài đọc."
+                }
+              ]
+            }
+            """;
+
+            try
+            {
+                var responseJson = await gemmaCompletionClient.CompleteWithModelAsync(
+                    prompt, 
+                    "gemma-4-31b-it", 
+                    cancellationToken);
+
+                using var doc = JsonDocument.Parse(responseJson);
+                if (doc.RootElement.TryGetProperty("answers", out var answersProp) && 
+                    answersProp.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var ansElem in answersProp.EnumerateArray())
+                    {
+                        var qNum = 0;
+                        if (ansElem.TryGetProperty("questionNumber", out var qNumProp))
+                        {
+                            qNum = qNumProp.GetInt32();
+                        }
+                        else if (ansElem.TryGetProperty("question_number", out var qNumProp2))
+                        {
+                            qNum = qNumProp2.GetInt32();
+                        }
+
+                        var solvedAns = string.Empty;
+                        if (ansElem.TryGetProperty("solvedAnswer", out var solvedAnsProp))
+                        {
+                            solvedAns = solvedAnsProp.GetString()?.Trim();
+                        }
+                        else if (ansElem.TryGetProperty("solved_answer", out var solvedAnsProp2))
+                        {
+                            solvedAns = solvedAnsProp2.GetString()?.Trim();
+                        }
+
+                        var reasoning = string.Empty;
+                        if (ansElem.TryGetProperty("reasoning", out var reasonProp))
+                        {
+                            reasoning = reasonProp.GetString()?.Trim();
+                        }
+                        else if (ansElem.TryGetProperty("explanation", out var reasonProp2))
+                        {
+                            reasoning = reasonProp2.GetString()?.Trim();
+                        }
+
+                        if (qNum > 0 && !string.IsNullOrWhiteSpace(solvedAns))
+                        {
+                            var matchedQuestion = passage.Questions.FirstOrDefault(q => 
+                                (ParseQuestionNumber(ReadJsonAsText(q.QuestionNumber)) ?? 0) == qNum);
+
+                            if (matchedQuestion != null)
+                            {
+                                matchedQuestion.Answer = JsonSerializer.SerializeToElement(solvedAns);
+                                if (!string.IsNullOrWhiteSpace(reasoning))
+                                {
+                                    matchedQuestion.Explanation = JsonSerializer.SerializeToElement(reasoning);
+                                }
+                                verifiedAnswerQuestionNumbers.Add(qNum);
+                                solvedCount++;
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed to solve questions for Passage {PassageNumber} using AI", i + 1);
+            }
+        }
+
+        return solvedCount;
+    }
+
+    private static string BuildVirtualPdfUrl(string fileName)
     {
         var safeFileName = Regex.Replace(fileName.Trim(), @"[^a-zA-Z0-9\.\-_]", "_");
         return $"upload://pdf/{Guid.NewGuid():N}/{safeFileName}";
