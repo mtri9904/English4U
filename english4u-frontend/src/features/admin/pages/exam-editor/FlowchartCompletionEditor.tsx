@@ -6,6 +6,7 @@ import type { CreateQuestionGroupDto, CreateQuestionOptionDto } from '../../type
 import { QUESTION_TYPES } from '../../constants/questionTypes';
 import { getOptionLabel } from '@/shared/utils/optionLabel.utils';
 import { emptyOption, emptyQuestion } from './examEditor.helpers';
+import { AlternativeAnswersInput } from './QuestionGroupsEditor';
 
 interface FlowchartCompletionEditorProps {
     group: CreateQuestionGroupDto;
@@ -464,17 +465,41 @@ export const FlowchartCompletionEditor = ({
             ) : (
                 <div style={{ display: 'grid', gap: '8px' }}>
                     {group.questions.map((question, questionIndex) => (
-                        <div key={question.questionNumber ?? questionIndex} style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                            <Tag color="blue" style={{ marginInlineEnd: 0 }}>
+                        <div
+                            key={question.questionNumber ?? questionIndex}
+                            style={{
+                                display: 'flex',
+                                gap: '12px',
+                                alignItems: 'flex-start',
+                                padding: '12px',
+                                border: '1px solid #f1f5f9',
+                                borderRadius: '8px',
+                                background: '#ffffff',
+                                boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.03)'
+                            }}
+                        >
+                            <Tag
+                                color="blue"
+                                style={{
+                                    margin: 0,
+                                    height: '24px',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    fontWeight: 600,
+                                    fontSize: '12px'
+                                }}
+                            >
                                 Q{question.questionNumber ?? groupStartNum + questionIndex}
                             </Tag>
-                            <Input
-                                size="middle"
-                                placeholder="Nhập đáp án đúng"
-                                value={question.correctAnswer ?? ''}
-                                style={{ width: 260, maxWidth: '100%', borderColor: '#10b981' }}
-                                onChange={(event) => updateQuestionAnswer(questionIndex, event.target.value)}
-                            />
+                            
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                                <AlternativeAnswersInput
+                                    placeholder="Đáp án đúng"
+                                    value={question.correctAnswer ?? ''}
+                                    style={{ width: '100%', maxWidth: '360px' }}
+                                    onChange={(value) => updateQuestionAnswer(questionIndex, value)}
+                                />
+                            </div>
                         </div>
                     ))}
                 </div>

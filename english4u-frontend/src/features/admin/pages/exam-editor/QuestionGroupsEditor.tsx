@@ -1,6 +1,6 @@
-import { useRef, type MutableRefObject } from 'react';
-import { Button, Input, InputNumber, Select, Tag, Upload, message } from 'antd';
-import { AppstoreOutlined, BoldOutlined, DownOutlined, MinusCircleOutlined, PlusOutlined } from '@ant-design/icons';
+import { useRef, useState, useEffect, type MutableRefObject } from 'react';
+import { Button, Input, InputNumber, Select, Tag, Upload, message, Tooltip } from 'antd';
+import { AppstoreOutlined, BoldOutlined, DownOutlined, MinusCircleOutlined, PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import { TiptapQxEditor, type TiptapQxEditorRef } from '../../components/TiptapQxEditor';
 import type { CreateQuestionDto, CreateQuestionGroupDto } from '../../types/exam.types';
 import {
@@ -50,6 +50,136 @@ const joinCorrectAnswers = (values: string[]) => {
         new Set(values.map((item) => item.trim()).filter((item) => item.length > 0)),
     );
     return normalized.length > 0 ? normalized.join('|') : undefined;
+};
+
+export interface AlternativeAnswersInputProps {
+    value: string;
+    onChange: (newValue: string) => void;
+    placeholder?: string;
+    style?: React.CSSProperties;
+    isInline?: boolean;
+}
+
+export const AlternativeAnswersInput: React.FC<AlternativeAnswersInputProps> = ({
+    value,
+    onChange,
+    placeholder = 'Đáp án',
+    style,
+    isInline = false,
+}) => {
+    const lastSentValueRef = useRef<string>(value);
+    const [localAnswers, setLocalAnswers] = useState<string[]>(() => {
+        const parsed = splitCorrectAnswers(value);
+        return parsed.length > 0 ? parsed : [''];
+    });
+
+    useEffect(() => {
+        if (value === lastSentValueRef.current) {
+            return;
+        }
+        const parsed = splitCorrectAnswers(value);
+        setLocalAnswers(parsed.length > 0 ? parsed : ['']);
+        lastSentValueRef.current = value;
+    }, [value]);
+
+    const handleAnswerChange = (index: number, text: string) => {
+        const next = [...localAnswers];
+        next[index] = text;
+        setLocalAnswers(next);
+        const joined = joinCorrectAnswers(next) ?? '';
+        lastSentValueRef.current = joined;
+        onChange(joined);
+    };
+
+    const handleAdd = () => {
+        const next = [...localAnswers, ''];
+        setLocalAnswers(next);
+    };
+
+    const handleRemove = (index: number) => {
+        const next = localAnswers.filter((_, idx) => idx !== index);
+        const finalAnswers = next.length > 0 ? next : [''];
+        setLocalAnswers(finalAnswers);
+        const joined = joinCorrectAnswers(finalAnswers) ?? '';
+        lastSentValueRef.current = joined;
+        onChange(joined);
+    };
+
+    return (
+        <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: isInline ? '4px' : '6px',
+            width: style?.width || '100%',
+            padding: isInline ? '4px 6px' : '8px 10px',
+            background: '#f8fafc',
+            border: isInline ? '1px solid #e2e8f0' : '1px dashed #cbd5e1',
+            borderRadius: '8px',
+            ...style
+        }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: isInline ? '4px' : '6px' }}>
+                {localAnswers.map((answer, index) => (
+                    <div key={index} style={{ display: 'flex', gap: '6px', alignItems: 'center', width: '100%' }}>
+                        <Input
+                            size={isInline ? 'small' : 'middle'}
+                            placeholder={`${placeholder} ${index + 1}`}
+                            value={answer}
+                            style={{
+                                flex: 1,
+                                borderColor: '#10b981',
+                                height: isInline ? '28px' : '34px',
+                                borderRadius: '6px'
+                            }}
+                            onPaste={(event) => {
+                                const nextValue = getCleanPastedInputValue(event, answer);
+                                if (nextValue === null) return;
+                                handleAnswerChange(index, nextValue);
+                            }}
+                            onChange={(event) => handleAnswerChange(index, event.target.value)}
+                        />
+                        {localAnswers.length > 1 && (
+                            <Button
+                                type="text"
+                                danger
+                                icon={<MinusCircleOutlined style={{ fontSize: '12px' }} />}
+                                size="small"
+                                onClick={() => handleRemove(index)}
+                                style={{
+                                    padding: 0,
+                                    width: 20,
+                                    height: 20,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    borderRadius: '50%',
+                                    background: '#fee2e2'
+                                }}
+                            />
+                        )}
+                    </div>
+                ))}
+            </div>
+
+            <Button
+                type="dashed"
+                size="small"
+                icon={<PlusOutlined />}
+                onClick={handleAdd}
+                style={{
+                    color: '#10b981',
+                    borderColor: '#10b981',
+                    fontSize: '11px',
+                    width: 'fit-content',
+                    height: '24px',
+                    padding: '2px 8px',
+                    borderRadius: '4px',
+                    background: '#ffffff'
+                }}
+            >
+                Thêm đáp án thay thế
+            </Button>
+        </div>
+    );
 };
 
 const remapCorrectAnswerTokens = (
@@ -205,14 +335,13 @@ export const QuestionGroupsEditor = ({
         return 'Nội dung template (Ví dụ: [Q1] is a good [Q2])';
     };
 
-    const hasMultiSelectLayout = (contentData?: string) => {
+    const hasMultiSelectLayout = (contentData?: string): boolean => {
         if (!contentData) return false;
 
         try {
-            const parsed = JSON.parse(contentData) as unknown;
-            return parsed
-                && typeof parsed === 'object'
-                && (parsed as { layout?: unknown }).layout === 'listening_multi_select';
+            const parsed = JSON.parse(contentData);
+            if (!parsed || typeof parsed !== 'object') return false;
+            return (parsed as { layout?: string }).layout === 'listening_multi_select';
         } catch {
             return false;
         }
@@ -243,53 +372,53 @@ export const QuestionGroupsEditor = ({
         return 'text_input';
     };
 
-const buildMultiSelectContentData = (prompt = '') => JSON.stringify({
-    layout: 'listening_multi_select',
-    prompt,
-});
+    const buildMultiSelectContentData = (prompt = '') => JSON.stringify({
+        layout: 'listening_multi_select',
+        prompt,
+    });
 
-const parseGroupAssetsData = (assetsData?: string | null) => {
-    if (!assetsData) return {} as Record<string, unknown>;
+    const parseGroupAssetsData = (assetsData?: string | null) => {
+        if (!assetsData) return {} as Record<string, unknown>;
 
-    try {
-        const parsed = JSON.parse(assetsData) as unknown;
-        return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-            ? parsed as Record<string, unknown>
+        try {
+            const parsed = JSON.parse(assetsData) as unknown;
+            return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+                ? parsed as Record<string, unknown>
+                : {};
+        } catch {
+            return {};
+        }
+    };
+
+    const getListeningMcqOptionInputMode = (assetsData: string | null | undefined, questionKey: string): 'text' | 'image' => {
+        const parsed = parseGroupAssetsData(assetsData);
+        const rawMap = parsed.optionInputModeByQuestion;
+        if (rawMap && typeof rawMap === 'object' && !Array.isArray(rawMap)) {
+            return (rawMap as Record<string, unknown>)[questionKey] === 'image' ? 'image' : 'text';
+        }
+
+        return 'text';
+    };
+
+    const setListeningMcqOptionInputMode = (
+        assetsData: string | null | undefined,
+        questionKey: string,
+        mode: 'text' | 'image',
+    ) => {
+        const parsed = parseGroupAssetsData(assetsData);
+        const nextMap = parsed.optionInputModeByQuestion && typeof parsed.optionInputModeByQuestion === 'object' && !Array.isArray(parsed.optionInputModeByQuestion)
+            ? { ...(parsed.optionInputModeByQuestion as Record<string, unknown>) }
             : {};
-    } catch {
-        return {};
-    }
-};
 
-const getListeningMcqOptionInputMode = (assetsData: string | null | undefined, questionKey: string): 'text' | 'image' => {
-    const parsed = parseGroupAssetsData(assetsData);
-    const rawMap = parsed.optionInputModeByQuestion;
-    if (rawMap && typeof rawMap === 'object' && !Array.isArray(rawMap)) {
-        return (rawMap as Record<string, unknown>)[questionKey] === 'image' ? 'image' : 'text';
-    }
+        if (mode === 'image') nextMap[questionKey] = 'image';
+        else delete nextMap[questionKey];
 
-    return 'text';
-};
+        const nextPayload: Record<string, unknown> = { ...parsed };
+        if (Object.keys(nextMap).length > 0) nextPayload.optionInputModeByQuestion = nextMap;
+        else delete nextPayload.optionInputModeByQuestion;
 
-const setListeningMcqOptionInputMode = (
-    assetsData: string | null | undefined,
-    questionKey: string,
-    mode: 'text' | 'image',
-) => {
-    const parsed = parseGroupAssetsData(assetsData);
-    const nextMap = parsed.optionInputModeByQuestion && typeof parsed.optionInputModeByQuestion === 'object' && !Array.isArray(parsed.optionInputModeByQuestion)
-        ? { ...(parsed.optionInputModeByQuestion as Record<string, unknown>) }
-        : {};
-
-    if (mode === 'image') nextMap[questionKey] = 'image';
-    else delete nextMap[questionKey];
-
-    const nextPayload: Record<string, unknown> = { ...parsed };
-    if (Object.keys(nextMap).length > 0) nextPayload.optionInputModeByQuestion = nextMap;
-    else delete nextPayload.optionInputModeByQuestion;
-
-    return Object.keys(nextPayload).length > 0 ? JSON.stringify(nextPayload) : undefined;
-};
+        return Object.keys(nextPayload).length > 0 ? JSON.stringify(nextPayload) : undefined;
+    };
 
     const renderQuestion = (
         question: CreateQuestionDto,
@@ -415,18 +544,11 @@ const setListeningMcqOptionInputMode = (
                 )}
 
                 {isFillType && (
-                    <Input
+                    <AlternativeAnswersInput
+                        placeholder="Đáp án đúng"
                         value={question.correctAnswer ?? ''}
-                        placeholder="Đáp án đúng (dùng | phân cách nhiều đáp án)"
-                        title="Nhập đáp án đúng, có thể dùng | để nhập nhiều đáp án"
-                        size="middle"
-                        style={{ borderColor: '#10b981', marginBottom: '6px', height: '38px' }}
-                        onPaste={(event) => {
-                            const nextValue = getCleanPastedInputValue(event, question.correctAnswer ?? '');
-                            if (nextValue === null) return;
-                            updateQuestion({ correctAnswer: nextValue });
-                        }}
-                        onChange={(event) => updateQuestion({ correctAnswer: event.target.value })}
+                        style={{ marginBottom: '6px' }}
+                        onChange={(value) => updateQuestion({ correctAnswer: value })}
                     />
                 )}
 
@@ -838,7 +960,7 @@ const setListeningMcqOptionInputMode = (
                                                     ...question,
                                                     options: previousIsMapLabelling && question.options.length > 0
                                                         ? question.options
-                                                    : mapOptions,
+                                                        : mapOptions,
                                                 }));
                                             }
                                             nextContentData = undefined;
@@ -1092,139 +1214,175 @@ const setListeningMcqOptionInputMode = (
                         {(isMatchingType || isSummaryType) && (
                             <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'flex-start' }}>
                                 <div style={{ flex: 6, minWidth: '300px' }}>
-                                    {group.questions.map((question, questionIdx) => (
-                                        <div key={questionIdx} style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px' }}>
-                                            <Tag color="blue">Q{question.questionNumber || groupStartNum + questionIdx}</Tag>
-                                            {!isComplexLayout && (
-                                                <Input
-                                                    size="middle"
-                                                    placeholder={isClassificationMatchingType ? 'Tên người / nhóm / đối tượng...' : 'Nội dung item...'}
-                                                    title="Nội dung câu hỏi"
-                                                    value={question.content ?? ''}
-                                                    style={{ flex: 1, height: '38px' }}
-                                                    onPaste={(event) => {
-                                                        const nextValue = getCleanPastedInputValue(event, question.content ?? '');
-                                                        if (nextValue === null) return;
-
-                                                        const updatedGroups = [...groups];
-                                                        updatedGroups[groupIdx].questions[questionIdx] = {
-                                                            ...question,
-                                                            content: nextValue,
-                                                        };
-                                                        onUpdate(updatedGroups);
-                                                    }}
-                                                    onChange={(event) => {
-                                                        const updatedGroups = [...groups];
-                                                        updatedGroups[groupIdx].questions[questionIdx] = {
-                                                            ...question,
-                                                            content: event.target.value,
-                                                        };
-                                                        onUpdate(updatedGroups);
-                                                    }}
-                                                />
-                                            )}
-                                            {isMatchingHeadingsType ? (
-                                                <Select
-                                                    size="middle"
-                                                    placeholder="Đáp án"
-                                                    value={question.correctAnswer || undefined}
-                                                    style={{ width: 120, border: '1px solid #10b981', borderRadius: '4px' }}
-                                                    onChange={(value) => {
-                                                        const updatedGroups = [...groups];
-                                                        updatedGroups[groupIdx].questions[questionIdx] = {
-                                                            ...question,
-                                                            correctAnswer: value,
-                                                        };
-                                                        onUpdate(updatedGroups);
-                                                        closeActiveSelectDropdown();
-                                                    }}
-                                                    options={matchingHeadingAnswerOptions}
-                                                />
-                                            ) : showOptionsBox ? (
-                                                allowsMultipleCorrectAnswers ? (
-                                                    <Select
-                                                        mode="multiple"
-                                                        size="middle"
-                                                        placeholder="Đáp án (1-3)"
-                                                        value={splitCorrectAnswers(question.correctAnswer)}
-                                                        maxTagCount={3}
-                                                        style={{ width: '170px', border: '1px solid #10b981', borderRadius: '4px' }}
-                                                        onChange={(values: string[]) => {
-                                                            const updatedGroups = [...groups];
-                                                            updatedGroups[groupIdx].questions[questionIdx] = {
-                                                                ...question,
-                                                                correctAnswer: joinCorrectAnswers(values.slice(0, 3)),
-                                                            };
-                                                            onUpdate(updatedGroups);
-                                                            closeActiveSelectDropdown();
-                                                        }}
-                                                        options={sharedQuestionOptions.map((_, index) => {
-                                                            const label = getOptionLabel(index, group.optionLabelType || 'alpha');
-                                                            return { label, value: label };
-                                                        })}
-                                                    />
-                                                ) : (
-                                                    <Select
-                                                        size="middle"
-                                                        placeholder="Đáp án"
-                                                        value={question.correctAnswer || undefined}
-                                                        style={{ width: isSummaryType ? '120px' : '100px', border: '1px solid #10b981', borderRadius: '4px' }}
-                                                        onChange={(value) => {
-                                                            const updatedGroups = [...groups];
-                                                            updatedGroups[groupIdx].questions[questionIdx] = {
-                                                                ...question,
-                                                                correctAnswer: value,
-                                                            };
-                                                            onUpdate(updatedGroups);
-                                                            closeActiveSelectDropdown();
-                                                        }}
-                                                        options={sharedQuestionOptions.map((_, index) => {
-                                                            const label = getOptionLabel(index, group.optionLabelType || 'alpha');
-                                                            return { label, value: label };
-                                                        })}
-                                                    />
-                                                )
-                                            ) : (
-                                                <Input
-                                                    size="middle"
-                                                    placeholder="Đáp án"
-                                                    title="Nhập đáp án cho câu hỏi"
-                                                    value={question.correctAnswer ?? ''}
-                                                    style={{ width: isSummaryType ? '220px' : '120px', borderColor: '#10b981', height: '38px' }}
-                                                    onPaste={(event) => {
-                                                        const nextValue = getCleanPastedInputValue(event, question.correctAnswer ?? '');
-                                                        if (nextValue === null) return;
-                                                        const updatedGroups = [...groups];
-                                                        updatedGroups[groupIdx].questions[questionIdx] = {
-                                                            ...question,
-                                                            correctAnswer: nextValue,
-                                                        };
-                                                        onUpdate(updatedGroups);
-                                                    }}
-                                                    onChange={(event) => {
-                                                        const updatedGroups = [...groups];
-                                                        updatedGroups[groupIdx].questions[questionIdx] = {
-                                                            ...question,
-                                                            correctAnswer: event.target.value,
-                                                        };
-                                                        onUpdate(updatedGroups);
-                                                    }}
-                                                />
-                                            )}
-                                            <Button
-                                                type="text"
-                                                danger
-                                                icon={<MinusCircleOutlined />}
-                                                size="small"
-                                                onClick={() => {
-                                                    removeQuestionAt(
-                                                        questionIdx,
-                                                        question.questionNumber ?? groupStartNum + questionIdx,
-                                                    );
+                                    {group.questions.map((question, questionIdx) => {
+                                        const questionNumber = question.questionNumber || groupStartNum + questionIdx;
+                                        return (
+                                            <div
+                                                key={questionIdx}
+                                                style={{
+                                                    display: 'flex',
+                                                    gap: '10px',
+                                                    alignItems: 'flex-start',
+                                                    marginBottom: '10px',
+                                                    padding: '10px',
+                                                    border: '1px solid #f1f5f9',
+                                                    borderRadius: '8px',
+                                                    background: '#ffffff',
+                                                    boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.03)'
                                                 }}
-                                            />
-                                        </div>
-                                    ))}
+                                            >
+                                                <Tag
+                                                    color="blue"
+                                                    style={{
+                                                        margin: 0,
+                                                        height: '24px',
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        fontWeight: 600,
+                                                        fontSize: '12px'
+                                                    }}
+                                                >
+                                                    Q{questionNumber}
+                                                </Tag>
+
+                                                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px', minWidth: 0 }}>
+                                                    {!isComplexLayout && (
+                                                        <Input
+                                                            size="middle"
+                                                            placeholder={isClassificationMatchingType ? 'Tên người / nhóm / đối tượng...' : 'Nội dung item...'}
+                                                            title="Nội dung câu hỏi"
+                                                            value={question.content ?? ''}
+                                                            style={{ flex: 1, height: '38px', borderRadius: '6px' }}
+                                                            onPaste={(event) => {
+                                                                const nextValue = getCleanPastedInputValue(event, question.content ?? '');
+                                                                if (nextValue === null) return;
+
+                                                                const updatedGroups = [...groups];
+                                                                updatedGroups[groupIdx].questions[questionIdx] = {
+                                                                    ...question,
+                                                                    content: nextValue,
+                                                                };
+                                                                onUpdate(updatedGroups);
+                                                            }}
+                                                            onChange={(event) => {
+                                                                const updatedGroups = [...groups];
+                                                                updatedGroups[groupIdx].questions[questionIdx] = {
+                                                                    ...question,
+                                                                    content: event.target.value,
+                                                                };
+                                                                onUpdate(updatedGroups);
+                                                            }}
+                                                        />
+                                                    )}
+
+                                                    <div style={{ width: '100%' }}>
+                                                        {isMatchingHeadingsType ? (
+                                                            <Select
+                                                                size="middle"
+                                                                placeholder="Đáp án"
+                                                                value={question.correctAnswer || undefined}
+                                                                style={{ width: '120px', border: '1px solid #10b981', borderRadius: '4px' }}
+                                                                onChange={(value) => {
+                                                                    const updatedGroups = [...groups];
+                                                                    updatedGroups[groupIdx].questions[questionIdx] = {
+                                                                        ...question,
+                                                                        correctAnswer: value,
+                                                                    };
+                                                                    onUpdate(updatedGroups);
+                                                                }}
+                                                                options={matchingHeadingAnswerOptions}
+                                                            />
+                                                        ) : showOptionsBox ? (
+                                                            allowsMultipleCorrectAnswers ? (
+                                                                <Select
+                                                                    mode="multiple"
+                                                                    size="middle"
+                                                                    placeholder="Đáp án (1-3)"
+                                                                    value={splitCorrectAnswers(question.correctAnswer)}
+                                                                    maxTagCount={3}
+                                                                    style={{ width: '100%', maxWidth: '200px', border: '1px solid #10b981', borderRadius: '4px' }}
+                                                                    onChange={(values: string[]) => {
+                                                                        const updatedGroups = [...groups];
+                                                                        updatedGroups[groupIdx].questions[questionIdx] = {
+                                                                            ...question,
+                                                                            correctAnswer: joinCorrectAnswers(values.slice(0, 3)),
+                                                                        };
+                                                                        onUpdate(updatedGroups);
+                                                                        closeActiveSelectDropdown();
+                                                                    }}
+                                                                    options={sharedQuestionOptions.map((_, index) => {
+                                                                        const label = getOptionLabel(index, group.optionLabelType || 'alpha');
+                                                                        return { label, value: label };
+                                                                    })}
+                                                                />
+                                                            ) : (
+                                                                <Select
+                                                                    size="middle"
+                                                                    placeholder="Đáp án"
+                                                                    value={question.correctAnswer || undefined}
+                                                                    style={{ width: '100%', maxWidth: isSummaryType ? '140px' : '110px', border: '1px solid #10b981', borderRadius: '4px' }}
+                                                                    onChange={(value) => {
+                                                                        const updatedGroups = [...groups];
+                                                                        updatedGroups[groupIdx].questions[questionIdx] = {
+                                                                            ...question,
+                                                                            correctAnswer: value,
+                                                                        };
+                                                                        onUpdate(updatedGroups);
+                                                                        closeActiveSelectDropdown();
+                                                                    }}
+                                                                    options={sharedQuestionOptions.map((_, index) => {
+                                                                        const label = getOptionLabel(index, group.optionLabelType || 'alpha');
+                                                                        return { label, value: label };
+                                                                    })}
+                                                                />
+                                                            )
+                                                        ) : (
+                                                            <AlternativeAnswersInput
+                                                                placeholder="Đáp án"
+                                                                value={question.correctAnswer ?? ''}
+                                                                style={{ width: '100%', maxWidth: isSummaryType ? '240px' : '180px' }}
+                                                                isInline={true}
+                                                                onChange={(value) => {
+                                                                    const updatedGroups = [...groups];
+                                                                    updatedGroups[groupIdx].questions[questionIdx] = {
+                                                                        ...question,
+                                                                        correctAnswer: value,
+                                                                    };
+                                                                    onUpdate(updatedGroups);
+                                                                }}
+                                                            />
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                <Tooltip title={`Xóa câu hỏi Q${questionNumber}`}>
+                                                    <Button
+                                                        type="text"
+                                                        danger
+                                                        icon={<DeleteOutlined style={{ fontSize: '14px' }} />}
+                                                        size="small"
+                                                        onClick={() => {
+                                                            removeQuestionAt(
+                                                                questionIdx,
+                                                                questionNumber,
+                                                            );
+                                                        }}
+                                                        style={{
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'center',
+                                                            background: '#fff1f2',
+                                                            border: '1px solid #fecdd3',
+                                                            height: '28px',
+                                                            width: '28px',
+                                                            borderRadius: '6px',
+                                                            padding: 0
+                                                        }}
+                                                    />
+                                                </Tooltip>
+                                            </div>
+                                        );
+                                    })}
                                     {!isComplexLayout && (
                                         <Button
                                             type="default"
@@ -1448,60 +1606,102 @@ const setListeningMcqOptionInputMode = (
                                             : 'Thêm [Qx] trong template để tạo danh sách đáp án.'}
                                     </div>
                                 ) : (
-                                    group.questions.map((question, questionIdx) => (
-                                        <div key={questionIdx} style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px' }}>
-                                            <Tag color="blue">Q{question.questionNumber || groupStartNum + questionIdx}</Tag>
-                                            {isFlowchartOptionBank ? (
-                                                <Select
-                                                    size="middle"
-                                                    placeholder="Đáp án"
-                                                    value={question.correctAnswer || undefined}
-                                                    style={{ width: '180px', border: '1px solid #10b981', borderRadius: '4px' }}
-                                                    onChange={(value) => {
-                                                        const updatedGroups = [...groups];
-                                                        updatedGroups[groupIdx].questions[questionIdx] = {
-                                                            ...question,
-                                                            correctAnswer: value,
-                                                        };
-                                                        onUpdate(updatedGroups);
-                                                    }}
-                                                    options={sharedQuestionOptions.map((_, index) => {
-                                                        const label = getOptionLabel(index, group.optionLabelType || 'alpha');
-                                                        return { label, value: label };
-                                                    })}
-                                                    allowClear
-                                                />
-                                            ) : (
-                                                <Input
-                                                    size="middle"
-                                                    placeholder="Đáp án (dùng | nếu có nhiều đáp án)"
-                                                    title="Nhập đáp án đúng. Nếu có nhiều đáp án, dùng dấu | để phân cách, ví dụ: animal|insect|wild creature."
-                                                    value={question.correctAnswer ?? ''}
-                                                    style={{ width: '280px', borderColor: '#10b981', height: '38px' }}
-                                                    onChange={(event) => {
-                                                        const updatedGroups = [...groups];
-                                                        updatedGroups[groupIdx].questions[questionIdx] = {
-                                                            ...question,
-                                                            correctAnswer: event.target.value,
-                                                        };
-                                                        onUpdate(updatedGroups);
-                                                    }}
-                                                />
-                                            )}
-                                            <Button
-                                                type="text"
-                                                danger
-                                                icon={<MinusCircleOutlined />}
-                                                size="small"
-                                                onClick={() => {
-                                                    removeQuestionAt(
-                                                        questionIdx,
-                                                        question.questionNumber ?? groupStartNum + questionIdx,
-                                                    );
+                                    group.questions.map((question, questionIdx) => {
+                                        const questionNumber = question.questionNumber || groupStartNum + questionIdx;
+                                        return (
+                                            <div
+                                                key={questionIdx}
+                                                style={{
+                                                    display: 'flex',
+                                                    gap: '12px',
+                                                    alignItems: 'flex-start',
+                                                    marginBottom: '12px',
+                                                    padding: '12px',
+                                                    border: '1px solid #f1f5f9',
+                                                    borderRadius: '8px',
+                                                    background: '#ffffff',
+                                                    boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)'
                                                 }}
-                                            />
-                                        </div>
-                                    ))
+                                            >
+                                                <Tag
+                                                    color="blue"
+                                                    style={{
+                                                        margin: 0,
+                                                        height: '24px',
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        fontWeight: 600,
+                                                        fontSize: '12px'
+                                                    }}
+                                                >
+                                                    Q{questionNumber}
+                                                </Tag>
+
+                                                <div style={{ flex: 1 }}>
+                                                    {isFlowchartOptionBank ? (
+                                                        <Select
+                                                            size="middle"
+                                                            placeholder="Đáp án"
+                                                            value={question.correctAnswer || undefined}
+                                                            style={{ width: '100%', maxWidth: '240px', border: '1px solid #10b981', borderRadius: '4px' }}
+                                                            onChange={(value) => {
+                                                                const updatedGroups = [...groups];
+                                                                updatedGroups[groupIdx].questions[questionIdx] = {
+                                                                    ...question,
+                                                                    correctAnswer: value,
+                                                                };
+                                                                onUpdate(updatedGroups);
+                                                            }}
+                                                            options={sharedQuestionOptions.map((_, index) => {
+                                                                const label = getOptionLabel(index, group.optionLabelType || 'alpha');
+                                                                return { label, value: label };
+                                                            })}
+                                                            allowClear
+                                                        />
+                                                    ) : (
+                                                        <AlternativeAnswersInput
+                                                            placeholder="Đáp án đúng"
+                                                            value={question.correctAnswer ?? ''}
+                                                            style={{ width: '100%', maxWidth: '360px' }}
+                                                            onChange={(value) => {
+                                                                const updatedGroups = [...groups];
+                                                                updatedGroups[groupIdx].questions[questionIdx] = {
+                                                                    ...question,
+                                                                    correctAnswer: value,
+                                                                };
+                                                                onUpdate(updatedGroups);
+                                                            }}
+                                                        />
+                                                    )}
+                                                </div>
+
+                                                <Tooltip title={`Xóa câu hỏi Q${questionNumber}`}>
+                                                    <Button
+                                                        type="text"
+                                                        danger
+                                                        icon={<DeleteOutlined style={{ fontSize: '15px' }} />}
+                                                        size="middle"
+                                                        onClick={() => {
+                                                            removeQuestionAt(
+                                                                questionIdx,
+                                                                questionNumber,
+                                                            );
+                                                        }}
+                                                        style={{
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'center',
+                                                            background: '#fff1f2',
+                                                            border: '1px solid #fecdd3',
+                                                            height: '32px',
+                                                            width: '32px',
+                                                            borderRadius: '6px'
+                                                        }}
+                                                    />
+                                                </Tooltip>
+                                            </div>
+                                        );
+                                    })
                                 )}
                             </div>
                         )}
