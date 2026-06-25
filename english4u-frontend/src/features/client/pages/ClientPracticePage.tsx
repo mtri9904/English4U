@@ -1,10 +1,11 @@
-import { useMemo, type FC, type ReactNode } from 'react';
+import { useMemo, useState, useEffect, type FC, type ReactNode } from 'react';
 import {
     Button,
     Card,
     Col,
     Empty,
     Input,
+    Pagination,
     Row,
     Select,
     Skeleton,
@@ -26,6 +27,7 @@ import {
 import { motion } from 'framer-motion';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { usePracticeExamsQuery } from '../api/practice.api';
+import { useMyPracticeSessionsQuery } from '../api/session.api';
 import type { PracticeExamListItemDto } from '../types/practice.types';
 import { formatDateTimeToMinute } from '@/shared/lib/dateTime';
 
@@ -152,10 +154,18 @@ export const ClientPracticePage: FC = () => {
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const { data: exams = [], isLoading } = usePracticeExamsQuery();
+    const { data: mySessions = [] } = useMyPracticeSessionsQuery();
+
+    const [currentPage, setCurrentPage] = useState(1);
+    const pageSize = 9;
 
     const searchText = searchParams.get('search') ?? '';
     const selectedSkill = searchParams.get('skill') ?? 'ALL';
     const selectedExamType = searchParams.get('type') ?? 'ALL';
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchText, selectedSkill, selectedExamType]);
 
     const skillOptions = useMemo(
         () =>
@@ -224,10 +234,60 @@ export const ClientPracticePage: FC = () => {
         setSearchParams(nextParams);
     };
 
-    const practiceCards = filteredExams.map((exam) => {
+    const paginatedExams = useMemo(() => {
+        const startIndex = (currentPage - 1) * pageSize;
+        return filteredExams.slice(startIndex, startIndex + pageSize);
+    }, [filteredExams, currentPage, pageSize]);
+
+    const practiceCards = paginatedExams.map((exam) => {
         const primarySkill = getPrimarySkill(exam);
         const theme = getSkillTheme(primarySkill);
         const metric = getExamVolume(exam, primarySkill);
+
+        const examSessions = mySessions.filter((s) => s.examId === exam.id);
+        const hasInProgress = examSessions.some((s) => s.status === 'InProgress');
+        const hasCompleted = examSessions.some((s) => s.status === 'Completed' || s.status === 'Submitted');
+
+        const getStatusRibbon = () => {
+            if (!hasInProgress && !hasCompleted) return null;
+
+            const ribbonBg = hasInProgress
+                ? 'linear-gradient(180deg, #f59e0b 0%, #d97706 100%)'
+                : 'linear-gradient(180deg, #10b981 0%, #059669 100%)';
+
+            const textLine1 = hasInProgress ? 'ĐANG' : 'ĐÃ';
+            const textLine2 = hasInProgress ? 'LÀM' : 'LÀM';
+            const shadowColor = hasInProgress ? 'rgba(217, 119, 6, 0.3)' : 'rgba(5, 150, 105, 0.3)';
+
+            return (
+                <div
+                    style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 24,
+                        width: 40,
+                        height: 52,
+                        background: ribbonBg,
+                        color: '#fff',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        paddingBottom: 6,
+                        fontWeight: 800,
+                        fontSize: 9,
+                        letterSpacing: '0.05em',
+                        lineHeight: 1.2,
+                        boxShadow: `0 4px 8px ${shadowColor}`,
+                        clipPath: 'polygon(0% 0%, 100% 0%, 100% 100%, 50% 85%, 0% 100%)',
+                        zIndex: 10,
+                    }}
+                >
+                    <span>{textLine1}</span>
+                    <span style={{ fontSize: 10, marginTop: 1 }}>{textLine2}</span>
+                </div>
+            );
+        };
 
         return (
             <Col xs={24} md={12} xl={8} key={exam.id}>
@@ -246,11 +306,20 @@ export const ClientPracticePage: FC = () => {
                             boxShadow: `0 10px 30px -15px ${theme.shadow}`,
                             backdropFilter: 'blur(12px)',
                             overflow: 'hidden',
+                            position: 'relative',
                         }}
                         styles={{ body: { display: 'flex', flexDirection: 'column', gap: 16, height: '100%', padding: 24 } }}
                     >
+                        {getStatusRibbon()}
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-                            <Space size={6} wrap>
+                            <Space
+                                size={6}
+                                wrap
+                                style={{
+                                    paddingLeft: (hasInProgress || hasCompleted) ? 48 : 0,
+                                    transition: 'padding-left 0.3s ease',
+                                }}
+                            >
                                 <Tag style={{ borderRadius: 999, paddingInline: 12, margin: 0, background: '#fff', borderColor: theme.border, color: theme.color, fontWeight: 600 }}>
                                     {formatSkillLabel(primarySkill || 'Practice')}
                                 </Tag>
@@ -327,21 +396,25 @@ export const ClientPracticePage: FC = () => {
 
                         <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingTop: 8 }}>
                             <Text type="secondary" style={{ fontSize: 12, color: '#94a3b8' }}>
-                                Trạng thái: Sẵn sàng
+                                Trạng thái: {hasInProgress ? 'Đang làm' : hasCompleted ? 'Đã làm' : 'Chưa làm'}
                             </Text>
                             <Button
                                 type="primary"
                                 onClick={() => navigate(`/app/practice/${exam.id}`)}
                                 style={{
                                     borderRadius: 12,
-                                    background: theme.gradient,
+                                    background: (!hasInProgress && hasCompleted)
+                                        ? 'linear-gradient(135deg, #64748b 0%, #475569 100%)'
+                                        : theme.gradient,
                                     borderColor: 'transparent',
                                     height: 38,
                                     fontWeight: 600,
-                                    boxShadow: `0 4px 14px ${theme.shadow}`,
+                                    boxShadow: (!hasInProgress && hasCompleted)
+                                        ? '0 4px 14px rgba(71, 85, 105, 0.25)'
+                                        : `0 4px 14px ${theme.shadow}`,
                                 }}
                             >
-                                Luyện tập <RightOutlined />
+                                {(!hasInProgress && hasCompleted) ? 'Làm lại' : 'Luyện tập'} <RightOutlined />
                             </Button>
                         </div>
                     </Card>
@@ -552,15 +625,36 @@ export const ClientPracticePage: FC = () => {
                     />
                 </Card>
             ) : (
-                <motion.div
-                    variants={containerVariants}
-                    initial="hidden"
-                    animate="show"
-                >
-                    <Row gutter={[20, 20]}>
-                        {practiceCards}
-                    </Row>
-                </motion.div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
+                    <motion.div
+                        variants={containerVariants}
+                        initial="hidden"
+                        animate="show"
+                    >
+                        <Row gutter={[20, 20]}>
+                            {practiceCards}
+                        </Row>
+                    </motion.div>
+
+                    {filteredExams.length > pageSize && (
+                        <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12 }}>
+                            <Pagination
+                                current={currentPage}
+                                pageSize={pageSize}
+                                total={filteredExams.length}
+                                onChange={(page) => setCurrentPage(page)}
+                                showSizeChanger={false}
+                                style={{
+                                    background: 'rgba(255, 255, 255, 0.6)',
+                                    padding: '8px 16px',
+                                    borderRadius: 16,
+                                    border: '1px solid rgba(226, 232, 240, 0.8)',
+                                    boxShadow: '0 4px 12px rgba(148, 163, 184, 0.05)',
+                                }}
+                            />
+                        </div>
+                    )}
+                </div>
             )}
 
             {!isLoading && exams.length > 0 && (
