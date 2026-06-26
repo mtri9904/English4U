@@ -18,6 +18,8 @@ export type PdfGenerationJobState = {
 type PdfGenerationStoreState = {
     job: PdfGenerationJobState | null;
     isCollapsed: boolean;
+    file: File | null;
+    retryCount: number;
 };
 
 type Listener = () => void;
@@ -27,6 +29,8 @@ const listeners = new Set<Listener>();
 let storeState: PdfGenerationStoreState = {
     job: null,
     isCollapsed: false,
+    file: null,
+    retryCount: 0,
 };
 
 const emitChange = () => {
@@ -51,8 +55,15 @@ export const pdfGenerationJobStore = {
     subscribe,
     getSnapshot,
     getState: () => storeState,
+    setFile: (file: File | null) => {
+        setStoreState((current) => ({
+            ...current,
+            file,
+        }));
+    },
     setJob: (job: PdfGenerationJobState | null) => {
-        setStoreState(() => ({
+        setStoreState((current) => ({
+            ...current,
             job,
             isCollapsed: false,
         }));
@@ -69,10 +80,24 @@ export const pdfGenerationJobStore = {
             isCollapsed: current.job ? isCollapsed : false,
         }));
     },
+    incrementRetry: () => {
+        setStoreState((current) => ({
+            ...current,
+            retryCount: current.retryCount + 1,
+        }));
+    },
+    resetRetry: () => {
+        setStoreState((current) => ({
+            ...current,
+            retryCount: 0,
+        }));
+    },
     clear: () => {
         storeState = {
             job: null,
             isCollapsed: false,
+            file: null,
+            retryCount: 0,
         };
         emitChange();
     },
@@ -80,3 +105,20 @@ export const pdfGenerationJobStore = {
 
 export const usePdfGenerationJobStore = () =>
     useSyncExternalStore(pdfGenerationJobStore.subscribe, pdfGenerationJobStore.getSnapshot, pdfGenerationJobStore.getSnapshot);
+
+export const formatPdfGenerationErrorMessage = (message?: string | null): string => {
+    if (!message) return 'Tạo đề từ PDF thất bại.';
+    const lowerMessage = message.toLowerCase();
+    if (
+        lowerMessage.includes('copyright') ||
+        lowerMessage.includes('safety') ||
+        lowerMessage.includes('blocked') ||
+        lowerMessage.includes('policy') ||
+        lowerMessage.includes('recitation') ||
+        lowerMessage.includes('bản quyền') ||
+        lowerMessage.includes('chính sách')
+    ) {
+        return 'Nội dung tệp PDF bị từ chối do vi phạm bản quyền hoặc chính sách an toàn của AI.';
+    }
+    return message;
+};

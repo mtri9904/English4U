@@ -38,7 +38,7 @@ import {
     useUpdateExamStatusMutation,
 } from '../api/exam.api';
 import type { ExamDto } from '../types/exam.types';
-import { pdfGenerationJobStore, usePdfGenerationJobStore } from '../stores/pdfGenerationJob.store';
+import { pdfGenerationJobStore, usePdfGenerationJobStore, formatPdfGenerationErrorMessage } from '../stores/pdfGenerationJob.store';
 
 type PublishFilter = 'ALL' | 'PUBLISHED' | 'DRAFT';
 
@@ -192,6 +192,7 @@ export const ExamManagement = () => {
 
         const fileToUpload = selectedPdfFile;
         const clientRequestId = crypto.randomUUID();
+        pdfGenerationJobStore.setFile(fileToUpload);
         pdfGenerationJobStore.setJob({
             clientRequestId,
             uploadId: null,
@@ -225,7 +226,13 @@ export const ExamManagement = () => {
             },
             onError: (error: any) => {
                 const apiMessage = error?.response?.data?.message;
-                const fallbackMessage = typeof apiMessage === 'string' ? apiMessage : 'Tạo đề từ PDF thất bại.';
+                const rawMessage = typeof apiMessage === 'string' ? apiMessage : 'Tạo đề từ PDF thất bại.';
+                const is503Error = error?.response?.status === 503 || rawMessage.includes('503') || rawMessage.includes('Gemini native PDF extraction failed');
+                const store = pdfGenerationJobStore.getState();
+                const willRetry = is503Error && store.file && store.retryCount < 3;
+
+                const fallbackMessage = formatPdfGenerationErrorMessage(rawMessage);
+
                 pdfGenerationJobStore.updateJob((previous) => ({
                     clientRequestId: previous?.clientRequestId ?? clientRequestId,
                     uploadId: previous?.uploadId ?? null,
@@ -238,7 +245,10 @@ export const ExamManagement = () => {
                     passageNumber: previous?.passageNumber ?? null,
                     totalPassages: previous?.totalPassages ?? null,
                 }));
-                message.error(fallbackMessage);
+
+                if (!willRetry) {
+                    message.error(fallbackMessage);
+                }
             },
         });
     };

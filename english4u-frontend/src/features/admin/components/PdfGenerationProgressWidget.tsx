@@ -1,10 +1,10 @@
 import { useEffect } from 'react';
 import { Button, Progress } from 'antd';
-import { CloseOutlined, EyeOutlined } from '@ant-design/icons';
+import { CloseOutlined, EyeOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { REALTIME_BROWSER_EVENT } from '@/features/realtime/hooks/useRealtimeSync';
 import { examApi } from '../api/exam.api';
-import { pdfGenerationJobStore, usePdfGenerationJobStore, type PdfGenerationJobState, type PdfJobStatus } from '../stores/pdfGenerationJob.store';
+import { pdfGenerationJobStore, usePdfGenerationJobStore, formatPdfGenerationErrorMessage, type PdfGenerationJobState, type PdfJobStatus } from '../stores/pdfGenerationJob.store';
 
 type RealtimeEnvelope = {
     type?: string;
@@ -83,6 +83,56 @@ export const PdfGenerationProgressWidget = () => {
     const navigate = useNavigate();
     const { job: pdfGenerationJob, isCollapsed } = usePdfGenerationJobStore();
 
+    const triggerRetry = async (file: File) => {
+        const store = pdfGenerationJobStore.getState();
+        if (store.retryCount >= 3) {
+            return false;
+        }
+
+        const nextRetryCount = store.retryCount + 1;
+        pdfGenerationJobStore.incrementRetry();
+        const nextClientRequestId = crypto.randomUUID();
+
+        pdfGenerationJobStore.updateJob((prev) => {
+            if (!prev) return null;
+            return {
+                ...prev,
+                clientRequestId: nextClientRequestId,
+                uploadId: null,
+                status: 'processing',
+                progressPercent: 5,
+                stage: 'retrying',
+                message: `Hệ thống quá tải. Đang tự động thử lại lần ${nextRetryCount}/3...`,
+            };
+        });
+
+        try {
+            const result = await examApi.generateFromPdf({ file, clientRequestId: nextClientRequestId });
+            pdfGenerationJobStore.updateJob((prev) => {
+                if (!prev || prev.clientRequestId !== nextClientRequestId) return prev;
+                return {
+                    ...prev,
+                    uploadId: result.uploadId,
+                    totalPassages: result.passageCount,
+                };
+            });
+            return true;
+        } catch (err: any) {
+            const apiMessage = err?.response?.data?.message;
+            const fallbackMessage = formatPdfGenerationErrorMessage(typeof apiMessage === 'string' ? apiMessage : 'Tự động thử lại thất bại.');
+            pdfGenerationJobStore.updateJob((prev) => {
+                if (!prev || prev.clientRequestId !== nextClientRequestId) return prev;
+                return {
+                    ...prev,
+                    status: 'failed',
+                    stage: 'failed',
+                    message: fallbackMessage,
+                };
+            });
+            return false;
+        }
+    };
+
     useEffect(() => {
         const handleRealtimeEvent = (event: Event) => {
             const customEvent = event as CustomEvent<RealtimeEnvelope>;
@@ -126,13 +176,21 @@ export const PdfGenerationProgressWidget = () => {
                         ? 'failed'
                         : 'processing';
 
+            if (normalizedStatus === 'failed' && (payload.message?.includes('503') || payload.message?.includes('Gemini native PDF extraction failed'))) {
+                const store = pdfGenerationJobStore.getState();
+                if (store.file && store.retryCount < 3) {
+                    void triggerRetry(store.file);
+                    return;
+                }
+            }
+
             pdfGenerationJobStore.updateJob((previous) => {
                 const previousUploadId = normalizeGuidLike(previous?.uploadId);
                 if (
                     previousUploadId &&
                     eventUploadId &&
                     previousUploadId !== eventUploadId &&
-                    previous.status === 'processing'
+                    previous?.status === 'processing'
                 ) {
                     return previous;
                 }
@@ -144,7 +202,7 @@ export const PdfGenerationProgressWidget = () => {
                     status: normalizedStatus,
                     progressPercent: Math.max(0, Math.min(100, payload.progressPercent ?? previous?.progressPercent ?? 0)),
                     stage: payload.stage ?? previous?.stage ?? 'processing',
-                    message: payload.message ?? previous?.message ?? 'Đang xử lý PDF.',
+                    message: payload.message ? formatPdfGenerationErrorMessage(payload.message) : (previous?.message ?? 'Đang xử lý PDF.'),
                     examId: payload.examId ?? previous?.examId ?? null,
                     passageNumber: payload.passageNumber ?? previous?.passageNumber ?? null,
                     totalPassages: payload.totalPassages ?? previous?.totalPassages ?? null,
@@ -157,6 +215,20 @@ export const PdfGenerationProgressWidget = () => {
             window.removeEventListener(REALTIME_BROWSER_EVENT, handleRealtimeEvent as EventListener);
         };
     }, []);
+
+    useEffect(() => {
+        if (!pdfGenerationJob) return;
+
+        if (
+            pdfGenerationJob.status === 'failed' &&
+            (pdfGenerationJob.message?.includes('503') || pdfGenerationJob.message?.includes('Gemini native PDF extraction failed'))
+        ) {
+            const store = pdfGenerationJobStore.getState();
+            if (store.file && store.retryCount < 3) {
+                void triggerRetry(store.file);
+            }
+        }
+    }, [pdfGenerationJob?.status, pdfGenerationJob?.message]);
 
     useEffect(() => {
         if (!pdfGenerationJob || pdfGenerationJob.status !== 'processing') {
@@ -189,14 +261,24 @@ export const PdfGenerationProgressWidget = () => {
                     return;
                 }
 
+                const mappedStatus = mapProgressStatus(snapshot.status);
+
+                if (mappedStatus === 'failed' && (snapshot.message?.includes('503') || snapshot.message?.includes('Gemini native PDF extraction failed'))) {
+                    const store = pdfGenerationJobStore.getState();
+                    if (store.file && store.retryCount < 3) {
+                        void triggerRetry(store.file);
+                        return;
+                    }
+                }
+
                 pdfGenerationJobStore.updateJob((previous) => ({
                     clientRequestId: snapshot.clientRequestId ?? previous?.clientRequestId ?? clientRequestId,
                     uploadId: snapshot.uploadId ?? previous?.uploadId ?? uploadId,
                     fileName: previous?.fileName ?? 'uploaded.pdf',
-                    status: mapProgressStatus(snapshot.status),
+                    status: mappedStatus,
                     progressPercent: Math.max(0, Math.min(100, snapshot.progressPercent ?? previous?.progressPercent ?? 0)),
                     stage: snapshot.stage ?? previous?.stage ?? 'processing',
-                    message: snapshot.message ?? previous?.message ?? 'Đang xử lý PDF.',
+                    message: snapshot.message ? formatPdfGenerationErrorMessage(snapshot.message) : (previous?.message ?? 'Đang xử lý PDF.'),
                     examId: snapshot.examId ?? previous?.examId ?? null,
                     passageNumber: snapshot.passageNumber ?? previous?.passageNumber ?? null,
                     totalPassages: snapshot.totalPassages ?? previous?.totalPassages ?? null,
@@ -458,6 +540,34 @@ export const PdfGenerationProgressWidget = () => {
                             }}
                         >
                             Mở đề vừa tạo
+                        </Button>
+                    </div>
+                ) : null}
+
+                {pdfGenerationJob.status === 'failed' && pdfGenerationJobStore.getState().file ? (
+                    <div style={{ marginTop: 16 }}>
+                        <Button
+                            type="primary"
+                            icon={<ReloadOutlined />}
+                            onClick={() => {
+                                pdfGenerationJobStore.resetRetry();
+                                const store = pdfGenerationJobStore.getState();
+                                if (store.job && store.file) {
+                                    void triggerRetry(store.file);
+                                }
+                            }}
+                            style={{
+                                width: '100%',
+                                height: 44,
+                                border: 'none',
+                                borderRadius: 14,
+                                fontSize: '0.95rem',
+                                fontWeight: 800,
+                                background: 'linear-gradient(135deg, #b91c1c 0%, #dc2626 52%, #ef4444 100%)',
+                                boxShadow: '0 14px 28px rgba(220, 38, 38, 0.24)',
+                            }}
+                        >
+                            Thử lại
                         </Button>
                     </div>
                 ) : null}

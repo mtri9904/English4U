@@ -239,7 +239,6 @@ async def align_listening_transcript(request: ListeningTranscriptAlignmentReques
     try:
         return await build_listening_alignment_response(
             request,
-            gemini_client=gemini_client,
         )
     except ValueError as ex:
         raise HTTPException(status_code=400, detail=str(ex)) from ex

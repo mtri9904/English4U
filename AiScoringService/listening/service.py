@@ -18,10 +18,6 @@ from listening.alignment import (
     get_question_part_number,
     split_listening_transcript_into_parts,
 )
-from listening.gemini_alignment import (
-    generate_alignment_batch_with_gemini_split,
-    is_gemini_alignment_quota_on_cooldown,
-)
 from listening.local_alignment import (
     build_alignment_candidate_windows,
     collapse_alignment_to_anchor_segments,
@@ -33,7 +29,6 @@ from listening.local_alignment import (
     select_fallback_alignment_candidate,
 )
 from schemas import (
-    GeminiAlignmentQuotaExhaustedError,
     ListeningAlignmentQuestion,
     ListeningTranscriptAlignmentRequest,
     ListeningTranscriptAlignmentResponse,
@@ -42,7 +37,6 @@ from schemas import (
     ListeningTranscriptResponse,
     ListeningTranscriptSegment,
 )
-from settings import LISTENING_ALIGNMENT_USE_GEMINI
 
 logger = logging.getLogger(__name__)
 
@@ -106,10 +100,6 @@ async def align_listening_transcript_part(
     part_number: int,
     transcript_segments: list[ListeningTranscriptSegment],
     questions: list[ListeningAlignmentQuestion],
-    *,
-    gemini_client: object | None,
-    gemini_request_lock: asyncio.Lock | None = None,
-    gemini_quota_exhausted_event: asyncio.Event | None = None,
 ) -> list[ListeningTranscriptQuestionAlignment]:
     if not transcript_segments or not questions:
         return []
@@ -169,100 +159,20 @@ async def align_listening_transcript_part(
 
     batch_alignments: list[ListeningTranscriptQuestionAlignment] = []
     if pending_batch:
-        batch_result = None
-        if LISTENING_ALIGNMENT_USE_GEMINI:
-            try:
-                should_skip_gemini = (
-                    (gemini_quota_exhausted_event is not None and gemini_quota_exhausted_event.is_set())
-                    or is_gemini_alignment_quota_on_cooldown()
-                )
-
-                if not should_skip_gemini:
-                    if gemini_request_lock is not None:
-                        async with gemini_request_lock:
-                            should_skip_gemini = (
-                                (gemini_quota_exhausted_event is not None and gemini_quota_exhausted_event.is_set())
-                                or is_gemini_alignment_quota_on_cooldown()
-                            )
-                            if not should_skip_gemini:
-                                batch_result = await generate_alignment_batch_with_gemini_split(
-                                    pending_batch,
-                                    gemini_client,
-                                )
-                    else:
-                        batch_result = await generate_alignment_batch_with_gemini_split(
-                            pending_batch,
-                            gemini_client,
-                        )
-            except GeminiAlignmentQuotaExhaustedError:  # pragma: no cover
-                if gemini_quota_exhausted_event is not None:
-                    gemini_quota_exhausted_event.set()
-                logger.warning(
-                    "Listening transcript alignment Gemini quota exhausted on part %s. "
-                    "Switching this part to local candidate scoring.",
-                    part_number,
-                )
-            except Exception:  # pragma: no cover
-                batch_result = None
-                logger.exception(
-                    "Listening transcript alignment batch failed for part %s. "
-                    "Falling back to local candidate scoring.",
-                    part_number,
-                )
-        else:
-            logger.info(
-                "Listening transcript alignment is configured for local-only mode. "
-                "Skipping Gemini on part %s.",
-                part_number,
+        for question, candidates in pending_batch:
+            fallback_candidate, fallback_confidence = select_fallback_alignment_candidate(
+                candidates,
+                requires_direct_evidence=bool(
+                    get_alignment_answer_candidates(question) or get_alignment_evidence_tokens(question)
+                ),
             )
-
-        if batch_result is None:
-            for question, candidates in pending_batch:
-                fallback_candidate, fallback_confidence = select_fallback_alignment_candidate(
-                    candidates,
-                    requires_direct_evidence=bool(
-                        get_alignment_answer_candidates(question) or get_alignment_evidence_tokens(question)
-                    ),
+            batch_alignments.append(
+                ListeningTranscriptQuestionAlignment(
+                    question_number=question.question_number,
+                    segment_indexes=fallback_candidate["segment_indexes"] if fallback_candidate else [],
+                    confidence=fallback_confidence,
                 )
-                batch_alignments.append(
-                    ListeningTranscriptQuestionAlignment(
-                        question_number=question.question_number,
-                        segment_indexes=fallback_candidate["segment_indexes"] if fallback_candidate else [],
-                        confidence=fallback_confidence,
-                    )
-                )
-        else:
-            selected_candidate_ids = {
-                selection.question_number: selection
-                for selection in batch_result.selections
-            }
-
-            for question, candidates in pending_batch:
-                selected = selected_candidate_ids.get(question.question_number)
-                candidate = (
-                    candidate_map_by_question.get(question.question_number, {}).get(selected.candidate_id)
-                    if selected and selected.candidate_id is not None
-                    else None
-                )
-
-                if candidate is None:
-                    candidate, fallback_confidence = select_fallback_alignment_candidate(
-                        candidates,
-                        requires_direct_evidence=bool(
-                            get_alignment_answer_candidates(question) or get_alignment_evidence_tokens(question)
-                        ),
-                    )
-                    confidence = selected.confidence if selected and selected.confidence else fallback_confidence
-                else:
-                    confidence = selected.confidence if selected and selected.confidence else "medium"
-
-                batch_alignments.append(
-                    ListeningTranscriptQuestionAlignment(
-                        question_number=question.question_number,
-                        segment_indexes=candidate["segment_indexes"] if candidate else [],
-                        confidence=confidence,
-                    )
-                )
+            )
 
     all_alignments = [
         *direct_alignments,
@@ -306,8 +216,6 @@ async def align_listening_transcript_part(
 
 async def build_listening_alignment_response(
     request: ListeningTranscriptAlignmentRequest,
-    *,
-    gemini_client: object | None,
 ) -> ListeningTranscriptAlignmentResponse:
     transcript_segments = [
         segment for segment in request.transcript_segments
@@ -335,8 +243,6 @@ async def build_listening_alignment_response(
         questions_by_part.setdefault(get_question_part_number(question.question_number), []).append(question)
 
     part_jobs: list[tuple[dict, asyncio.Task]] = []
-    gemini_request_lock = asyncio.Lock()
-    gemini_quota_exhausted_event = asyncio.Event()
     for transcript_part in transcript_parts:
         part_questions = questions_by_part.get(transcript_part["part_number"], [])
         if not part_questions:
@@ -347,9 +253,6 @@ async def build_listening_alignment_response(
                 transcript_part["part_number"],
                 transcript_part["segments"],
                 part_questions,
-                gemini_client=gemini_client,
-                gemini_request_lock=gemini_request_lock,
-                gemini_quota_exhausted_event=gemini_quota_exhausted_event,
             )
         )
         part_jobs.append((transcript_part, task))
