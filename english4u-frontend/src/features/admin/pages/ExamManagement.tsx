@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
     Button,
@@ -97,7 +97,14 @@ export const ExamManagement = () => {
     const [publishFilter, setPublishFilter] = useState<PublishFilter>('ALL');
     const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
     const [selectedPdfFile, setSelectedPdfFile] = useState<File | null>(null);
-    const { job: pdfGenerationJob } = usePdfGenerationJobStore();
+    const { job: pdfGenerationJob, openUploadModalTrigger } = usePdfGenerationJobStore();
+
+    useEffect(() => {
+        if (openUploadModalTrigger) {
+            setIsPdfModalOpen(true);
+            pdfGenerationJobStore.setOpenUploadModalTrigger(false);
+        }
+    }, [openUploadModalTrigger]);
 
     const { data: exams = [], isLoading } = useExamsQuery();
     const deleteMutation = useDeleteExamMutation();
@@ -210,18 +217,23 @@ export const ExamManagement = () => {
 
         generateFromPdfMutation.mutate({ file: fileToUpload, clientRequestId }, {
             onSuccess: (result) => {
-                pdfGenerationJobStore.updateJob((previous) => ({
-                    clientRequestId: previous?.clientRequestId ?? clientRequestId,
-                    uploadId: result.uploadId,
-                    fileName: previous?.fileName ?? fileToUpload.name,
-                    status: 'completed',
-                    progressPercent: 100,
-                    stage: 'completed',
-                    message: `Hoàn tất tạo đề với ${result.questionCount} câu hỏi.`,
-                    examId: result.examId,
-                    passageNumber: previous?.passageNumber ?? null,
-                    totalPassages: result.passageCount,
-                }));
+                pdfGenerationJobStore.updateJob((previous) => {
+                    if (!previous || previous.clientRequestId !== clientRequestId) {
+                        return previous;
+                    }
+                    return {
+                        clientRequestId: previous.clientRequestId,
+                        uploadId: result.uploadId,
+                        fileName: previous.fileName ?? fileToUpload.name,
+                        status: 'completed',
+                        progressPercent: 100,
+                        stage: 'completed',
+                        message: `Hoàn tất tạo đề với ${result.questionCount} câu hỏi.`,
+                        examId: result.examId,
+                        passageNumber: previous.passageNumber ?? null,
+                        totalPassages: result.passageCount,
+                    };
+                });
                 message.success('Tạo đề từ PDF thành công.');
             },
             onError: (error: any) => {
@@ -233,18 +245,23 @@ export const ExamManagement = () => {
 
                 const fallbackMessage = formatPdfGenerationErrorMessage(rawMessage);
 
-                pdfGenerationJobStore.updateJob((previous) => ({
-                    clientRequestId: previous?.clientRequestId ?? clientRequestId,
-                    uploadId: previous?.uploadId ?? null,
-                    fileName: previous?.fileName ?? fileToUpload.name,
-                    status: 'failed',
-                    progressPercent: previous?.progressPercent ?? 0,
-                    stage: 'failed',
-                    message: fallbackMessage,
-                    examId: previous?.examId ?? null,
-                    passageNumber: previous?.passageNumber ?? null,
-                    totalPassages: previous?.totalPassages ?? null,
-                }));
+                pdfGenerationJobStore.updateJob((previous) => {
+                    if (!previous || previous.clientRequestId !== clientRequestId) {
+                        return previous;
+                    }
+                    return {
+                        clientRequestId: previous.clientRequestId,
+                        uploadId: previous.uploadId ?? null,
+                        fileName: previous.fileName ?? fileToUpload.name,
+                        status: 'failed',
+                        progressPercent: previous.progressPercent ?? 0,
+                        stage: 'failed',
+                        message: fallbackMessage,
+                        examId: previous.examId ?? null,
+                        passageNumber: previous.passageNumber ?? null,
+                        totalPassages: previous.totalPassages ?? null,
+                    };
+                });
 
                 if (!willRetry) {
                     message.error(fallbackMessage);

@@ -756,7 +756,7 @@ public sealed class GeminiExamAiGenerationService(
             Description: description,
             DurationMinutes: 60,
             TotalPoints: 40.0d,
-            ExamType: "Reading",
+            ExamType: "IELTS",
             IsPublished: true,
             Sections: sections
         );

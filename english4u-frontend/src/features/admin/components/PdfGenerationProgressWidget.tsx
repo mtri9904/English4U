@@ -85,9 +85,11 @@ export const PdfGenerationProgressWidget = () => {
 
     const triggerRetry = async (file: File) => {
         const store = pdfGenerationJobStore.getState();
-        if (store.retryCount >= 3) {
+        if (store.isRetrying || store.retryCount >= 3) {
             return false;
         }
+
+        pdfGenerationJobStore.setIsRetrying(true);
 
         const nextRetryCount = store.retryCount + 1;
         pdfGenerationJobStore.incrementRetry();
@@ -130,6 +132,8 @@ export const PdfGenerationProgressWidget = () => {
                 };
             });
             return false;
+        } finally {
+            pdfGenerationJobStore.setIsRetrying(false);
         }
     };
 
@@ -165,7 +169,15 @@ export const PdfGenerationProgressWidget = () => {
                 (activeJob.progressPercent ?? 0) <= 1 &&
                 (!!eventUploadId || !!eventClientRequestId);
 
-            if (!isSameClientRequest && !isSameUpload && !shouldBindPendingJob && !shouldAdoptFirstProgressEvent && !isSameUser) {
+            const hasActiveJob = !!activeJob;
+            let isAllowed = false;
+            if (hasActiveJob) {
+                isAllowed = isSameClientRequest || isSameUpload || shouldBindPendingJob || shouldAdoptFirstProgressEvent;
+            } else {
+                isAllowed = isSameUser;
+            }
+
+            if (!isAllowed) {
                 return;
             }
 
@@ -176,36 +188,54 @@ export const PdfGenerationProgressWidget = () => {
                         ? 'failed'
                         : 'processing';
 
-            if (normalizedStatus === 'failed' && (payload.message?.includes('503') || payload.message?.includes('Gemini native PDF extraction failed'))) {
-                const store = pdfGenerationJobStore.getState();
-                if (store.file && store.retryCount < 3) {
-                    void triggerRetry(store.file);
-                    return;
-                }
-            }
+
 
             pdfGenerationJobStore.updateJob((previous) => {
-                const previousUploadId = normalizeGuidLike(previous?.uploadId);
+                if (!previous) {
+                    return {
+                        clientRequestId: eventClientRequestId,
+                        uploadId: payload.uploadId ?? null,
+                        fileName: 'uploaded.pdf',
+                        status: normalizedStatus,
+                        progressPercent: Math.max(0, Math.min(100, payload.progressPercent ?? 0)),
+                        stage: payload.stage ?? 'processing',
+                        message: payload.message ? formatPdfGenerationErrorMessage(payload.message) : 'Đang xử lý PDF.',
+                        examId: payload.examId ?? null,
+                        passageNumber: payload.passageNumber ?? null,
+                        totalPassages: payload.totalPassages ?? null,
+                    };
+                }
+
+                const activeClientRequestIdLocal = previous.clientRequestId?.trim() || null;
+                const activeUploadIdLocal = normalizeGuidLike(previous.uploadId);
+                const isMatch = (!!eventClientRequestId && activeClientRequestIdLocal === eventClientRequestId) ||
+                                (!!eventUploadId && activeUploadIdLocal === eventUploadId);
+
+                if (!isMatch) {
+                    return previous;
+                }
+
+                const previousUploadId = normalizeGuidLike(previous.uploadId);
                 if (
                     previousUploadId &&
                     eventUploadId &&
                     previousUploadId !== eventUploadId &&
-                    previous?.status === 'processing'
+                    previous.status === 'processing'
                 ) {
                     return previous;
                 }
 
                 return {
-                    clientRequestId: eventClientRequestId ?? previous?.clientRequestId ?? null,
-                    uploadId: payload.uploadId ?? previous?.uploadId ?? null,
-                    fileName: previous?.fileName ?? 'uploaded.pdf',
+                    clientRequestId: eventClientRequestId ?? previous.clientRequestId ?? null,
+                    uploadId: payload.uploadId ?? previous.uploadId ?? null,
+                    fileName: previous.fileName ?? 'uploaded.pdf',
                     status: normalizedStatus,
-                    progressPercent: Math.max(0, Math.min(100, payload.progressPercent ?? previous?.progressPercent ?? 0)),
-                    stage: payload.stage ?? previous?.stage ?? 'processing',
-                    message: payload.message ? formatPdfGenerationErrorMessage(payload.message) : (previous?.message ?? 'Đang xử lý PDF.'),
-                    examId: payload.examId ?? previous?.examId ?? null,
-                    passageNumber: payload.passageNumber ?? previous?.passageNumber ?? null,
-                    totalPassages: payload.totalPassages ?? previous?.totalPassages ?? null,
+                    progressPercent: Math.max(0, Math.min(100, payload.progressPercent ?? previous.progressPercent ?? 0)),
+                    stage: payload.stage ?? previous.stage ?? 'processing',
+                    message: payload.message ? formatPdfGenerationErrorMessage(payload.message) : (previous.message ?? 'Đang xử lý PDF.'),
+                    examId: payload.examId ?? previous.examId ?? null,
+                    passageNumber: payload.passageNumber ?? previous.passageNumber ?? null,
+                    totalPassages: payload.totalPassages ?? previous.totalPassages ?? null,
                 };
             });
         };
@@ -224,7 +254,7 @@ export const PdfGenerationProgressWidget = () => {
             (pdfGenerationJob.message?.includes('503') || pdfGenerationJob.message?.includes('Gemini native PDF extraction failed'))
         ) {
             const store = pdfGenerationJobStore.getState();
-            if (store.file && store.retryCount < 3) {
+            if (store.file && store.retryCount < 3 && !store.isRetrying) {
                 void triggerRetry(store.file);
             }
         }
@@ -263,26 +293,33 @@ export const PdfGenerationProgressWidget = () => {
 
                 const mappedStatus = mapProgressStatus(snapshot.status);
 
-                if (mappedStatus === 'failed' && (snapshot.message?.includes('503') || snapshot.message?.includes('Gemini native PDF extraction failed'))) {
-                    const store = pdfGenerationJobStore.getState();
-                    if (store.file && store.retryCount < 3) {
-                        void triggerRetry(store.file);
-                        return;
-                    }
-                }
 
-                pdfGenerationJobStore.updateJob((previous) => ({
-                    clientRequestId: snapshot.clientRequestId ?? previous?.clientRequestId ?? clientRequestId,
-                    uploadId: snapshot.uploadId ?? previous?.uploadId ?? uploadId,
-                    fileName: previous?.fileName ?? 'uploaded.pdf',
-                    status: mappedStatus,
-                    progressPercent: Math.max(0, Math.min(100, snapshot.progressPercent ?? previous?.progressPercent ?? 0)),
-                    stage: snapshot.stage ?? previous?.stage ?? 'processing',
-                    message: snapshot.message ? formatPdfGenerationErrorMessage(snapshot.message) : (previous?.message ?? 'Đang xử lý PDF.'),
-                    examId: snapshot.examId ?? previous?.examId ?? null,
-                    passageNumber: snapshot.passageNumber ?? previous?.passageNumber ?? null,
-                    totalPassages: snapshot.totalPassages ?? previous?.totalPassages ?? null,
-                }));
+
+                pdfGenerationJobStore.updateJob((previous) => {
+                    if (!previous) return null;
+
+                    const activeClientRequestId = previous.clientRequestId?.trim() || null;
+                    const activeUploadId = normalizeGuidLike(previous.uploadId);
+                    const isMatch = (!!clientRequestId && activeClientRequestId === clientRequestId) ||
+                                    (!!uploadId && activeUploadId === uploadId);
+
+                    if (!isMatch) {
+                        return previous;
+                    }
+
+                    return {
+                        clientRequestId: snapshot.clientRequestId ?? previous.clientRequestId ?? clientRequestId,
+                        uploadId: snapshot.uploadId ?? previous.uploadId ?? uploadId,
+                        fileName: previous.fileName ?? 'uploaded.pdf',
+                        status: mappedStatus,
+                        progressPercent: Math.max(0, Math.min(100, snapshot.progressPercent ?? previous.progressPercent ?? 0)),
+                        stage: snapshot.stage ?? previous.stage ?? 'processing',
+                        message: snapshot.message ? formatPdfGenerationErrorMessage(snapshot.message) : (previous.message ?? 'Đang xử lý PDF.'),
+                        examId: snapshot.examId ?? previous.examId ?? null,
+                        passageNumber: snapshot.passageNumber ?? previous.passageNumber ?? null,
+                        totalPassages: snapshot.totalPassages ?? previous.totalPassages ?? null,
+                    };
+                });
 
                 if (snapshot.status === 'completed' || snapshot.status === 'failed') {
                     return;
@@ -544,17 +581,15 @@ export const PdfGenerationProgressWidget = () => {
                     </div>
                 ) : null}
 
-                {pdfGenerationJob.status === 'failed' && pdfGenerationJobStore.getState().file ? (
+                {pdfGenerationJob.status === 'failed' ? (
                     <div style={{ marginTop: 16 }}>
                         <Button
                             type="primary"
                             icon={<ReloadOutlined />}
                             onClick={() => {
-                                pdfGenerationJobStore.resetRetry();
-                                const store = pdfGenerationJobStore.getState();
-                                if (store.job && store.file) {
-                                    void triggerRetry(store.file);
-                                }
+                                pdfGenerationJobStore.clear();
+                                pdfGenerationJobStore.setOpenUploadModalTrigger(true);
+                                navigate('/admin/exams');
                             }}
                             style={{
                                 width: '100%',

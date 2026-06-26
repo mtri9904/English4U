@@ -138,7 +138,17 @@ using (var scope = app.Services.CreateScope())
         dbContext.Database.Migrate();
         logger.LogInformation("Database migrations applied successfully.");
 
-        // Automatically activate admin account if it exists but is not confirmed
+        var incorrectExams = dbContext.Exams.Where(e => e.ExamType == "Reading").ToList();
+        if (incorrectExams.Any())
+        {
+            foreach (var exam in incorrectExams)
+            {
+                exam.ExamType = "IELTS";
+            }
+            dbContext.SaveChanges();
+            logger.LogInformation("Updated incorrect exam types.");
+        }
+
         var admin = dbContext.Users.FirstOrDefault(u => u.Email == "admin@english4u.com");
         if (admin != null && !admin.IsEmailConfirmed)
         {

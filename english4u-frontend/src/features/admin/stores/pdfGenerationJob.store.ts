@@ -20,6 +20,8 @@ type PdfGenerationStoreState = {
     isCollapsed: boolean;
     file: File | null;
     retryCount: number;
+    isRetrying: boolean;
+    openUploadModalTrigger: boolean;
 };
 
 type Listener = () => void;
@@ -31,6 +33,8 @@ let storeState: PdfGenerationStoreState = {
     isCollapsed: false,
     file: null,
     retryCount: 0,
+    isRetrying: false,
+    openUploadModalTrigger: false,
 };
 
 const emitChange = () => {
@@ -92,12 +96,26 @@ export const pdfGenerationJobStore = {
             retryCount: 0,
         }));
     },
+    setIsRetrying: (isRetrying: boolean) => {
+        setStoreState((current) => ({
+            ...current,
+            isRetrying,
+        }));
+    },
+    setOpenUploadModalTrigger: (openUploadModalTrigger: boolean) => {
+        setStoreState((current) => ({
+            ...current,
+            openUploadModalTrigger,
+        }));
+    },
     clear: () => {
         storeState = {
             job: null,
             isCollapsed: false,
             file: null,
             retryCount: 0,
+            isRetrying: false,
+            openUploadModalTrigger: false,
         };
         emitChange();
     },
