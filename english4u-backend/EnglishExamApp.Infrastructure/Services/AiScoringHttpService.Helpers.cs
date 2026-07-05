@@ -559,7 +559,8 @@ public sealed partial class AiScoringHttpService
     {
         try
         {
-            return await httpClient.GetStreamAsync(audioUrl, cancellationToken);
+            var bytes = await httpClient.GetByteArrayAsync(audioUrl, cancellationToken);
+            return new System.IO.MemoryStream(bytes);
         }
         catch (Exception ex)
         {
