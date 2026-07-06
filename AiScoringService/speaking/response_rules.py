@@ -164,10 +164,16 @@ def build_rule_rubric_bands(
             lexical_score += 0.25
     if lexical_hdd is not None and float(lexical_hdd) >= 0.78 and word_count >= 45:
         lexical_score += 0.25
-    if word_count < 35:
-        lexical_score = min(lexical_score, 6.0)
-    elif part_number in {2, 3} and word_count < 55:
-        lexical_score = min(lexical_score, 6.5)
+    if part_number == 2:
+        if word_count < 35:
+            lexical_score = min(lexical_score, 6.0)
+        elif word_count < 55:
+            lexical_score = min(lexical_score, 6.5)
+    else:
+        if word_count < 12:
+            lexical_score = min(lexical_score, 5.0)
+        elif word_count < 20:
+            lexical_score = min(lexical_score, 6.0)
 
     grammar_score = 5.5
     if word_count < 12:
@@ -224,10 +230,16 @@ def build_rule_rubric_bands(
             grammar_score += 0.25
         if grammar_error_density <= 2.0 and grammar_complexity_score >= 0.55 and word_count >= 45:
             grammar_score += 0.25
-    if word_count < 35:
-        grammar_score = min(grammar_score, 6.0)
-    elif part_number in {2, 3} and word_count < 55:
-        grammar_score = min(grammar_score, 6.5)
+    if part_number == 2:
+        if word_count < 35:
+            grammar_score = min(grammar_score, 6.0)
+        elif word_count < 55:
+            grammar_score = min(grammar_score, 6.5)
+    else:
+        if word_count < 12:
+            grammar_score = min(grammar_score, 5.0)
+        elif word_count < 20:
+            grammar_score = min(grammar_score, 6.0)
 
     pronunciation_score = 6.0
     if word_count < 10:
@@ -331,9 +343,9 @@ def build_rule_rubric_bands(
     if words_per_minute is not None and (words_per_minute < 75 or words_per_minute > 190):
         pronunciation_score -= 0.25
     if not evidence.has_phoneme_alignment:
-        pronunciation_score = min(pronunciation_score, 6.5)
+        pronunciation_score = min(pronunciation_score, 8.0)
     if audio_quality is None or audio_quality.label == "unknown":
-        pronunciation_score = min(pronunciation_score, 6.0)
+        pronunciation_score = min(pronunciation_score, 7.5)
 
     return {
         "Fluency and Coherence": round_band_half(fluency_score),
