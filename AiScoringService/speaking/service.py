@@ -21,6 +21,9 @@ logger = logging.getLogger(__name__)
 
 TranscribeAudioFile = Callable[..., tuple[list[Segment], str]]
 
+whisper_lock = asyncio.Lock()
+
+
 
 async def score_speaking_answer_response(
     *,
@@ -73,12 +76,13 @@ async def score_speaking_answer_response(
                 analysis_path,
                 normalization_warning=normalization_warning,
             )
-            segments, detected_transcript = await asyncio.to_thread(
-                transcribe_audio_file,
-                analysis_path,
-                language="en",
-                word_timestamps=True,
-            )
+            async with whisper_lock:
+                segments, detected_transcript = await asyncio.to_thread(
+                    transcribe_audio_file,
+                    analysis_path,
+                    language="en",
+                    word_timestamps=True,
+                )
             transcript = detected_transcript or transcript
         except Exception as ex:
             logger.exception("Failed to transcribe speaking audio for answer %s.", answer_id)
