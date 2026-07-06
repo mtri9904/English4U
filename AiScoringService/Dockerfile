@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Montreal Forced Aligner (MFA) via Conda
-RUN conda clean --all -y && conda install --no-plugins -y -c conda-forge montreal-forced-aligner
+RUN conda clean --all -y && conda --no-plugins install -y -c conda-forge montreal-forced-aligner
 
 # Pre-download English acoustic model and dictionary for MFA
 ENV MFA_ROOT_DIR=/code/mfa_models
