@@ -1,6 +1,9 @@
 # run_docker_ai.ps1
 # Script to build and run English4U AI Service locally in Docker
 
+Write-Host "Checking and starting LanguageTool Docker service..." -ForegroundColor Cyan
+powershell -ExecutionPolicy Bypass -File ./AiScoringService/run_languagetool.ps1
+
 $imageName = "english4u-ai-service"
 $containerName = "english4u-ai"
 $port = 8000
@@ -17,9 +20,11 @@ docker run -d `
   -p "$($port):7860" `
   --name $containerName `
   --restart always `
+  --add-host=host.docker.internal:host-gateway `
   -e WHISPER_MODEL_SIZE=base `
   -e SPEAKING_MFA_BINARY=mfa `
   -e SPEAKING_MFA_ROOT_DIR=/code/mfa_models `
+  -e LANGUAGETOOL_URL=http://host.docker.internal:8081/v2/check `
   $imageName
 
 Write-Host "AI Service is now starting inside Docker!" -ForegroundColor Green
