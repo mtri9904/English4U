@@ -187,7 +187,7 @@ public sealed partial class AiScoringHttpService(
 
         var scoredItems = new List<(UserAnswer Answer, AiScoreResponse Result, int PartNumber)>();
 
-        foreach (var question in speakingQuestions)
+        var tasks = speakingQuestions.Select(async question =>
         {
             var answer = answersByQuestionId[question.Id];
             answer.SpeakingQuestion ??= question;
@@ -198,11 +198,7 @@ public sealed partial class AiScoringHttpService(
                 var existingResult = TryBuildExistingSpeakingResult(sessionId, answer);
                 if (existingResult is not null)
                 {
-                    scoredItems.Add((answer, existingResult, questionPartNumber));
-                    logger.LogInformation(
-                        "Speaking answer {AnswerId} reused from existing complete feedback.",
-                        answer.Id);
-                    continue;
+                    return (Answer: answer, Result: existingResult, PartNumber: questionPartNumber, IsNoResponse: false, IsReused: true, IsTechnicalFailure: false, TechnicalFailureResult: (AiScoreResponse?)null, TechnicalFailureBody: (string?)null, StatusCode: (System.Net.HttpStatusCode?)null, Exception: (Exception?)null);
                 }
             }
 
@@ -210,63 +206,58 @@ public sealed partial class AiScoringHttpService(
                 .OrderByDescending(record => record.DurationSeconds ?? 0)
                 .ThenByDescending(record => record.Id)
                 .FirstOrDefault();
+
             if (audioRecord is null || string.IsNullOrWhiteSpace(audioRecord.AudioUrl))
             {
                 var noResponseResult = NoResponseSpeakingScoreFactory.Create(sessionId, answer.Id, audioRecord?.DurationSeconds);
-                await SaveFeedbacks(answer.Id, noResponseResult, "Speaking", cancellationToken);
-                answer.ScoreEarned = noResponseResult.OverallBand;
-                scoredItems.Add((answer, noResponseResult, questionPartNumber));
-                await context.SaveChangesAsync(cancellationToken);
-
-                logger.LogInformation(
-                    "Speaking answer {AnswerId} scored as no response because no audio was submitted.",
-                    answer.Id);
-
-                continue;
+                return (Answer: answer, Result: noResponseResult, PartNumber: questionPartNumber, IsNoResponse: true, IsReused: false, IsTechnicalFailure: false, TechnicalFailureResult: (AiScoreResponse?)null, TechnicalFailureBody: (string?)null, StatusCode: (System.Net.HttpStatusCode?)null, Exception: (Exception?)null);
             }
 
-            using var formContent = new MultipartFormDataContent();
-            Stream? audioStream = null;
-            try
+            var formContent = new MultipartFormDataContent();
+            formContent.Add(new StringContent(sessionId.ToString()), "session_id");
+            formContent.Add(new StringContent(answer.Id.ToString()), "answer_id");
+
+            var questionPrompt = answer.SpeakingQuestion?.Content;
+            if (!string.IsNullOrWhiteSpace(questionPrompt))
+                formContent.Add(new StringContent(questionPrompt), "question_prompt");
+
+            if (questionPartNumber > 0)
+                formContent.Add(new StringContent(questionPartNumber.ToString(CultureInfo.InvariantCulture)), "part_number");
+
+            var promptType = SpeakingPromptMetadata.GetPromptType(questionPartNumber, answer.SpeakingQuestion);
+            formContent.Add(new StringContent(promptType), "prompt_type");
+
+            var targetDurationSeconds = SpeakingPromptMetadata.GetTargetDurationSeconds(questionPartNumber, promptType);
+            if (targetDurationSeconds.HasValue)
             {
-                formContent.Add(new StringContent(sessionId.ToString()), "session_id");
-                formContent.Add(new StringContent(answer.Id.ToString()), "answer_id");
+                formContent.Add(
+                    new StringContent(targetDurationSeconds.Value.ToString(CultureInfo.InvariantCulture)),
+                    "target_duration_seconds");
+            }
 
-                var questionPrompt = answer.SpeakingQuestion?.Content;
-                if (!string.IsNullOrWhiteSpace(questionPrompt))
-                    formContent.Add(new StringContent(questionPrompt), "question_prompt");
-
-                if (questionPartNumber > 0)
-                    formContent.Add(new StringContent(questionPartNumber.ToString(CultureInfo.InvariantCulture)), "part_number");
-
-                var promptType = SpeakingPromptMetadata.GetPromptType(questionPartNumber, answer.SpeakingQuestion);
-                formContent.Add(new StringContent(promptType), "prompt_type");
-
-                var targetDurationSeconds = SpeakingPromptMetadata.GetTargetDurationSeconds(questionPartNumber, promptType);
-                if (targetDurationSeconds.HasValue)
-                {
-                    formContent.Add(
-                        new StringContent(targetDurationSeconds.Value.ToString(CultureInfo.InvariantCulture)),
-                        "target_duration_seconds");
-                }
-
-                if (audioRecord.DurationSeconds is double durationSeconds)
+            if (audioRecord.DurationSeconds is double durationSeconds)
+            {
+                if (!double.IsNaN(durationSeconds) && !double.IsInfinity(durationSeconds))
                 {
                     formContent.Add(
                         new StringContent(durationSeconds.ToString("0.###", CultureInfo.InvariantCulture)),
                         "duration_seconds");
                 }
+            }
 
-                var transcriptText = audioRecord.SpeechTranscripts
-                    .OrderByDescending(transcript => transcript.Id)
-                    .Select(transcript => transcript.TranscriptText)
-                    .FirstOrDefault(text => !string.IsNullOrWhiteSpace(text));
+            var transcriptText = audioRecord.SpeechTranscripts
+                .OrderByDescending(transcript => transcript.Id)
+                .Select(transcript => transcript.TranscriptText)
+                .FirstOrDefault(text => !string.IsNullOrWhiteSpace(text));
 
-                if (!string.IsNullOrWhiteSpace(transcriptText))
-                {
-                    formContent.Add(new StringContent(transcriptText), "transcript_text");
-                }
+            if (!string.IsNullOrWhiteSpace(transcriptText))
+            {
+                formContent.Add(new StringContent(transcriptText), "transcript_text");
+            }
 
+            Stream? audioStream = null;
+            try
+            {
                 audioStream = await DownloadAudioAsync(audioRecord.AudioUrl, cancellationToken);
                 if (audioStream is not null)
                 {
@@ -278,7 +269,7 @@ public sealed partial class AiScoringHttpService(
                 }
                 else if (string.IsNullOrWhiteSpace(transcriptText))
                 {
-                    continue;
+                    return (Answer: answer, Result: (AiScoreResponse?)null, PartNumber: questionPartNumber, IsNoResponse: false, IsReused: false, IsTechnicalFailure: false, TechnicalFailureResult: (AiScoreResponse?)null, TechnicalFailureBody: (string?)null, StatusCode: (System.Net.HttpStatusCode?)null, Exception: new InvalidOperationException("Failed to download audio and no transcript found."));
                 }
 
                 using var response = await httpClient.PostAsync("/api/ai/score-speaking", formContent, cancellationToken);
@@ -293,104 +284,157 @@ public sealed partial class AiScoringHttpService(
                             answer.Id,
                             audioRecord.DurationSeconds,
                             string.IsNullOrWhiteSpace(detail) ? errorBody : detail);
-                        await SaveFeedbacks(answer.Id, technicalResult, "Speaking", cancellationToken);
-                        answer.ScoreEarned = technicalResult.OverallBand;
-                        scoredItems.Add((answer, technicalResult, questionPartNumber));
-                        await context.SaveChangesAsync(cancellationToken);
-
-                        logger.LogWarning(
-                            "Speaking answer {AnswerId} marked as technical no-response after AI scoring status {StatusCode}: {Detail}",
-                            answer.Id,
-                            (int)response.StatusCode,
-                            string.IsNullOrWhiteSpace(detail) ? errorBody : detail);
-                        continue;
+                        return (Answer: answer, Result: (AiScoreResponse?)null, PartNumber: questionPartNumber, IsNoResponse: false, IsReused: false, IsTechnicalFailure: true, TechnicalFailureResult: technicalResult, TechnicalFailureBody: string.IsNullOrWhiteSpace(detail) ? errorBody : detail, StatusCode: response.StatusCode, Exception: (Exception?)null);
                     }
 
-                    throw new InvalidOperationException(
-                        string.IsNullOrWhiteSpace(detail)
-                            ? $"AI speaking scoring failed with status {(int)response.StatusCode}."
-                            : detail);
+                    return (Answer: answer, Result: (AiScoreResponse?)null, PartNumber: questionPartNumber, IsNoResponse: false, IsReused: false, IsTechnicalFailure: false, TechnicalFailureResult: (AiScoreResponse?)null, TechnicalFailureBody: (string?)null, StatusCode: response.StatusCode, Exception: new InvalidOperationException(string.IsNullOrWhiteSpace(detail) ? $"AI speaking scoring failed with status {(int)response.StatusCode}." : detail));
                 }
 
                 var result = await response.Content.ReadFromJsonAsync<AiScoreResponse>(cancellationToken);
-                if (result is null) continue;
+                if (result is null)
+                {
+                    return (Answer: answer, Result: (AiScoreResponse?)null, PartNumber: questionPartNumber, IsNoResponse: false, IsReused: false, IsTechnicalFailure: false, TechnicalFailureResult: (AiScoreResponse?)null, TechnicalFailureBody: (string?)null, StatusCode: response.StatusCode, Exception: new InvalidOperationException("AI service returned empty response."));
+                }
                 result = AiScoreResponseNormalizer.NormalizeSpeaking(sessionId, answer.Id, result);
-
-                SpeechTranscript? evidenceTranscript = null;
-                if (!string.IsNullOrWhiteSpace(result.TranscriptText))
-                {
-                    var existingTranscript = audioRecord.SpeechTranscripts
-                        .OrderByDescending(transcript => transcript.Id)
-                        .FirstOrDefault();
-
-                    if (existingTranscript is null)
-                    {
-                        existingTranscript = new SpeechTranscript
-                        {
-                            Id = Guid.NewGuid(),
-                            AudioRecordId = audioRecord.Id,
-                        };
-                        context.SpeechTranscripts.Add(existingTranscript);
-                        audioRecord.SpeechTranscripts.Add(existingTranscript);
-                    }
-
-                    existingTranscript.TranscriptText = result.TranscriptText.Trim();
-                    evidenceTranscript = existingTranscript;
-                }
-
-                if (result.SpeakingEvidence is not null)
-                {
-                    audioRecord.SpeechRatio = result.SpeakingEvidence.SpeechRatio;
-                    audioRecord.AudioQualityData = result.SpeakingEvidence.AudioQuality is not null
-                        ? JsonSerializer.Serialize(result.SpeakingEvidence.AudioQuality, JsonOptions)
-                        : null;
-
-                    evidenceTranscript ??= audioRecord.SpeechTranscripts
-                        .OrderByDescending(transcript => transcript.Id)
-                        .FirstOrDefault();
-
-                    if (evidenceTranscript is null)
-                    {
-                        evidenceTranscript = new SpeechTranscript
-                        {
-                            Id = Guid.NewGuid(),
-                            AudioRecordId = audioRecord.Id,
-                            TranscriptText = string.IsNullOrWhiteSpace(result.TranscriptText)
-                                ? null
-                                : result.TranscriptText.Trim(),
-                        };
-                        context.SpeechTranscripts.Add(evidenceTranscript);
-                        audioRecord.SpeechTranscripts.Add(evidenceTranscript);
-                    }
-
-                    evidenceTranscript.ConfidenceScore = result.SpeakingEvidence.AsrConfidence;
-                    evidenceTranscript.WordTimestampsData = result.SpeakingEvidence.WordTimestamps is { Count: > 0 }
-                        ? JsonSerializer.Serialize(result.SpeakingEvidence.WordTimestamps, JsonOptions)
-                        : null;
-                    evidenceTranscript.PauseStatsData = result.SpeakingEvidence.PauseStats is not null
-                        ? JsonSerializer.Serialize(result.SpeakingEvidence.PauseStats, JsonOptions)
-                        : null;
-
-                    await SavePhonemeAnalyses(
-                        evidenceTranscript,
-                        result.SpeakingEvidence.PronunciationAnalysis,
-                        cancellationToken);
-                }
-
-                await SaveFeedbacks(answer.Id, result, "Speaking", cancellationToken);
-
-                answer.ScoreEarned = result.OverallBand;
-                scoredItems.Add((answer, result, questionPartNumber));
-                await context.SaveChangesAsync(cancellationToken);
-
-                logger.LogInformation(
-                    "Speaking scored for answer {AnswerId}: band {Band}",
-                    answer.Id, result.OverallBand);
+                return (Answer: answer, Result: result, PartNumber: questionPartNumber, IsNoResponse: false, IsReused: false, IsTechnicalFailure: false, TechnicalFailureResult: (AiScoreResponse?)null, TechnicalFailureBody: (string?)null, StatusCode: response.StatusCode, Exception: (Exception?)null);
+            }
+            catch (Exception ex)
+            {
+                return (Answer: answer, Result: (AiScoreResponse?)null, PartNumber: questionPartNumber, IsNoResponse: false, IsReused: false, IsTechnicalFailure: false, TechnicalFailureResult: (AiScoreResponse?)null, TechnicalFailureBody: (string?)null, StatusCode: (System.Net.HttpStatusCode?)null, Exception: ex);
             }
             finally
             {
                 audioStream?.Dispose();
+                formContent.Dispose();
             }
+        });
+
+        var results = await Task.WhenAll(tasks);
+
+        foreach (var r in results)
+        {
+            if (r.Exception is not null)
+            {
+                throw r.Exception;
+            }
+
+            var answer = r.Answer;
+            var questionPartNumber = r.PartNumber;
+
+            if (r.IsReused)
+            {
+                scoredItems.Add((answer, r.Result!, questionPartNumber));
+                logger.LogInformation(
+                    "Speaking answer {AnswerId} reused from existing complete feedback.",
+                    answer.Id);
+                continue;
+            }
+
+            if (r.IsNoResponse)
+            {
+                await SaveFeedbacks(answer.Id, r.Result!, "Speaking", cancellationToken);
+                answer.ScoreEarned = r.Result!.OverallBand;
+                scoredItems.Add((answer, r.Result!, questionPartNumber));
+                await context.SaveChangesAsync(cancellationToken);
+
+                logger.LogInformation(
+                    "Speaking answer {AnswerId} scored as no response because no audio was submitted.",
+                    answer.Id);
+                continue;
+            }
+
+            if (r.IsTechnicalFailure)
+            {
+                var technicalResult = r.TechnicalFailureResult!;
+                await SaveFeedbacks(answer.Id, technicalResult, "Speaking", cancellationToken);
+                answer.ScoreEarned = technicalResult.OverallBand;
+                scoredItems.Add((answer, technicalResult, questionPartNumber));
+                await context.SaveChangesAsync(cancellationToken);
+
+                logger.LogWarning(
+                    "Speaking answer {AnswerId} marked as technical no-response after AI scoring status {StatusCode}: {Detail}",
+                    answer.Id,
+                    (int)r.StatusCode!.Value,
+                    r.TechnicalFailureBody);
+                continue;
+            }
+
+            var result = r.Result!;
+            var audioRecord = answer.UserAudioRecords
+                .OrderByDescending(record => record.DurationSeconds ?? 0)
+                .ThenByDescending(record => record.Id)
+                .FirstOrDefault();
+
+            SpeechTranscript? evidenceTranscript = null;
+            if (!string.IsNullOrWhiteSpace(result.TranscriptText))
+            {
+                var existingTranscript = audioRecord!.SpeechTranscripts
+                    .OrderByDescending(transcript => transcript.Id)
+                    .FirstOrDefault();
+
+                if (existingTranscript is null)
+                {
+                    existingTranscript = new SpeechTranscript
+                    {
+                        Id = Guid.NewGuid(),
+                        AudioRecordId = audioRecord.Id,
+                    };
+                    context.SpeechTranscripts.Add(existingTranscript);
+                    audioRecord.SpeechTranscripts.Add(existingTranscript);
+                }
+
+                existingTranscript.TranscriptText = result.TranscriptText.Trim();
+                evidenceTranscript = existingTranscript;
+            }
+
+            if (result.SpeakingEvidence is not null && audioRecord is not null)
+            {
+                audioRecord.SpeechRatio = result.SpeakingEvidence.SpeechRatio;
+                audioRecord.AudioQualityData = result.SpeakingEvidence.AudioQuality is not null
+                    ? JsonSerializer.Serialize(result.SpeakingEvidence.AudioQuality, JsonOptions)
+                    : null;
+
+                evidenceTranscript ??= audioRecord.SpeechTranscripts
+                    .OrderByDescending(transcript => transcript.Id)
+                    .FirstOrDefault();
+
+                if (evidenceTranscript is null)
+                {
+                    evidenceTranscript = new SpeechTranscript
+                    {
+                        Id = Guid.NewGuid(),
+                        AudioRecordId = audioRecord.Id,
+                        TranscriptText = string.IsNullOrWhiteSpace(result.TranscriptText)
+                            ? null
+                            : result.TranscriptText.Trim(),
+                    };
+                    context.SpeechTranscripts.Add(evidenceTranscript);
+                    audioRecord.SpeechTranscripts.Add(evidenceTranscript);
+                }
+
+                evidenceTranscript.ConfidenceScore = result.SpeakingEvidence.AsrConfidence;
+                evidenceTranscript.WordTimestampsData = result.SpeakingEvidence.WordTimestamps is { Count: > 0 }
+                    ? JsonSerializer.Serialize(result.SpeakingEvidence.WordTimestamps, JsonOptions)
+                    : null;
+                evidenceTranscript.PauseStatsData = result.SpeakingEvidence.PauseStats is not null
+                    ? JsonSerializer.Serialize(result.SpeakingEvidence.PauseStats, JsonOptions)
+                    : null;
+
+                await SavePhonemeAnalyses(
+                    evidenceTranscript,
+                    result.SpeakingEvidence.PronunciationAnalysis,
+                    cancellationToken);
+            }
+
+            await SaveFeedbacks(answer.Id, result, "Speaking", cancellationToken);
+
+            answer.ScoreEarned = result.OverallBand;
+            scoredItems.Add((answer, result, questionPartNumber));
+            await context.SaveChangesAsync(cancellationToken);
+
+            logger.LogInformation(
+                "Speaking scored for answer {AnswerId}: band {Band}",
+                answer.Id, result.OverallBand);
         }
 
         if (scoredItems.Count > 0)
