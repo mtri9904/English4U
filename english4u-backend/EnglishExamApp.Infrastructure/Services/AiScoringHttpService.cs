@@ -187,77 +187,80 @@ public sealed partial class AiScoringHttpService(
 
         var scoredItems = new List<(UserAnswer Answer, AiScoreResponse Result, int PartNumber)>();
 
+        using var semaphore = new SemaphoreSlim(3);
         var tasks = speakingQuestions.Select(async question =>
         {
+            await semaphore.WaitAsync(cancellationToken);
             var answer = answersByQuestionId[question.Id];
             answer.SpeakingQuestion ??= question;
             var questionPartNumber = question.Part.PartNumber ?? 0;
-
-            if (_reuseExistingSpeakingAnswerScores)
-            {
-                var existingResult = TryBuildExistingSpeakingResult(sessionId, answer);
-                if (existingResult is not null)
-                {
-                    return (Answer: answer, Result: existingResult, PartNumber: questionPartNumber, IsNoResponse: false, IsReused: true, IsTechnicalFailure: false, TechnicalFailureResult: (AiScoreResponse?)null, TechnicalFailureBody: (string?)null, StatusCode: (System.Net.HttpStatusCode?)null, Exception: (Exception?)null);
-                }
-            }
-
-            var audioRecord = answer.UserAudioRecords
-                .OrderByDescending(record => record.DurationSeconds ?? 0)
-                .ThenByDescending(record => record.Id)
-                .FirstOrDefault();
-
-            if (audioRecord is null || string.IsNullOrWhiteSpace(audioRecord.AudioUrl))
-            {
-                var noResponseResult = NoResponseSpeakingScoreFactory.Create(sessionId, answer.Id, audioRecord?.DurationSeconds);
-                return (Answer: answer, Result: noResponseResult, PartNumber: questionPartNumber, IsNoResponse: true, IsReused: false, IsTechnicalFailure: false, TechnicalFailureResult: (AiScoreResponse?)null, TechnicalFailureBody: (string?)null, StatusCode: (System.Net.HttpStatusCode?)null, Exception: (Exception?)null);
-            }
-
-            var formContent = new MultipartFormDataContent();
-            formContent.Add(new StringContent(sessionId.ToString()), "session_id");
-            formContent.Add(new StringContent(answer.Id.ToString()), "answer_id");
-
-            var questionPrompt = answer.SpeakingQuestion?.Content;
-            if (!string.IsNullOrWhiteSpace(questionPrompt))
-                formContent.Add(new StringContent(questionPrompt), "question_prompt");
-
-            if (questionPartNumber > 0)
-                formContent.Add(new StringContent(questionPartNumber.ToString(CultureInfo.InvariantCulture)), "part_number");
-
-            var promptType = SpeakingPromptMetadata.GetPromptType(questionPartNumber, answer.SpeakingQuestion);
-            formContent.Add(new StringContent(promptType), "prompt_type");
-
-            var targetDurationSeconds = SpeakingPromptMetadata.GetTargetDurationSeconds(questionPartNumber, promptType);
-            if (targetDurationSeconds.HasValue)
-            {
-                formContent.Add(
-                    new StringContent(targetDurationSeconds.Value.ToString(CultureInfo.InvariantCulture)),
-                    "target_duration_seconds");
-            }
-
-            if (audioRecord.DurationSeconds is double durationSeconds)
-            {
-                if (!double.IsNaN(durationSeconds) && !double.IsInfinity(durationSeconds))
-                {
-                    formContent.Add(
-                        new StringContent(durationSeconds.ToString("0.###", CultureInfo.InvariantCulture)),
-                        "duration_seconds");
-                }
-            }
-
-            var transcriptText = audioRecord.SpeechTranscripts
-                .OrderByDescending(transcript => transcript.Id)
-                .Select(transcript => transcript.TranscriptText)
-                .FirstOrDefault(text => !string.IsNullOrWhiteSpace(text));
-
-            if (!string.IsNullOrWhiteSpace(transcriptText))
-            {
-                formContent.Add(new StringContent(transcriptText), "transcript_text");
-            }
-
+            MultipartFormDataContent? formContent = null;
             Stream? audioStream = null;
+
             try
             {
+                if (_reuseExistingSpeakingAnswerScores)
+                {
+                    var existingResult = TryBuildExistingSpeakingResult(sessionId, answer);
+                    if (existingResult is not null)
+                    {
+                        return (Answer: answer, Result: existingResult, PartNumber: questionPartNumber, IsNoResponse: false, IsReused: true, IsTechnicalFailure: false, TechnicalFailureResult: (AiScoreResponse?)null, TechnicalFailureBody: (string?)null, StatusCode: (System.Net.HttpStatusCode?)null, Exception: (Exception?)null);
+                    }
+                }
+
+                var audioRecord = answer.UserAudioRecords
+                    .OrderByDescending(record => record.DurationSeconds ?? 0)
+                    .ThenByDescending(record => record.Id)
+                    .FirstOrDefault();
+
+                if (audioRecord is null || string.IsNullOrWhiteSpace(audioRecord.AudioUrl))
+                {
+                    var noResponseResult = NoResponseSpeakingScoreFactory.Create(sessionId, answer.Id, audioRecord?.DurationSeconds);
+                    return (Answer: answer, Result: noResponseResult, PartNumber: questionPartNumber, IsNoResponse: true, IsReused: false, IsTechnicalFailure: false, TechnicalFailureResult: (AiScoreResponse?)null, TechnicalFailureBody: (string?)null, StatusCode: (System.Net.HttpStatusCode?)null, Exception: (Exception?)null);
+                }
+
+                formContent = new MultipartFormDataContent();
+                formContent.Add(new StringContent(sessionId.ToString()), "session_id");
+                formContent.Add(new StringContent(answer.Id.ToString()), "answer_id");
+
+                var questionPrompt = answer.SpeakingQuestion?.Content;
+                if (!string.IsNullOrWhiteSpace(questionPrompt))
+                    formContent.Add(new StringContent(questionPrompt), "question_prompt");
+
+                if (questionPartNumber > 0)
+                    formContent.Add(new StringContent(questionPartNumber.ToString(CultureInfo.InvariantCulture)), "part_number");
+
+                var promptType = SpeakingPromptMetadata.GetPromptType(questionPartNumber, answer.SpeakingQuestion);
+                formContent.Add(new StringContent(promptType), "prompt_type");
+
+                var targetDurationSeconds = SpeakingPromptMetadata.GetTargetDurationSeconds(questionPartNumber, promptType);
+                if (targetDurationSeconds.HasValue)
+                {
+                    formContent.Add(
+                        new StringContent(targetDurationSeconds.Value.ToString(CultureInfo.InvariantCulture)),
+                        "target_duration_seconds");
+                }
+
+                if (audioRecord.DurationSeconds is double durationSeconds)
+                {
+                    if (!double.IsNaN(durationSeconds) && !double.IsInfinity(durationSeconds))
+                    {
+                        formContent.Add(
+                            new StringContent(durationSeconds.ToString("0.###", CultureInfo.InvariantCulture)),
+                            "duration_seconds");
+                    }
+                }
+
+                var transcriptText = audioRecord.SpeechTranscripts
+                    .OrderByDescending(transcript => transcript.Id)
+                    .Select(transcript => transcript.TranscriptText)
+                    .FirstOrDefault(text => !string.IsNullOrWhiteSpace(text));
+
+                if (!string.IsNullOrWhiteSpace(transcriptText))
+                {
+                    formContent.Add(new StringContent(transcriptText), "transcript_text");
+                }
+
                 audioStream = await DownloadAudioAsync(audioRecord.AudioUrl, cancellationToken);
                 if (audioStream is not null)
                 {
@@ -305,7 +308,8 @@ public sealed partial class AiScoringHttpService(
             finally
             {
                 audioStream?.Dispose();
-                formContent.Dispose();
+                formContent?.Dispose();
+                semaphore.Release();
             }
         });
 
