@@ -873,6 +873,21 @@ public sealed partial class ExamExecutionService(
             throw new InvalidOperationException("Cần nộp Speaking trước khi chấm lại.");
         }
 
+        var answerIds = await context.UserAnswers
+            .Where(a => a.SessionId == sessionId && a.SpeakingQuestionId != null)
+            .Select(a => a.Id)
+            .ToListAsync(cancellationToken);
+
+        var existingFeedbacks = await context.AiFeedbacks
+            .Where(f => answerIds.Contains(f.AnswerId))
+            .ToListAsync(cancellationToken);
+
+        if (existingFeedbacks.Count > 0)
+        {
+            context.AiFeedbacks.RemoveRange(existingFeedbacks);
+            await context.SaveChangesAsync(cancellationToken);
+        }
+
         try
         {
             await aiIntegrationService.ScoreSpeakingAsync(sessionId, cancellationToken);
