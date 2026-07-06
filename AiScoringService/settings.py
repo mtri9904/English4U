@@ -66,7 +66,7 @@ def unique_model_candidates(*models: str) -> list[str]:
     return list(dict.fromkeys(model for model in models if model))
 
 
-WHISPER_MODEL_SIZE = os.getenv("WHISPER_MODEL_SIZE", "large-v3").strip() or "large-v3"
+WHISPER_MODEL_SIZE = os.getenv("WHISPER_MODEL_SIZE", "base").strip() or "base"
 LISTENING_TRANSCRIPT_WHISPER_MODEL_SIZE = (
     os.getenv("LISTENING_TRANSCRIPT_WHISPER_MODEL_SIZE", "base").strip() or "base"
 )
