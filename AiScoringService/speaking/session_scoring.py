@@ -298,7 +298,7 @@ Use the IELTS-style Speaking rubric contract below.
 
 Important rules:
 - Score the candidate's average performance across the whole speaking session, not each prompt in isolation.
-- Use the deterministic anchor bands as guardrails. Keep each criterion within +/- {session_refiner_max_adjustment:.1f} band(s) of its anchor.
+- Use the deterministic session anchor bands as the primary baseline. These anchors are calculated using precise acoustic models (words per minute, pause ratios, speech rate) and advanced feature analysis that are not fully visible in the text transcripts alone. Do not adjust the scores downward from these anchors unless the transcript shows severe, persistent grammatical breakdowns or complete incoherence. If the response is simple but coherent and fluent, default to the anchor bands. Keep each criterion within +/- {session_refiner_max_adjustment:.1f} band(s) of its anchor.
 - Compensate for ASR (Speech-to-Text) errors: The transcripts for individual prompts may contain phonetic misrecognitions, spelling mistakes, or nonsense phrases introduced by the transcriber (e.g. 'muscle-free' instead of 'carefree', or garbled phrases like 'she says Annie's gift bought'). Do not penalize the candidate for these transcriber anomalies. Evaluate their likely intended grammatical structure and vocabulary choice across the session.
 - Distinguish spoken speech markers from errors: Repetitions (e.g., 'it's, it's, it's'), hesitations, self-corrections, and fillers are normal in spoken English. Do not penalize them as written grammatical errors. Grade the candidate's fluency and grammar complexity generously, matching a real human examiner.
 - Penalize missing/no-response prompts and insufficient language evidence.
