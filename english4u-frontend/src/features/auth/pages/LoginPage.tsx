@@ -19,12 +19,12 @@ export function LoginPage({ mode = 'login' }: { mode?: 'login' | 'register' | 'f
             }} className="hidden lg:flex">
 
 
-                <Link to="/" style={{ display: 'inline-flex', width: '40px', height: '40px', borderRadius: '10px', alignItems: 'center', justifyContent: 'center', textDecoration: 'none', marginBottom: '24px' }}>
+                <Link to="/" style={{ display: 'inline-flex', width: '80px', height: '80px', borderRadius: '10px', alignItems: 'center', justifyContent: 'center', textDecoration: 'none', marginBottom: '24px' }}>
                     <img
                         src="logo/Logo.png"
                         style={{
-                            width: 80,
-                            height: 80,
+                            width: '100%',
+                            height: '100%',
                             objectFit: 'contain'
                         }}
                     />
@@ -37,8 +37,7 @@ export function LoginPage({ mode = 'login' }: { mode?: 'login' | 'register' | 'f
                         padding: '10px',
                         borderRadius: '24px',
                         boxShadow: '0 20px 40px rgba(0,0,0,0.08)',
-                        marginBottom: '24px',
-                        transform: 'rotate(-1deg)'
+                        marginBottom: '24px'
                     }}>
                         <img
                             src="https://images.unsplash.com/photo-1522202176988-66273c2fd55f?q=80&w=800&auto=format&fit=crop"
