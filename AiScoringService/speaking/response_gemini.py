@@ -67,6 +67,7 @@ Important rules:
 - Do NOT score Pronunciation here because the main scoring engine handles it from audio-backed signals.
 - Bands must be IELTS bands from 0 to 9 in 0.5 increments.
 - Consider the rule-based anchor bands below as reference guides, but evaluate and assign the final bands independently based on the transcript and observed signals.
+- Compensate for ASR (Speech-to-Text) errors: The transcript may contain phonetic misrecognitions, spelling mistakes, or nonsense phrases introduced by the transcriber (e.g. 'muscle-free' instead of 'carefree', or garbled phrases like 'she says Annie's gift bought'). Do not penalize the candidate for these obvious transcriber anomalies. Evaluate the candidate's likely intended grammatical structure and vocabulary.
 - Keep comments concise, concrete, and in Vietnamese.
 - Keep improvements specific, practical, and in Vietnamese.
 
@@ -89,24 +90,24 @@ Candidate transcript:
 Return ONLY valid JSON in this exact format:
 {{
   "rubrics": [
-    {{
+    {
       "criteria": "Fluency and Coherence",
       "band": 6.0,
-      "comment": "Nháº­n xÃ©t ngáº¯n báº±ng tiáº¿ng Viá»‡t.",
-      "improvements": "Gá»£i Ã½ cáº£i thiá»‡n ngáº¯n báº±ng tiáº¿ng Viá»‡t."
-    }},
-    {{
+      "comment": "Nhận xét ngắn bằng tiếng Việt.",
+      "improvements": "Gợi ý cải thiện ngắn bằng tiếng Việt."
+    },
+    {
       "criteria": "Lexical Resource",
       "band": 6.0,
-      "comment": "Nháº­n xÃ©t ngáº¯n báº±ng tiáº¿ng Viá»‡t.",
-      "improvements": "Gá»£i Ã½ cáº£i thiá»‡n ngáº¯n báº±ng tiáº¿ng Viá»‡t."
-    }},
-    {{
+      "comment": "Nhận xét ngắn bằng tiếng Việt.",
+      "improvements": "Gợi ý cải thiện ngắn bằng tiếng Việt."
+    },
+    {
       "criteria": "Grammatical Range and Accuracy",
       "band": 6.0,
-      "comment": "Nháº­n xÃ©t ngáº¯n báº±ng tiáº¿ng Viá»‡t.",
-      "improvements": "Gá»£i Ã½ cáº£i thiá»‡n ngáº¯n báº±ng tiáº¿ng Viá»‡t."
-    }}
+      "comment": "Nhận xét ngắn bằng tiếng Việt.",
+      "improvements": "Gợi ý cải thiện ngắn bằng tiếng Việt."
+    }
   ]
 }}"""
 
@@ -131,8 +132,8 @@ def normalize_speaking_gemini_result(
         normalized[matched_criteria] = RubricScore(
             criteria=matched_criteria,
             band=round_band_half(clamp_band(rubric.band)),
-            comment=rubric.comment.strip() or "Gemini chÆ°a tráº£ nháº­n xÃ©t Ä‘á»§ rÃµ cho tiÃªu chÃ­ nÃ y.",
-            improvements=rubric.improvements.strip() or "Cáº§n luyá»‡n thÃªm tiÃªu chÃ­ nÃ y vá»›i cÃ¢u tráº£ lá»i tá»± nhiÃªn hÆ¡n.",
+            comment=rubric.comment.strip() or "Gemini chưa trả nhận xét đủ rõ cho tiêu chí này.",
+            improvements=rubric.improvements.strip() or "Cần luyện thêm tiêu chí này với câu trả lời tự nhiên hơn.",
         )
 
     return normalized

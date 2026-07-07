@@ -290,12 +290,12 @@
     }
   ],
   "llm_refiner_rules": [
-    "Use deterministic anchor bands as guardrails.",
-    "Adjust only when transcript evidence clearly supports it.",
+    "Use deterministic anchor bands as reference points, not rigid constraints.",
+    "Evaluate based on what the candidate successfully demonstrates rather than penalizing minor slips excessively.",
     "For single-answer refinement, do not score Pronunciation; pronunciation must come from audio-backed engines.",
     "For session-level refinement, use Pronunciation only from supplied audio evidence and anchors.",
     "Never reward length alone, rare words alone, or connector count alone.",
     "Return concise Vietnamese feedback with concrete evidence.",
-    "If evidence is missing or uncertain, keep the band conservative and preserve confidence warnings."
+    "Compensate for obvious ASR transcriber anomalies and phonetic mishearings when determining vocabulary and grammar scores."
   ]
 }
