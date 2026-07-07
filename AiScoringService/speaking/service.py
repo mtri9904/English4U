@@ -127,6 +127,12 @@ async def score_speaking_answer_response(
             gemini_client=gemini_client,
         )
         overall_band = round_band_half(sum(rubric.band for rubric in rubrics) / len(rubrics))
+        logger.info(
+            "Speaking scoring result for answer %s: Overall=%s, Criteria=%s",
+            answer_id,
+            overall_band,
+            {r.criteria: r.band for r in rubrics},
+        )
         return ScoreResponse(
             session_id=session_id,
             answer_id=answer_id,
