@@ -66,7 +66,7 @@ Important rules:
 - Score ONLY these 3 criteria: Fluency and Coherence, Lexical Resource, Grammatical Range and Accuracy.
 - Do NOT score Pronunciation here because the main scoring engine handles it from audio-backed signals.
 - Bands must be IELTS bands from 0 to 9 in 0.5 increments.
-- Use the rule-based anchor bands below as guardrails. Stay close to them and only adjust when the transcript evidence supports it.
+- Consider the rule-based anchor bands below as reference guides, but evaluate and assign the final bands independently based on the transcript and observed signals.
 - Keep comments concise, concrete, and in Vietnamese.
 - Keep improvements specific, practical, and in Vietnamese.
 

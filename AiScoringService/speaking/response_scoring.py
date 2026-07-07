@@ -140,7 +140,7 @@ async def score_speaking_rubrics(
         )
         gemini_rubric = gemini_rubrics.get(criteria)
         final_band = (
-            clamp_speaking_band_to_rule_window(rule_band, gemini_rubric.band)
+            gemini_rubric.band
             if gemini_rubric is not None
             else rule_band
         )
