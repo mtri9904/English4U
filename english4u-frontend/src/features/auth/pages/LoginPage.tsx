@@ -11,14 +11,15 @@ export function LoginPage({ mode = 'login' }: { mode?: 'login' | 'register' | 'f
                 flex: 1,
                 maxWidth: '50%',
                 background: 'linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%)',
-                padding: '40px',
+                padding: '32px',
                 display: 'flex',
                 flexDirection: 'column',
-                position: 'relative'
+                position: 'relative',
+                overflowY: 'auto'
             }} className="hidden lg:flex">
 
 
-                <Link to="/" style={{ display: 'inline-flex', width: '40px', height: '40px', borderRadius: '10px', alignItems: 'center', justifyContent: 'center', textDecoration: 'none', marginBottom: '40px' }}>
+                <Link to="/" style={{ display: 'inline-flex', width: '40px', height: '40px', borderRadius: '10px', alignItems: 'center', justifyContent: 'center', textDecoration: 'none', marginBottom: '24px' }}>
                     <img
                         src="logo/Logo.png"
                         style={{
@@ -36,26 +37,26 @@ export function LoginPage({ mode = 'login' }: { mode?: 'login' | 'register' | 'f
                         padding: '10px',
                         borderRadius: '24px',
                         boxShadow: '0 20px 40px rgba(0,0,0,0.08)',
-                        marginBottom: '40px',
+                        marginBottom: '24px',
                         transform: 'rotate(-1deg)'
                     }}>
                         <img
                             src="https://images.unsplash.com/photo-1522202176988-66273c2fd55f?q=80&w=800&auto=format&fit=crop"
                             alt="Students studying"
-                            style={{ width: '100%', height: '260px', objectFit: 'cover', borderRadius: '16px' }}
+                            style={{ width: '100%', height: '220px', objectFit: 'cover', borderRadius: '16px' }}
                         />
                     </div>
 
-                    <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: '2.5rem', fontWeight: 700, color: 'var(--color-text-primary)', lineHeight: 1.2, marginBottom: '20px' }}>
+                    <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: '2.2rem', fontWeight: 700, color: 'var(--color-text-primary)', lineHeight: 1.2, marginBottom: '16px' }}>
                         Hành trình thông minh chinh phục tiếng Anh của bạn.
                     </h1>
 
-                    <p style={{ fontSize: '1.0625rem', color: 'var(--color-text-secondary)', lineHeight: 1.6, marginBottom: '40px' }}>
+                    <p style={{ fontSize: '1rem', color: 'var(--color-text-secondary)', lineHeight: 1.6, marginBottom: '24px' }}>
                         Khám phá thế giới bài học đa dạng, luyện tập với các công cụ thông minh và theo dõi tiến trình học tập của bạn từng bước một với nền tảng hỗ trợ trí tuệ nhân tạo của chúng tôi.
                     </p>
 
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: 'auto' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: 'auto', paddingTop: '16px' }}>
                         <div style={{ display: 'flex', marginLeft: '10px' }}>
                             {['https://i.pravatar.cc/150?img=11', 'https://i.pravatar.cc/150?img=12', 'https://i.pravatar.cc/150?img=13'].map((img, i) => (
                                 <img key={i} src={img} alt="Avatar" style={{ width: '32px', height: '32px', borderRadius: '50%', border: '2px solid #bae6fd', marginLeft: '-10px', background: '#fff' }} />
