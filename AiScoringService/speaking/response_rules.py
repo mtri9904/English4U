@@ -283,23 +283,23 @@ def build_rule_rubric_bands(
             pronunciation_score -= 0.1
 
         if pronunciation_analysis.segmental_score is not None:
-            if pronunciation_analysis.segmental_score < 0.20:
+            if pronunciation_analysis.segmental_score < 0.12:
                 pronunciation_score = min(pronunciation_score, 5.5)
-            elif pronunciation_analysis.segmental_score < 0.28:
+            elif pronunciation_analysis.segmental_score < 0.18:
                 pronunciation_score = min(pronunciation_score, 6.0)
-            elif pronunciation_analysis.segmental_score < 0.34:
+            elif pronunciation_analysis.segmental_score < 0.24:
                 pronunciation_score = min(pronunciation_score, 6.5)
-            elif pronunciation_analysis.segmental_score < 0.40:
+            elif pronunciation_analysis.segmental_score < 0.30:
                 pronunciation_score = min(pronunciation_score, 7.0)
         if pronunciation_analysis.prosody_score is not None:
-            if pronunciation_analysis.prosody_score < 0.45:
+            if pronunciation_analysis.prosody_score < 0.35:
                 pronunciation_score = min(pronunciation_score, 6.0)
-            elif pronunciation_analysis.prosody_score < 0.58:
+            elif pronunciation_analysis.prosody_score < 0.48:
                 pronunciation_score = min(pronunciation_score, 6.5)
         if pronunciation_analysis.intelligibility_score is not None:
-            if pronunciation_analysis.intelligibility_score < 0.50:
+            if pronunciation_analysis.intelligibility_score < 0.40:
                 pronunciation_score = min(pronunciation_score, 6.0)
-            elif pronunciation_analysis.intelligibility_score < 0.65:
+            elif pronunciation_analysis.intelligibility_score < 0.55:
                 pronunciation_score = min(pronunciation_score, 6.5)
 
         if pronunciation_analysis.rhythm_score is not None and pronunciation_analysis.rhythm_score < 0.40:
