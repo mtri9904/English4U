@@ -886,6 +886,10 @@ public sealed partial class ExamExecutionService(
         {
             context.AiFeedbacks.RemoveRange(existingFeedbacks);
             await context.SaveChangesAsync(cancellationToken);
+            if (context is DbContext dbContext)
+            {
+                dbContext.ChangeTracker.Clear();
+            }
         }
 
         try
