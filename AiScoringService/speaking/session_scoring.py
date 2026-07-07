@@ -429,10 +429,11 @@ async def score_speaking_session_rubrics(
     )
     overall_band = round_band_half(sum(rubric.band for rubric in final_rubrics) / len(final_rubrics))
     logger.info(
-        "Speaking session scoring for session %s: Overall=%s, Metrics=%s, Deterministic=%s",
+        "Speaking session scoring for session %s: Overall=%s, Metrics=%s, Deterministic=%s, GeminiResult=%s",
         request.session_id,
         overall_band,
         metrics,
         {r.criteria: r.band for r in deterministic_rubrics},
+        gemini_result.model_dump_json() if gemini_result else None,
     )
     return final_rubrics, final_feedback, overall_band
