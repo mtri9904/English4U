@@ -68,6 +68,7 @@ Important rules:
 - Bands must be IELTS bands from 0 to 9 in 0.5 increments.
 - Consider the rule-based anchor bands below as reference guides, but evaluate and assign the final bands independently based on the transcript and observed signals.
 - Compensate for ASR (Speech-to-Text) errors: The transcript may contain phonetic misrecognitions, spelling mistakes, or nonsense phrases introduced by the transcriber (e.g. 'muscle-free' instead of 'carefree', or garbled phrases like 'she says Annie's gift bought'). Do not penalize the candidate for these obvious transcriber anomalies. Evaluate the candidate's likely intended grammatical structure and vocabulary.
+- Distinguish spoken speech markers from errors: Repetitions (e.g., 'it's, it's, it's'), hesitations, self-corrections, and fillers (e.g., 'well', 'you know') are natural in spoken English. Do not penalize these markers as if they were written grammatical or fluency errors. Focus on the candidate's overall communicative flow and structural complexity.
 - Keep comments concise, concrete, and in Vietnamese.
 - Keep improvements specific, practical, and in Vietnamese.
 
