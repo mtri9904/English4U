@@ -79,6 +79,7 @@ async def lifespan(app: FastAPI):
     gemini_client = None
 
 
+# Trigger reload to refresh JSON configs
 app = FastAPI(title="AI Scoring Service", version="2.0.0", lifespan=lifespan)
 
 app.add_middleware(
