@@ -322,13 +322,13 @@ Prompt evidence:
 
 Return ONLY valid JSON in this exact format:
 {{
-  "overall_band": 6.0,
+  "overall_band": 7.0,
   "overall_feedback": "Nhận xét tổng quan ngắn bằng tiếng Việt.",
   "rubrics": [
-    {{"criteria":"Fluency and Coherence","band":6.0,"comment":"Nhận xét ngắn bằng tiếng Việt.","improvements":"Gợi ý cải thiện ngắn bằng tiếng Việt."}},
-    {{"criteria":"Lexical Resource","band":6.0,"comment":"Nhận xét ngắn bằng tiếng Việt.","improvements":"Gợi ý cải thiện ngắn bằng tiếng Việt."}},
-    {{"criteria":"Grammatical Range and Accuracy","band":6.0,"comment":"Nhận xét ngắn bằng tiếng Việt.","improvements":"Gợi ý cải thiện ngắn bằng tiếng Việt."}},
-    {{"criteria":"Pronunciation","band":6.0,"comment":"Nhận xét ngắn bằng tiếng Việt.","improvements":"Gợi ý cải thiện ngắn bằng tiếng Việt."}}
+    {{"criteria":"Fluency and Coherence","band":7.0,"comment":"Nhận xét ngắn bằng tiếng Việt.","improvements":"Gợi ý cải thiện ngắn bằng tiếng Việt."}},
+    {{"criteria":"Lexical Resource","band":7.0,"comment":"Nhận xét ngắn bằng tiếng Việt.","improvements":"Gợi ý cải thiện ngắn bằng tiếng Việt."}},
+    {{"criteria":"Grammatical Range and Accuracy","band":6.5,"comment":"Nhận xét ngắn bằng tiếng Việt.","improvements":"Gợi ý cải thiện ngắn bằng tiếng Việt."}},
+    {{"criteria":"Pronunciation","band":7.0,"comment":"Nhận xét ngắn bằng tiếng Việt.","improvements":"Gợi ý cải thiện ngắn bằng tiếng Việt."}}
   ]
 }}"""
 
