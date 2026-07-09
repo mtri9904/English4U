@@ -3,6 +3,9 @@ FROM continuumio/miniconda3:latest
 
 WORKDIR /code
 
+# Downgrade Python in the base environment to 3.10 for compatibility with older libraries like allosaurus
+RUN conda install -y python=3.10 && conda clean --all -y
+
 # Install system dependencies (ffmpeg, libsndfile1 for audio, git, build-essential for C++ compilation)
 RUN apt-get update && apt-get install -y \
     ffmpeg \
