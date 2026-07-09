@@ -2,6 +2,7 @@
 FROM continuumio/miniconda3:latest
 
 WORKDIR /code
+ENV PYTHONPATH=/code
 
 # Configure Conda to use conda-forge and remove defaults to bypass Anaconda TOS checks
 RUN (conda config --remove channels defaults || true) && \
