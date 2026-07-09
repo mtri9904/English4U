@@ -191,6 +191,7 @@ public sealed partial class AiScoringHttpService(
         var tasks = speakingQuestions.Select(async question =>
         {
             await semaphore.WaitAsync(cancellationToken);
+            await Task.Delay(500, cancellationToken);
             var answer = answersByQuestionId[question.Id];
             answer.SpeakingQuestion ??= question;
             var questionPartNumber = question.Part.PartNumber ?? 0;
@@ -219,63 +220,27 @@ public sealed partial class AiScoringHttpService(
                     return (Answer: answer, Result: noResponseResult, PartNumber: questionPartNumber, IsNoResponse: true, IsReused: false, IsTechnicalFailure: false, TechnicalFailureResult: (AiScoreResponse?)null, TechnicalFailureBody: (string?)null, StatusCode: (System.Net.HttpStatusCode?)null, Exception: (Exception?)null);
                 }
 
-                formContent = new MultipartFormDataContent();
-                formContent.Add(new StringContent(sessionId.ToString()), "session_id");
-                formContent.Add(new StringContent(answer.Id.ToString()), "answer_id");
-
-                var questionPrompt = answer.SpeakingQuestion?.Content;
-                if (!string.IsNullOrWhiteSpace(questionPrompt))
-                    formContent.Add(new StringContent(questionPrompt), "question_prompt");
-
-                if (questionPartNumber > 0)
-                    formContent.Add(new StringContent(questionPartNumber.ToString(CultureInfo.InvariantCulture)), "part_number");
-
                 var promptType = SpeakingPromptMetadata.GetPromptType(questionPartNumber, answer.SpeakingQuestion);
-                formContent.Add(new StringContent(promptType), "prompt_type");
-
                 var targetDurationSeconds = SpeakingPromptMetadata.GetTargetDurationSeconds(questionPartNumber, promptType);
-                if (targetDurationSeconds.HasValue)
-                {
-                    formContent.Add(
-                        new StringContent(targetDurationSeconds.Value.ToString(CultureInfo.InvariantCulture)),
-                        "target_duration_seconds");
-                }
-
-                if (audioRecord.DurationSeconds is double durationSeconds)
-                {
-                    if (!double.IsNaN(durationSeconds) && !double.IsInfinity(durationSeconds))
-                    {
-                        formContent.Add(
-                            new StringContent(durationSeconds.ToString("0.###", CultureInfo.InvariantCulture)),
-                            "duration_seconds");
-                    }
-                }
-
                 var transcriptText = audioRecord.SpeechTranscripts
                     .OrderByDescending(transcript => transcript.Id)
                     .Select(transcript => transcript.TranscriptText)
                     .FirstOrDefault(text => !string.IsNullOrWhiteSpace(text));
 
-                if (!string.IsNullOrWhiteSpace(transcriptText))
+                var requestPayload = new
                 {
-                    formContent.Add(new StringContent(transcriptText), "transcript_text");
-                }
+                    session_id = sessionId.ToString(),
+                    answer_id = answer.Id.ToString(),
+                    audio_url = audioRecord.AudioUrl,
+                    question_prompt = answer.SpeakingQuestion?.Content,
+                    part_number = questionPartNumber > 0 ? (int?)questionPartNumber : null,
+                    prompt_type = promptType,
+                    target_duration_seconds = targetDurationSeconds,
+                    duration_seconds = audioRecord.DurationSeconds,
+                    transcript_text = transcriptText
+                };
 
-                audioStream = await DownloadAudioAsync(audioRecord.AudioUrl, CancellationToken.None);
-                if (audioStream is not null)
-                {
-                    var audioContent = new StreamContent(audioStream);
-                    var audioFileName = SpeakingAudioUploadMetadata.GetFileName(audioRecord.AudioUrl);
-                    audioContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(
-                        SpeakingAudioUploadMetadata.GetContentType(audioFileName));
-                    formContent.Add(audioContent, "audio", audioFileName);
-                }
-                else if (string.IsNullOrWhiteSpace(transcriptText))
-                {
-                    return (Answer: answer, Result: (AiScoreResponse?)null, PartNumber: questionPartNumber, IsNoResponse: false, IsReused: false, IsTechnicalFailure: false, TechnicalFailureResult: (AiScoreResponse?)null, TechnicalFailureBody: (string?)null, StatusCode: (System.Net.HttpStatusCode?)null, Exception: new InvalidOperationException("Failed to download audio and no transcript found."));
-                }
-
-                using var response = await httpClient.PostAsync("/api/ai/score-speaking", formContent, CancellationToken.None);
+                using var response = await httpClient.PostAsJsonAsync("api/ai/score-speaking", requestPayload, CancellationToken.None);
                 if (!response.IsSuccessStatusCode)
                 {
                     var errorBody = await response.Content.ReadAsStringAsync(CancellationToken.None);
@@ -500,7 +465,7 @@ public sealed partial class AiScoringHttpService(
         try
         {
             using var response = await httpClient.PostAsJsonAsync(
-                "/api/ai/score-speaking-session",
+                "api/ai/score-speaking-session",
                 request,
                 JsonOptions,
                 cancellationToken);
@@ -543,7 +508,7 @@ public sealed partial class AiScoringHttpService(
         }
 
         using var response = await httpClient.PostAsJsonAsync(
-            "/api/ai/generate-speaking-prompt-audio",
+            "api/ai/generate-speaking-prompt-audio",
             new
             {
                 promptText = promptText.Trim(),
@@ -591,7 +556,7 @@ public sealed partial class AiScoringHttpService(
         }
 
         using var response = await httpClient.PostAsJsonAsync(
-            "/api/ai/generate-listening-transcript",
+            "api/ai/generate-listening-transcript",
             new
             {
                 audio_url = request.AudioUrl.Trim(),
@@ -649,7 +614,7 @@ public sealed partial class AiScoringHttpService(
         }
 
         using var response = await httpClient.PostAsJsonAsync(
-            "/api/ai/align-listening-transcript",
+            "api/ai/align-listening-transcript",
             new
             {
                 transcript_segments = request.TranscriptSegments.Select(segment => new
@@ -711,7 +676,7 @@ public sealed partial class AiScoringHttpService(
         try
         {
             using var response = await httpClient.PostAsJsonAsync(
-                "/api/ai/analyze-readability",
+                "api/ai/analyze-readability",
                 new { text = text.Trim() },
                 JsonOptions,
                 cancellationToken);
