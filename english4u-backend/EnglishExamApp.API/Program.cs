@@ -80,6 +80,7 @@ builder.Services.AddHttpClient<IAiIntegrationService, AiScoringHttpService>(clie
     var timeoutMinutes = builder.Configuration.GetValue<double?>("AiScoringService:TimeoutMinutes") ?? 30d;
     client.BaseAddress = new Uri(baseUrl);
     client.Timeout = TimeSpan.FromMinutes(Math.Clamp(timeoutMinutes, 1d, 60d));
+    client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
 });
 
 builder.Services.AddHttpClient<IGemmaCompletionClient, GemmaCompletionClient>(client =>
