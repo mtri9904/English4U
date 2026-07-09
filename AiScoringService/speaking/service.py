@@ -28,6 +28,7 @@ whisper_lock = asyncio.Lock()
 async def score_speaking_answer_response(
     *,
     audio: UploadFile | None,
+    audio_url: str | None = None,
     session_id: str,
     answer_id: str,
     question_prompt: str | None,
@@ -46,17 +47,37 @@ async def score_speaking_answer_response(
     analysis_path_for_scoring: str | None = None
     cleanup_paths: list[str] = []
 
-    if audio is not None:
+    if audio is not None or audio_url is not None:
         if not whisper_loaded:
             raise RuntimeError("Whisper model not loaded.")
 
-        suffix = os.path.splitext(audio.filename or ".wav")[1]
-        normalized_tmp_path: str | None = None
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-            content = await audio.read()
-            tmp.write(content)
-            tmp_path = tmp.name
-            cleanup_paths.append(tmp_path)
+        if audio is not None:
+            suffix = os.path.splitext(audio.filename or ".wav")[1]
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                content = await audio.read()
+                tmp.write(content)
+                tmp_path = tmp.name
+                cleanup_paths.append(tmp_path)
+        else:
+            import urllib.request
+            suffix = ".wav"
+            if audio_url:
+                if ".webm" in audio_url.lower():
+                    suffix = ".webm"
+                elif ".mp3" in audio_url.lower():
+                    suffix = ".mp3"
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                try:
+                    req = urllib.request.Request(
+                        audio_url,
+                        headers={'User-Agent': 'Mozilla/5.0'}
+                    )
+                    with urllib.request.urlopen(req) as response:
+                        tmp.write(response.read())
+                    tmp_path = tmp.name
+                    cleanup_paths.append(tmp_path)
+                except Exception as e:
+                    raise RuntimeError(f"Failed to download audio from URL: {e}")
 
         try:
             analysis_path, normalized_tmp_path, normalization_warning = await asyncio.to_thread(

@@ -13,6 +13,18 @@ class ScoreWritingRequest(BaseModel):
     skill_type: str = "Writing"
 
 
+class ScoreSpeakingRequest(BaseModel):
+    session_id: str
+    answer_id: str
+    audio_url: str | None = None
+    question_prompt: str | None = None
+    transcript_text: str | None = None
+    part_number: int | None = None
+    prompt_type: str | None = None
+    target_duration_seconds: float | None = None
+    duration_seconds: float | None = None
+
+
 class RubricScore(BaseModel):
     criteria: str
     band: float

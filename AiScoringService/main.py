@@ -36,6 +36,7 @@ from schemas import (
     ListeningTranscriptResponse,
     ScoreResponse,
     ScoreSpeakingSessionRequest,
+    ScoreSpeakingRequest,
     ScoreWritingRequest,
     ReadabilityAnalysisRequest,
     ReadabilityAnalysisResponse,
@@ -82,6 +83,31 @@ async def lifespan(app: FastAPI):
 
 # v3 - top3 peak capability, no downward clamp, cache cleared
 app = FastAPI(title="AI Scoring Service", version="2.0.0", lifespan=lifespan)
+
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request, exc):
+    body = await request.body()
+    try:
+        body_str = body.decode("utf-8")
+    except Exception:
+        body_str = str(body)
+    
+    # Ghi log lỗi ra file để agent đọc
+    try:
+        import json
+        with open("error_debug.txt", "w", encoding="utf-8") as f:
+            f.write(f"Errors:\n{json.dumps(exc.errors(), indent=2)}\n\nBody:\n{body_str}")
+    except Exception as e:
+        print(f"Failed to write error log: {e}")
+        
+    return JSONResponse(
+        status_code=422,
+        content={"detail": exc.errors(), "body_str": body_str},
+    )
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -174,28 +200,19 @@ async def score_writing(request: ScoreWritingRequest):
 
 
 @app.post("/api/ai/score-speaking", response_model=ScoreResponse)
-async def score_speaking(
-    audio: UploadFile | None = File(None),
-    session_id: str = Form(...),
-    answer_id: str = Form(...),
-    question_prompt: str | None = Form(None),
-    transcript_text: str | None = Form(None),
-    part_number: int | None = Form(None),
-    prompt_type: str | None = Form(None),
-    target_duration_seconds: float | None = Form(None),
-    duration_seconds: float | None = Form(None),
-):
+async def score_speaking(request: ScoreSpeakingRequest):
     try:
         return await score_speaking_answer_response(
-            audio=audio,
-            session_id=session_id,
-            answer_id=answer_id,
-            question_prompt=question_prompt,
-            transcript_text=transcript_text,
-            part_number=part_number,
-            prompt_type=prompt_type,
-            target_duration_seconds=target_duration_seconds,
-            duration_seconds=duration_seconds,
+            audio=None,
+            audio_url=request.audio_url,
+            session_id=request.session_id,
+            answer_id=request.answer_id,
+            question_prompt=request.question_prompt,
+            transcript_text=request.transcript_text,
+            part_number=request.part_number,
+            prompt_type=request.prompt_type,
+            target_duration_seconds=request.target_duration_seconds,
+            duration_seconds=request.duration_seconds,
             transcribe_audio_file=transcribe_speaking_audio_file,
             whisper_loaded=speaking_whisper_model is not None,
             gemini_client=gemini_client,

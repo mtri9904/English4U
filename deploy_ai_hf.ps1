@@ -6,15 +6,9 @@ if (Test-Path $dest) {
 }
 New-Item -ItemType Directory -Path $dest | Out-Null
 
-Copy-Item -Path "$source\*" -Destination $dest -Recurse -Force
-
-# Loại bỏ môi trường ảo venv và git cũ để tránh đẩy tệp nặng lên Space
-if (Test-Path "$dest\venv") {
-    Remove-Item -Recurse -Force "$dest\venv"
-}
-if (Test-Path "$dest\.git") {
-    Remove-Item -Recurse -Force "$dest\.git"
-}
+# Sao chép loại trừ các thư mục không cần thiết để tránh xung đột khóa tệp Windows
+$excludeList = @('venv', '.git', '__pycache__', '.pytest_cache', '.env')
+Get-ChildItem -Path $source | Where-Object { $_.Name -notin $excludeList } | Copy-Item -Destination $dest -Recurse -Force
 
 cd $dest
 git init
