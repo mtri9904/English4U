@@ -187,7 +187,7 @@ public sealed partial class AiScoringHttpService(
 
         var scoredItems = new List<(UserAnswer Answer, AiScoreResponse Result, int PartNumber)>();
 
-        using var semaphore = new SemaphoreSlim(3);
+        using var semaphore = new SemaphoreSlim(1);
         var tasks = speakingQuestions.Select(async question =>
         {
             await semaphore.WaitAsync(cancellationToken);
@@ -261,7 +261,7 @@ public sealed partial class AiScoringHttpService(
                     formContent.Add(new StringContent(transcriptText), "transcript_text");
                 }
 
-                audioStream = await DownloadAudioAsync(audioRecord.AudioUrl, cancellationToken);
+                audioStream = await DownloadAudioAsync(audioRecord.AudioUrl, CancellationToken.None);
                 if (audioStream is not null)
                 {
                     var audioContent = new StreamContent(audioStream);
@@ -275,10 +275,10 @@ public sealed partial class AiScoringHttpService(
                     return (Answer: answer, Result: (AiScoreResponse?)null, PartNumber: questionPartNumber, IsNoResponse: false, IsReused: false, IsTechnicalFailure: false, TechnicalFailureResult: (AiScoreResponse?)null, TechnicalFailureBody: (string?)null, StatusCode: (System.Net.HttpStatusCode?)null, Exception: new InvalidOperationException("Failed to download audio and no transcript found."));
                 }
 
-                using var response = await httpClient.PostAsync("/api/ai/score-speaking", formContent, cancellationToken);
+                using var response = await httpClient.PostAsync("/api/ai/score-speaking", formContent, CancellationToken.None);
                 if (!response.IsSuccessStatusCode)
                 {
-                    var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
+                    var errorBody = await response.Content.ReadAsStringAsync(CancellationToken.None);
                     var detail = AiServiceErrorDetailParser.Extract(errorBody);
                     if (IsRecoverableSpeakingAnswerScoringFailure(response.StatusCode, errorBody, detail))
                     {
@@ -293,7 +293,7 @@ public sealed partial class AiScoringHttpService(
                     return (Answer: answer, Result: (AiScoreResponse?)null, PartNumber: questionPartNumber, IsNoResponse: false, IsReused: false, IsTechnicalFailure: false, TechnicalFailureResult: (AiScoreResponse?)null, TechnicalFailureBody: (string?)null, StatusCode: response.StatusCode, Exception: new InvalidOperationException(string.IsNullOrWhiteSpace(detail) ? $"AI speaking scoring failed with status {(int)response.StatusCode}." : detail));
                 }
 
-                var result = await response.Content.ReadFromJsonAsync<AiScoreResponse>(cancellationToken);
+                var result = await response.Content.ReadFromJsonAsync<AiScoreResponse>(CancellationToken.None);
                 if (result is null)
                 {
                     return (Answer: answer, Result: (AiScoreResponse?)null, PartNumber: questionPartNumber, IsNoResponse: false, IsReused: false, IsTechnicalFailure: false, TechnicalFailureResult: (AiScoreResponse?)null, TechnicalFailureBody: (string?)null, StatusCode: response.StatusCode, Exception: new InvalidOperationException("AI service returned empty response."));

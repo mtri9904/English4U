@@ -1,4 +1,5 @@
 import io
+# Trigger config reload to update JSON example template placeholders
 import os
 from contextlib import asynccontextmanager
 
@@ -79,7 +80,7 @@ async def lifespan(app: FastAPI):
     gemini_client = None
 
 
-# Trigger reload to refresh JSON configs
+# v3 - top3 peak capability, no downward clamp, cache cleared
 app = FastAPI(title="AI Scoring Service", version="2.0.0", lifespan=lifespan)
 
 app.add_middleware(

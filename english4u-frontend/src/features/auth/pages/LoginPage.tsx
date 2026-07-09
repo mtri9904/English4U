@@ -54,7 +54,6 @@ export function LoginPage({ mode = 'login' }: { mode?: 'login' | 'register' | 'f
                         Khám phá thế giới bài học đa dạng, luyện tập với các công cụ thông minh và theo dõi tiến trình học tập của bạn từng bước một với nền tảng hỗ trợ trí tuệ nhân tạo của chúng tôi.
                     </p>
 
-
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: 'auto', paddingTop: '16px' }}>
                         <div style={{ display: 'flex', marginLeft: '10px' }}>
                             {['https://i.pravatar.cc/150?img=11', 'https://i.pravatar.cc/150?img=12', 'https://i.pravatar.cc/150?img=13'].map((img, i) => (
@@ -68,14 +67,11 @@ export function LoginPage({ mode = 'login' }: { mode?: 'login' | 'register' | 'f
                 </div>
             </div>
 
-
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '40px 24px', position: 'relative', overflowY: 'auto' }}>
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', maxWidth: '440px', margin: '0 auto', width: '100%' }}>
-
                     {mode === 'login' && <LoginForm />}
                     {mode === 'register' && <RegisterForm />}
                     {mode === 'forgot' && <ForgotForm />}
-
                 </div>
             </div>
         </div>

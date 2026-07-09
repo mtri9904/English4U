@@ -84,14 +84,7 @@ def has_complete_session_coverage(metrics: dict[str, float | int | str]) -> bool
 
 
 def get_session_refiner_max_adjustment(metrics: dict[str, float | int | str]) -> float:
-    if not has_complete_session_coverage(metrics):
-        return 0.5
-
-    total_word_count = int(metrics.get("total_word_count") or 0)
-    no_response_ratio = float(metrics.get("no_response_ratio") or 0.0)
-    if total_word_count >= 650 and no_response_ratio == 0:
-        return 1.5
-    return 1.0
+    return 2.0
 
 
 def get_session_coverage_bonus(
@@ -276,35 +269,93 @@ def build_speaking_session_gemini_prompt(
     )
     answer_blocks: list[str] = []
     for index, answer in enumerate(request.answers, start=1):
-        rubric_line = ", ".join(
-            f"{rubric.criteria}={round_band_half(rubric.band):.1f}"
-            for rubric in answer.rubrics
-            if rubric.criteria
-        ) or "no rubric"
         transcript = shorten_evidence_text(answer.transcript_text, max_length=700) or "No transcript."
         answer_blocks.append(
-            f"Prompt {index} | part={answer.part_number or 'unknown'} | type={answer.prompt_type or 'unknown'} | "
+            f"Answer {index} | Part {answer.part_number or 'unknown'} | "
             f"duration={answer.duration_seconds if answer.duration_seconds is not None else 'n/a'}s | "
             f"no_response={is_no_response_session_answer(answer)}\n"
             f"Question: {shorten_evidence_text(answer.question_prompt, max_length=220) or 'n/a'}\n"
-            f"Prompt bands: {rubric_line}\n"
             f"Transcript: {transcript}"
         )
 
-    return f"""You are an IELTS Speaking examiner assistant producing a final session-level judgement.
-Use the IELTS-style Speaking rubric contract below.
+    return f"""You are a professional IELTS Speaking examiner with over 20 years of experience producing a final session-level band score for a full IELTS Speaking test.
 
-{rubric_guidance}
+---
+## YOUR GRADING PHILOSOPHY:
+- **Band 8.0 - 9.0 (Very Good to Expert):** Speaks very fluently with only rare hesitation. Vocabulary is natural, rich, and appropriate. Grammar uses diverse complex structures with only rare minor slips (often ASR-induced).
+- **Band 7.0 - 7.5 (Good):** Flow is good and natural. Vocabulary shows a wide range and good paraphrasing. Grammar successfully uses complex structures despite occasional errors.
+- **Band 6.0 - 6.5 (Competent):** Willing to speak at length but has noticeable fillers. Vocabulary is sufficient. Grammar has a mix of simple and complex sentences.
+- **Band 5.5 and below (Modest or lower):** Heavy hesitation, very limited vocabulary, or severe persistent grammatical breakdowns.
 
-Important rules:
-- Score the candidate's average performance across the whole speaking session, not each prompt in isolation.
-- Use the deterministic session anchor bands as the primary baseline. These anchors are calculated using precise acoustic models (words per minute, pause ratios, speech rate) and advanced feature analysis that are not fully visible in the text transcripts alone. Do not adjust the scores downward from these anchors unless the transcript shows severe, persistent grammatical breakdowns or complete incoherence. If the response is simple but coherent and fluent, default to the anchor bands. Keep each criterion within +/- {session_refiner_max_adjustment:.1f} band(s) of its anchor.
-- Compensate for ASR (Speech-to-Text) errors: The transcripts for individual prompts may contain phonetic misrecognitions, spelling mistakes, or nonsense phrases introduced by the transcriber (e.g. 'muscle-free' instead of 'carefree', or garbled phrases like 'she says Annie's gift bought'). Do not penalize the candidate for these transcriber anomalies. Evaluate their likely intended grammatical structure and vocabulary choice across the session.
-- Distinguish spoken speech markers from errors: Repetitions (e.g., 'it's, it's, it's'), hesitations, self-corrections, and fillers are normal in spoken English. Do not penalize them as written grammatical errors. Grade the candidate's fluency and grammar complexity generously, matching a real human examiner.
-- Penalize missing/no-response prompts and insufficient language evidence.
-- Keep comments and improvements concise, concrete, and in Vietnamese.
+---
+## REALISTIC EVALUATION PRINCIPLES:
 
-Session metrics:
+1. **Open-Minded & Non-Mechanical Evaluation:**
+   - **Do not penalize natural fillers:** Fillers like "uh", "um", "well", "you know" are completely natural when speakers are formulating thoughts. ONLY penalize under FC if fillers are excessively frequent to the point of breaking coherence or flow.
+   - **Do not over-penalize minor repetitions:** Minor repetitions are common. If the candidate demonstrates good paraphrasing ability or uses varied terms later, ignore minor repetitions.
+
+2. **Core Focuses by Criteria:**
+   - **Lexical Resource (LR):** Prioritize natural collocations and idiomatic expressions. Do not over-reward candidates who throw in "big/complex" vocabulary words in an unnatural or forced context. Natural flow and appropriateness are key.
+   - **Coherence (FC):** Focus on logical link of ideas. If the candidate answers the question directly and provides supporting arguments (especially in Part 3), award high marks for coherence.
+   - **Grammatical Range (GRA):** Evaluate based on structural diversity (complex sentences, relative clauses, conditional clauses) rather than counting tiny grammatical slips. Focus on range first.
+
+---
+## IELTS Speaking Band Descriptor Summary
+
+### Fluency and Coherence (FC)
+- **Band 9:** Fluent with only rare repetition or self-correction. Coherent with natural cohesive devices.
+- **Band 8:** Fluent with occasional hesitation. Coherence sustained; rare inappropriate use of cohesive devices.
+- **Band 7:** Speaks at length without noticeable effort. Some hesitation but no loss of coherence. Uses discourse markers appropriately.
+- **Band 6:** Willing to speak at length but may lose coherence at times. Uses discourse markers but not always appropriately.
+- **Band 5:** Usually maintains flow but relies on repetition and self-correction. Limited range of discourse markers.
+- **Band 4:** Cannot sustain speech without noticeable pauses. Limited use of discourse markers.
+
+### Lexical Resource (LR)
+- **Band 9:** Full flexibility. Precise, natural, sophisticated vocabulary.
+- **Band 8:** Fluent vocabulary use. Occasional inaccuracies. Rare paraphrasing issues.
+- **Band 7:** Some flexibility and precision. Uses less common/idiomatic vocabulary with occasional inaccuracies.
+- **Band 6:** Wide enough vocabulary for the topic. Occasional word choice errors.
+- **Band 5:** Conveys basic meaning but limited range. Noticeable word choice errors.
+- **Band 4:** Limited vocabulary. Frequent errors in word choice.
+
+### Grammatical Range and Accuracy (GRA)
+- **Band 9:** Wide range of structures. Rare errors occur only as slips.
+- **Band 8:** Wide range, flexible. Most sentences error-free. Occasional slips.
+- **Band 7:** Range of complex structures. Frequently error-free sentences, though some errors persist.
+- **Band 6:** Mix of simple and complex structures. Errors persist, especially in complex forms.
+- **Band 5:** Basic sentence forms reasonably produced. Limited complex structures; frequent errors.
+- **Band 4:** Basic sentence forms but grammatical errors frequent.
+
+### Pronunciation
+- **Band 9:** Uses full range of pronunciation features with precision and subtlety.
+- **Band 8:** Wide range of features; generally easy to understand.
+- **Band 7:** Shows range of pronunciation features; generally intelligible.
+- **Band 6:** Uses a range of features but not always consistently.
+- **Band 5:** Generally intelligible but limited control over pronunciation features.
+- **Band 4:** Pronunciation requires effort to understand.
+
+---
+## IELTS Part-Specific Calibration
+
+**IMPORTANT — How to weight each Part:**
+- **Part 1 (Warm-up):** Short conversational answers (20–60 words) are perfectly NORMAL, even for Band 9 candidates. Do NOT penalize candidates for giving concise but relevant and fluent answers in Part 1. The purpose of Part 1 is a warm-up, not a demonstration of extended discourse.
+- **Part 2 (Long turn):** The candidate should speak for about 1–2 minutes on a given cue card. Word count, coherence, and development are most important here. This Part carries the most weight for FC.
+- **Part 3 (Discussion):** The candidate should give extended, discursive responses. Analytical ability, vocabulary, and grammatical range are most visible here.
+
+**Session-level scoring principle:** Judge the candidate's PEAK demonstrated capability across all Parts. A candidate who shows Band 8 capability in Part 2 and Part 3 should receive Band 8 overall, even if some Part 1 answers were brief.
+
+---
+## Scoring Rules
+- Score all 4 criteria: Fluency and Coherence, Lexical Resource, Grammatical Range and Accuracy, Pronunciation.
+- Bands must be IELTS half-bands (0, 0.5, 1.0, ... up to 9.0).
+- Your task is to give the candidate the band they DESERVE based on what a certified IELTS examiner would observe.
+- ASR compensation: Transcripts are auto-generated. Obvious errors (wrong phonetic substitution, garbled text) should be ignored. Evaluate the candidate's likely intended speech.
+- Spoken language: Do NOT penalize natural spoken properties (self-corrections, fillers, false starts) as written grammar errors.
+- Do NOT be influenced by per-prompt bands in the evidence below except as rough supporting signal. Each prompt band was calculated separately and may be conservative. Use your own holistic judgement.
+- Keep all comments and improvement suggestions concise and written in Vietnamese.
+
+---
+Session Metrics:
 - Total prompts: {metrics['total_answers']}
 - Ratable prompts: {metrics['ratable_answers']}
 - No-response prompts: {metrics['no_response_answers']}
@@ -312,23 +363,21 @@ Session metrics:
 - Configured parts: {metrics['configured_parts']}
 - Ratable parts: {metrics['ratable_parts']}
 - Complete session coverage: {metrics['complete_session_coverage']}
-- Refiner adjustment window: +/- {session_refiner_max_adjustment:.1f}
 
-Deterministic session anchor bands:
-{anchor_lines}
-
-Prompt evidence:
+Per-Prompt Evidence (supporting signals only — holistic judgement takes priority):
 {chr(10).join(answer_blocks)}
 
-Return ONLY valid JSON in this exact format:
+Return ONLY valid JSON in this exact format.
+IMPORTANT: The band scores in the JSON example below are ONLY placeholders (e.g. 8.0, 8.5). You MUST calculate and assign the actual band scores based on your independent holistic evaluation of the session. Do NOT copy the template numbers.
+
 {{
-  "overall_band": 7.0,
+  "overall_band": 8.0,
   "overall_feedback": "Nhận xét tổng quan ngắn bằng tiếng Việt.",
   "rubrics": [
-    {{"criteria":"Fluency and Coherence","band":7.0,"comment":"Nhận xét ngắn bằng tiếng Việt.","improvements":"Gợi ý cải thiện ngắn bằng tiếng Việt."}},
-    {{"criteria":"Lexical Resource","band":7.0,"comment":"Nhận xét ngắn bằng tiếng Việt.","improvements":"Gợi ý cải thiện ngắn bằng tiếng Việt."}},
-    {{"criteria":"Grammatical Range and Accuracy","band":6.5,"comment":"Nhận xét ngắn bằng tiếng Việt.","improvements":"Gợi ý cải thiện ngắn bằng tiếng Việt."}},
-    {{"criteria":"Pronunciation","band":7.0,"comment":"Nhận xét ngắn bằng tiếng Việt.","improvements":"Gợi ý cải thiện ngắn bằng tiếng Việt."}}
+    {{"criteria":"Fluency and Coherence","band":8.0,"comment":"Nhận xét ngắn bằng tiếng Việt.","improvements":"Gợi ý cải thiện ngắn bằng tiếng Việt."}},
+    {{"criteria":"Lexical Resource","band":8.5,"comment":"Nhận xét ngắn bằng tiếng Việt.","improvements":"Gợi ý cải thiện ngắn bằng tiếng Việt."}},
+    {{"criteria":"Grammatical Range and Accuracy","band":8.0,"comment":"Nhận xét ngắn bằng tiếng Việt.","improvements":"Gợi ý cải thiện ngắn bằng tiếng Việt."}},
+    {{"criteria":"Pronunciation","band":8.0,"comment":"Nhận xét ngắn bằng tiếng Việt.","improvements":"Gợi ý cải thiện ngắn bằng tiếng Việt."}}
   ]
 }}"""
 
@@ -393,13 +442,15 @@ def merge_speaking_session_result(
             merged.append(fallback)
             continue
 
+        clamped_band = max(
+            fallback.band,
+            min(fallback.band + max_adjustment, gemini_rubric.band)
+        )
+        clamped_band = max(1.0, min(9.0, round_band_half(clamped_band)))
+
         merged.append(RubricScore(
             criteria=criteria,
-            band=clamp_speaking_band_to_rule_window(
-                fallback.band,
-                round_band_half(gemini_rubric.band),
-                max_adjustment=max_adjustment,
-            ),
+            band=clamped_band,
             comment=gemini_rubric.comment.strip() or fallback.comment,
             improvements=gemini_rubric.improvements.strip() or fallback.improvements,
             confidence=fallback.confidence,
