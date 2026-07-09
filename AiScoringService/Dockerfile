@@ -3,9 +3,10 @@ FROM continuumio/miniconda3:latest
 
 WORKDIR /code
 
-# Downgrade Python in the base environment to 3.10 for compatibility with older libraries like allosaurus
-RUN conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main && \
-    conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r && \
+# Configure Conda to use conda-forge and remove defaults to bypass Anaconda TOS checks
+RUN (conda config --remove channels defaults || true) && \
+    conda config --add channels conda-forge && \
+    conda config --set channel_priority strict && \
     conda install -y python=3.10 && \
     conda clean --all -y
 
@@ -17,8 +18,8 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Montreal Forced Aligner (MFA) via Conda
-RUN conda clean --all -y && conda install --solver=classic -y -c conda-forge montreal-forced-aligner
+# Install Montreal Forced Aligner (MFA) via Conda using conda-forge only
+RUN conda clean --all -y && conda install --solver=classic -y -c conda-forge --override-channels montreal-forced-aligner
 
 # Pre-download English acoustic model and dictionary for MFA
 ENV MFA_ROOT_DIR=/code/mfa_models
