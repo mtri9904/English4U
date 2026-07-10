@@ -1,6 +1,8 @@
 # Python cache/build outputs
 .env
 .env.*
+!.env.example
+!**/.env.example
 __pycache__/
 *.py[cod]
 *$py.class

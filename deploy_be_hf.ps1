@@ -19,6 +19,7 @@ git init
 git config user.name "minhtri1"
 git config user.email "minhtri1@users.noreply.huggingface.co"
 git add .
+git add -f EnglishExamApp.API/appsettings.json
 git commit -m "deploy: clean deployment to Hugging Face with configuration"
 git checkout -b main
 git push https://minhtri1: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@huggingface.co/spaces/minhtri1/english4u-backend main:main --force
