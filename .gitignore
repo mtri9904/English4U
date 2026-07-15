@@ -23,3 +23,9 @@ AiScoringService/evaluation/reports/*
 !AiScoringService/evaluation/reports/.gitkeep
 AiScoringService/evaluation/**/*.pyc
 AiScoringService/evaluation/**/__pycache__/
+
+# Local scripts / deployment files
+deploy_ai_hf.ps1
+deploy_be_hf.ps1
+run_docker_ai.ps1
+
