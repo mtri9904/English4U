@@ -17,6 +17,7 @@ const FOOTER_SECTIONS: Record<string, FooterLinkItem[]> = {
         { label: 'Giới thiệu', href: '/about' },
         { label: 'Liên hệ', href: '/contact' },
         { label: 'Chính sách Bảo mật', href: '/privacy-policy' },
+        { label: 'Điều khoản Dịch vụ', href: '/terms-of-service' },
     ],
     'Hệ thống': [
         { label: 'Đăng nhập', href: '/login' },
