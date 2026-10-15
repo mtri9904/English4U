@@ -72,10 +72,10 @@ LISTENING_TRANSCRIPT_WHISPER_MODEL_SIZE = (
 )
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
-GEMINI_SCORING_MODEL = os.getenv("GEMINI_SCORING_MODEL", "gemini-2.5-flash-lite").strip()
+GEMINI_SCORING_MODEL = os.getenv("GEMINI_SCORING_MODEL", "gemini-3.1-flash-lite").strip()
 GEMINI_SCORING_FALLBACK_MODELS = parse_env_list(
     "GEMINI_SCORING_FALLBACK_MODELS",
-    "gemini-2.5-flash",
+    "gemma-4-31b-it,gemma-4-26b-a4b-it,gemini-3.5-flash-lite,gemini-3.8-flash,gemini-3.7-flash,gemini-2.5-flash",
 )
 GEMINI_SCORING_MODEL_CANDIDATES = unique_model_candidates(
     GEMINI_SCORING_MODEL,
@@ -85,7 +85,7 @@ GEMINI_SCORING_MODEL_CANDIDATES = unique_model_candidates(
 GEMINI_SPEAKING_TTS_MODEL = os.getenv("GEMINI_SPEAKING_TTS_MODEL", "gemini-3.1-flash-tts").strip()
 GEMINI_SPEAKING_TTS_FALLBACK_MODELS = parse_env_list(
     "GEMINI_SPEAKING_TTS_FALLBACK_MODELS",
-    "gemini-2.5-flash-tts,gemini-2.5-pro-tts",
+    "gemini-3.8-flash-lite-tts,gemini-3.8-flash-tts,gemini-2.5-flash-tts",
 )
 GEMINI_SPEAKING_TTS_MODEL_CANDIDATES = unique_model_candidates(
     GEMINI_SPEAKING_TTS_MODEL,
@@ -93,10 +93,10 @@ GEMINI_SPEAKING_TTS_MODEL_CANDIDATES = unique_model_candidates(
 )
 GEMINI_SPEAKING_TTS_VOICE = os.getenv("GEMINI_SPEAKING_TTS_VOICE", "Iapetus").strip() or "Iapetus"
 
-GEMINI_SPEAKING_SCORING_MODEL = os.getenv("GEMINI_SPEAKING_SCORING_MODEL", "gemini-2.5-flash-lite").strip()
+GEMINI_SPEAKING_SCORING_MODEL = os.getenv("GEMINI_SPEAKING_SCORING_MODEL", "gemini-3.1-flash-lite").strip()
 GEMINI_SPEAKING_SCORING_FALLBACK_MODELS = parse_env_list(
     "GEMINI_SPEAKING_SCORING_FALLBACK_MODELS",
-    "gemini-2.5-flash",
+    "gemma-4-31b-it,gemma-4-26b-a4b-it,gemini-3.5-flash-lite,gemini-3.8-flash,gemini-3.7-flash,gemini-2.5-flash",
 )
 GEMINI_SPEAKING_SCORING_MODEL_CANDIDATES = unique_model_candidates(
     GEMINI_SPEAKING_SCORING_MODEL,

@@ -8,7 +8,6 @@ using EnglishExamApp.Application.Services;
 using EnglishExamApp.Infrastructure.Data;
 using EnglishExamApp.Infrastructure.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 using Scalar.AspNetCore;
@@ -23,9 +22,11 @@ if (builder.Environment.IsDevelopment())
 
 var jwtKey = RequireConfiguration(builder.Configuration, "Jwt:Key");
 var defaultConnectionString = RequireConnectionString(builder.Configuration, "DefaultConnection");
-if (builder.Environment.IsDevelopment())
+if (defaultConnectionString.Contains("Server=", StringComparison.OrdinalIgnoreCase)
+    || defaultConnectionString.Contains("Initial Catalog", StringComparison.OrdinalIgnoreCase)
+    || (defaultConnectionString.Contains("User Id=", StringComparison.OrdinalIgnoreCase) && !defaultConnectionString.Contains("Data Source=", StringComparison.OrdinalIgnoreCase)))
 {
-    defaultConnectionString = AddDevelopmentSqlServerDefaults(defaultConnectionString);
+    defaultConnectionString = "Data Source=english4u.db";
 }
 
 builder.Services.AddControllers();
@@ -51,7 +52,7 @@ builder.Services.AddCors(options =>
 });
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlServer(defaultConnectionString));
+    options.UseSqlite(defaultConnectionString));
 
 builder.Services.AddScoped<IApplicationDbContext>(provider =>
     provider.GetRequiredService<ApplicationDbContext>());
@@ -141,9 +142,7 @@ using (var scope = app.Services.CreateScope())
 
     try
     {
-        logger.LogInformation("Applying pending database migrations...");
-        dbContext.Database.Migrate();
-        logger.LogInformation("Database migrations applied successfully.");
+        await DatabaseInitializer.InitializeDatabaseAsync(app.Services);
 
         var incorrectExams = dbContext.Exams.Where(e => e.ExamType == "Reading").ToList();
         if (incorrectExams.Any())
@@ -276,8 +275,6 @@ static string AddDevelopmentSqlServerDefaults(string connectionString)
         return connectionString;
     }
 
-    var connectionStringBuilder = new SqlConnectionStringBuilder(connectionString);
-    connectionStringBuilder["Encrypt"] = "False";
-
-    return connectionStringBuilder.ConnectionString;
+    configuredValues["Encrypt"] = "False";
+    return configuredValues.ConnectionString;
 }

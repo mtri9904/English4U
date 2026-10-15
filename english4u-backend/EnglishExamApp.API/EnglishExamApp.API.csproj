@@ -15,13 +15,19 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="9.0.15" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.2" />
     <PackageReference Include="Scalar.AspNetCore" Version="2.12.50" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\EnglishExamApp.Application\EnglishExamApp.Application.csproj" />
     <ProjectReference Include="..\EnglishExamApp.Infrastructure\EnglishExamApp.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="english4u.db.b64">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
 </Project>

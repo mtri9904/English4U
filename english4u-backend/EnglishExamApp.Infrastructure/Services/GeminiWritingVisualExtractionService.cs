@@ -14,8 +14,8 @@ public sealed class GeminiWritingVisualExtractionService(
     IConfiguration configuration,
     ILogger<GeminiWritingVisualExtractionService> logger) : IWritingVisualExtractionService
 {
-    private const string DefaultModel = "gemini-2.5-flash";
-    private const string DefaultFallbackModel = "gemini-2.5-flash-lite";
+    private const string DefaultModel = "gemini-3.1-flash-lite";
+    private const string DefaultFallbackModel = "gemini-3.5-flash-lite";
     private const int DefaultMaxImageBytes = 4 * 1024 * 1024;
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)

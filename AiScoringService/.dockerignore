@@ -1,0 +1,12 @@
+**/.git
+**/venv
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+**/*.pyc
+evaluation/audio/*
+!evaluation/audio/.gitkeep
+evaluation/segments/*
+!evaluation/segments/.gitkeep
+evaluation/reports/*
+!evaluation/reports/.gitkeep

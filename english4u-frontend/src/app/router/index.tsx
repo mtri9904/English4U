@@ -4,6 +4,7 @@ import { ClientLayout } from '@/layouts/ClientLayout';
 import { HomePage } from '@/features/home/pages/HomePage';
 import { AboutPage } from '@/features/home/pages/AboutPage';
 import { ContactPage } from '@/features/home/pages/ContactPage';
+import { PrivacyPolicyPage } from '@/features/home/pages/PrivacyPolicyPage';
 import { LoginPage } from '@/features/auth/pages/LoginPage';
 import ResetPasswordPage from '@/features/auth/pages/ResetPasswordPage';
 import { ConfirmEmailPage } from '@/features/auth/pages/ConfirmEmailPage';
@@ -54,6 +55,14 @@ export const appRouter = createBrowserRouter([
             {
                 path: 'contact',
                 element: <ContactPage />,
+            },
+            {
+                path: 'privacy-policy',
+                element: <PrivacyPolicyPage />,
+            },
+            {
+                path: 'privacy',
+                element: <PrivacyPolicyPage />,
             },
         ],
     },

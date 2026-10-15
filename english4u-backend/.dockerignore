@@ -1,0 +1,6 @@
+**/.git
+**/.backup
+**/.runtime
+**/bin
+**/obj
+**/scratch_debug

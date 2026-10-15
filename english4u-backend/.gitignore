@@ -41,6 +41,9 @@ errorlog/
 *.log
 *.tmp
 *.temp
+*.db
+*.db-shm
+*.db-wal
 
 # Secrets and configuration
 appsettings.json

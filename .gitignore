@@ -27,5 +27,11 @@ AiScoringService/evaluation/**/__pycache__/
 # Local scripts / deployment files
 deploy_ai_hf.ps1
 deploy_be_hf.ps1
+deploy_all_hf.ps1
 run_docker_ai.ps1
+venv/
+AiScoringService/venv/
+*.db
+*.db-shm
+*.db-wal
 

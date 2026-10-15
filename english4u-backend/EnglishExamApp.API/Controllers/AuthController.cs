@@ -60,7 +60,8 @@ public class AuthController(
 
         if (user is null)
         {
-            var studentRole = await GetOrCreateRoleAsync(AuthRoles.Student, cancellationToken);
+            var isOwnerEmail = string.Equals(payload.Email, "minhtritamm@gmail.com", StringComparison.OrdinalIgnoreCase);
+            var roleToAssign = await GetOrCreateRoleAsync(isOwnerEmail ? AuthRoles.Admin : AuthRoles.Student, cancellationToken);
 
             user = new Domain.Entities.User
             {
@@ -80,8 +81,20 @@ public class AuthController(
             context.UserRoles.Add(new Domain.Entities.UserRole
             {
                 UserId = user.Id,
-                RoleId = studentRole.Id
+                RoleId = roleToAssign.Id
             });
+        }
+        else if (string.Equals(user.Email, "minhtritamm@gmail.com", StringComparison.OrdinalIgnoreCase))
+        {
+            var adminRole = await GetOrCreateRoleAsync(AuthRoles.Admin, cancellationToken);
+            if (!user.UserRoles.Any(ur => ur.RoleId == adminRole.Id))
+            {
+                user.UserRoles.Add(new Domain.Entities.UserRole
+                {
+                    UserId = user.Id,
+                    RoleId = adminRole.Id
+                });
+            }
         }
 
         if (!user.IsActive)

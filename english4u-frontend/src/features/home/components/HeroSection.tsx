@@ -20,12 +20,26 @@ export function HeroSection() {
 
             <div className="container-app" style={{ position: 'relative', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 48, alignItems: 'center', padding: '80px 24px' }}>
                 <div className="animate-fade-up">
+                    <div style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        padding: '6px 16px',
+                        borderRadius: 9999,
+                        background: 'rgba(37, 99, 235, 0.08)',
+                        color: '#2563eb',
+                        fontWeight: 600,
+                        fontSize: '0.875rem',
+                        marginBottom: 16
+                    }}>
+                        ✨ Nền tảng luyện thi IELTS thông minh — English4U
+                    </div>
 
                     <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: 'clamp(2.5rem, 4.5vw, 4rem)', fontWeight: 700, lineHeight: 1.12, letterSpacing: '-0.03em', color: 'var(--color-text-primary)', marginBottom: 24 }}>
                         Làm chủ tiếng Anh
                         <br />cùng{' '}
                         <span style={{ color: 'var(--color-primary)', position: 'relative', display: 'inline-block' }}>
-                            AI Tutor
+                            English4U AI Tutor
                             <svg viewBox="0 0 200 16" style={{ position: 'absolute', bottom: -6, left: 0, width: '100%', height: 10 }}>
                                 <path d="M4,12 Q50,2 100,10 Q150,18 196,8" stroke="var(--color-accent)" strokeWidth="3" fill="none" strokeLinecap="round" />
                             </svg>

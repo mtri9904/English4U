@@ -13,10 +13,10 @@ public sealed partial class GeminiReadingCopilotService(
     IConfiguration configuration,
     ILogger<GeminiReadingCopilotService> logger) : IReadingCopilotService
 {
-    private const string DefaultModel = "gemini-2.5-flash";
-    private const string DefaultFallbackModel = "gemini-2.5-flash-lite";
-    private const string DefaultWritingModel = "gemini-2.5-flash-lite";
-    private const string DefaultWritingFallbackModel = "gemini-2.5-flash";
+    private const string DefaultModel = "gemini-3.1-flash-lite";
+    private const string DefaultFallbackModel = "gemini-3.5-flash-lite";
+    private const string DefaultWritingModel = "gemini-3.1-flash-lite";
+    private const string DefaultWritingFallbackModel = "gemini-3.5-flash-lite";
     private const int MaxContinuationPasses = 3;
     private const string MaxTokensFinishReason = "MAX_TOKENS";
     private const string StopFinishReason = "STOP";

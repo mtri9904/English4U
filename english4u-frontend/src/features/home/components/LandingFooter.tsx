@@ -1,9 +1,28 @@
+import { Link } from 'react-router-dom'
 import { Button } from '@/shared/ui/Button'
 
-const FOOTER_LINKS = {
-    'Sản phẩm': ['Khóa học', 'Thi thử', 'Flashcards', 'Luyện Nói AI', 'Bảng xếp hạng'],
-    'Tài nguyên': ['Blog', 'Hướng dẫn IELTS', 'Mẹo IELTS', 'Danh sách Từ vựng', 'Sổ tay Ngữ pháp'],
-    'Công ty': ['Về chúng tôi', 'Tuyển dụng', 'Báo chí', 'Chính sách Bảo mật', 'Điều khoản Dịch vụ'],
+interface FooterLinkItem {
+    label: string
+    href: string
+}
+
+const FOOTER_SECTIONS: Record<string, FooterLinkItem[]> = {
+    'Sản phẩm': [
+        { label: 'Thi thử IELTS', href: '/app/practice' },
+        { label: 'Luyện Nói AI', href: '/app/practice' },
+        { label: 'Luyện Viết AI', href: '/app/practice' },
+        { label: 'Trang cá nhân', href: '/app/profile' }
+    ],
+    'Tài nguyên': [
+        { label: 'Giới thiệu', href: '/about' },
+        { label: 'Liên hệ', href: '/contact' },
+        { label: 'Chính sách Bảo mật', href: '/privacy-policy' },
+    ],
+    'Hệ thống': [
+        { label: 'Đăng nhập', href: '/login' },
+        { label: 'Đăng ký', href: '/register' },
+        { label: 'Quản trị viên (CMS)', href: '/admin/login' },
+    ],
 }
 
 export function LandingFooter() {
@@ -14,18 +33,19 @@ export function LandingFooter() {
             <div className="container-app" style={{ padding: '64px 24px 40px' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: 48, marginBottom: 48 }}>
                     <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                        <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, textDecoration: 'none' }}>
                             <img
-                                src="logo/Logo.png"
+                                src="/logo/Logo.png"
+                                alt="English4U Logo"
                                 style={{
                                     width: 45,
                                     height: 45,
-                                    objectFit: 'cover'
+                                    objectFit: 'contain'
                                 }}
                             />
-                            <span style={{ fontFamily: 'var(--font-serif)', fontSize: '1.25rem', fontWeight: 700, color: '#fff' }}>English4U</span>
-                        </div>
-                        <p style={{ fontSize: '0.9rem', lineHeight: 1.7, maxWidth: 300, marginBottom: 24, color: 'rgba(255,255,255,0.5)' }}>Học tiếng Anh với sức mạnh AI. Chuẩn bị cho IELTS, TOEFL với lộ trình luyện tập cá nhân hóa.</p>
+                            <span style={{ fontFamily: 'var(--font-serif)', fontSize: '1.35rem', fontWeight: 800, color: '#fff' }}>English<span style={{ color: '#38bdf8' }}>4U</span></span>
+                        </Link>
+                        <p style={{ fontSize: '0.9rem', lineHeight: 1.7, maxWidth: 300, marginBottom: 24, color: 'rgba(255,255,255,0.5)' }}>Học tiếng Anh với sức mạnh AI. Chuẩn bị cho IELTS với lộ trình luyện tập cá nhân hóa 4 kỹ năng.</p>
                         <div style={{ display: 'flex', gap: 10 }}>
                             {['𝕏', 'in', 'f', '▶'].map((icon, i) => (
                                 <button key={i} style={{ width: 36, height: 36, borderRadius: 8, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 600, transition: 'all 0.2s', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
@@ -34,12 +54,14 @@ export function LandingFooter() {
                             ))}
                         </div>
                     </div>
-                    {Object.entries(FOOTER_LINKS).map(([group, links]) => (
+                    {Object.entries(FOOTER_SECTIONS).map(([group, links]) => (
                         <div key={group}>
                             <div style={{ fontSize: '0.75rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)', marginBottom: 16 }}>{group}</div>
                             <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 10 }}>
                                 {links.map((link) => (
-                                    <li key={link}><a href="#" style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.5)', textDecoration: 'none', transition: 'color 0.2s' }} onMouseEnter={(e) => (e.currentTarget.style.color = '#fff')} onMouseLeave={(e) => (e.currentTarget.style.color = 'rgba(255,255,255,0.5)')}>{link}</a></li>
+                                    <li key={link.label}>
+                                        <Link to={link.href} style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.5)', textDecoration: 'none', transition: 'color 0.2s' }} onMouseEnter={(e) => (e.currentTarget.style.color = '#fff')} onMouseLeave={(e) => (e.currentTarget.style.color = 'rgba(255,255,255,0.5)')}>{link.label}</Link>
+                                    </li>
                                 ))}
                             </ul>
                         </div>

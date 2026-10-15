@@ -1,27 +1,25 @@
 @echo off
 setlocal
+set "PATH=%LOCALAPPDATA%\Microsoft\dotnet;%PATH%"
 set "ASPNETCORE_ENVIRONMENT=Development"
 set "DOTNET_ENVIRONMENT=Development"
 set "ASPNETCORE_URLS=http://localhost:5000"
 set "DOTNET_ROLL_FORWARD=Major"
-echo [*] Su dung Gemma API key tu cau hinh backend (appsettings/env cua backend).
 
-set "DOTNET_EF=%USERPROFILE%\.dotnet\tools\dotnet-ef.exe"
-if not exist "%DOTNET_EF%" (
-  set "DOTNET_EF=dotnet ef"
-)
+echo [*] Dang tat tien trinh backend cu tren port 5000 (neu co)...
+for /f "tokens=5" %%a in ('netstat -aon ^| findstr ":5000" ^| findstr "LISTENING"') do taskkill /f /pid %%a 2>nul
+timeout /t 1 /nobreak >nul
 
-echo [*] Dang tat tap tin backend cu dang vao memory...
-for /f "tokens=5" %%a in ('netstat -aon ^| findstr ":5000" ^| findstr "LISTENING"') do taskkill /f /pid %%a
-timeout /t 2 /nobreak >nul
-
-echo [*] Dang cap nhat database schema...
-call %DOTNET_EF% database update --project EnglishExamApp.Infrastructure\EnglishExamApp.Infrastructure.csproj --startup-project EnglishExamApp.API\EnglishExamApp.API.csproj
+cd /d "%~dp0EnglishExamApp.API"
+echo [*] Dang build Backend...
+dotnet build EnglishExamApp.API.csproj -c Debug
 if errorlevel 1 (
-  echo [!] Migration that bai ^(co the do Application Control policy^). Tiep tuc...
+  echo [!] Build that bai!
+  pause
+  exit /b 1
 )
 
-echo [*] Starting Backend directly using dotnet run to bypass Windows Defender Application Control...
+echo [*] Dang chay Backend English4U (SQLite) tai http://localhost:5000...
 title EnglishExamApp Backend
-dotnet run --project EnglishExamApp.API\EnglishExamApp.API.csproj --urls "http://localhost:5000"
+dotnet bin\Debug\net9.0\EnglishExamApp.API.dll --urls "http://localhost:5000"
 pause

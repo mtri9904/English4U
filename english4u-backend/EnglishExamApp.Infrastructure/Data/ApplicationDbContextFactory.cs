@@ -17,8 +17,15 @@ public sealed class ApplicationDbContextFactory : IDesignTimeDbContextFactory<Ap
                 "Missing required connection string 'DefaultConnection'. Set it with environment variable 'ConnectionStrings__DefaultConnection' or user-secrets key 'ConnectionStrings:DefaultConnection'.");
         }
 
+        if (connectionString.Contains("Server=", StringComparison.OrdinalIgnoreCase)
+            || connectionString.Contains("Initial Catalog", StringComparison.OrdinalIgnoreCase)
+            || (connectionString.Contains("User Id=", StringComparison.OrdinalIgnoreCase) && !connectionString.Contains("Data Source=", StringComparison.OrdinalIgnoreCase)))
+        {
+            connectionString = "Data Source=english4u.db";
+        }
+
         var optionsBuilder = new DbContextOptionsBuilder<ApplicationDbContext>();
-        optionsBuilder.UseSqlServer(connectionString);
+        optionsBuilder.UseSqlite(connectionString);
 
         return new ApplicationDbContext(optionsBuilder.Options);
     }

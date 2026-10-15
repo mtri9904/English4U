@@ -246,24 +246,6 @@ public sealed partial class ExamExecutionService(
                 item.StartedAt,
                 item.EndedAt,
                 item.TimeRemaining,
-                TotalQuestions =
-                    item.Exam.ExamSections
-                        .SelectMany(section => section.ReadingPassages)
-                        .SelectMany(passage => passage.QuestionGroups)
-                        .SelectMany(group => group.Questions)
-                        .Count()
-                    + item.Exam.ExamSections
-                        .SelectMany(section => section.ListeningParts)
-                        .SelectMany(part => part.QuestionGroups)
-                        .SelectMany(group => group.Questions)
-                        .Count()
-                    + item.Exam.ExamSections
-                        .SelectMany(section => section.WritingTasks)
-                        .Count()
-                    + item.Exam.ExamSections
-                        .SelectMany(section => section.SpeakingParts)
-                        .SelectMany(part => part.SpeakingQuestions)
-                        .Count(),
                 AnsweredQuestions = item.UserAnswers
                     .Count(answer =>
                         (answer.QuestionId != null || answer.WritingTaskId != null || answer.SpeakingQuestionId != null)
@@ -300,6 +282,44 @@ public sealed partial class ExamExecutionService(
             })
             .ToListAsync(cancellationToken);
 
+        var examIds = sessions.Select(item => item.ExamId).Distinct().ToList();
+
+        var readingCounts = examIds.Count > 0
+            ? await context.Questions
+                .AsNoTracking()
+                .Where(q => q.Group.Passage != null && examIds.Contains(q.Group.Passage.Section.ExamId))
+                .GroupBy(q => q.Group.Passage!.Section.ExamId)
+                .Select(g => new { ExamId = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.ExamId, x => x.Count, cancellationToken)
+            : new Dictionary<Guid, int>();
+
+        var listeningCounts = examIds.Count > 0
+            ? await context.Questions
+                .AsNoTracking()
+                .Where(q => q.Group.ListeningPart != null && examIds.Contains(q.Group.ListeningPart.Section.ExamId))
+                .GroupBy(q => q.Group.ListeningPart!.Section.ExamId)
+                .Select(g => new { ExamId = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.ExamId, x => x.Count, cancellationToken)
+            : new Dictionary<Guid, int>();
+
+        var writingCounts = examIds.Count > 0
+            ? await context.WritingTasks
+                .AsNoTracking()
+                .Where(w => examIds.Contains(w.Section.ExamId))
+                .GroupBy(w => w.Section.ExamId)
+                .Select(g => new { ExamId = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.ExamId, x => x.Count, cancellationToken)
+            : new Dictionary<Guid, int>();
+
+        var speakingCounts = examIds.Count > 0
+            ? await context.SpeakingQuestions
+                .AsNoTracking()
+                .Where(s => examIds.Contains(s.Part.Section.ExamId))
+                .GroupBy(s => s.Part.Section.ExamId)
+                .Select(g => new { ExamId = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.ExamId, x => x.Count, cancellationToken)
+            : new Dictionary<Guid, int>();
+
         return sessions
             .Select(item => new PracticeSessionListItemDto(
                 item.Id,
@@ -311,7 +331,10 @@ public sealed partial class ExamExecutionService(
                 item.StartedAt,
                 item.EndedAt,
                 item.TimeRemaining,
-                item.TotalQuestions,
+                readingCounts.GetValueOrDefault(item.ExamId, 0)
+                    + listeningCounts.GetValueOrDefault(item.ExamId, 0)
+                    + writingCounts.GetValueOrDefault(item.ExamId, 0)
+                    + speakingCounts.GetValueOrDefault(item.ExamId, 0),
                 item.AnsweredQuestions,
                 item.ResumeQuestionNumber,
                 item.ReadingScore,
@@ -1017,20 +1040,6 @@ public sealed partial class ExamExecutionService(
                 item.StartedAt,
                 item.EndedAt,
                 item.TimeRemaining,
-                TotalQuestions =
-                    item.Exam.ExamSections
-                        .SelectMany(section => section.ReadingPassages)
-                        .SelectMany(passage => passage.QuestionGroups)
-                        .SelectMany(group => group.Questions)
-                        .Count()
-                    + item.Exam.ExamSections
-                        .SelectMany(section => section.ListeningParts)
-                        .SelectMany(part => part.QuestionGroups)
-                        .SelectMany(group => group.Questions)
-                        .Count()
-                    + item.Exam.ExamSections
-                        .SelectMany(section => section.WritingTasks)
-                        .Count(),
                 AnsweredQuestions = item.UserAnswers
                     .Count(answer => (answer.QuestionId != null || answer.WritingTaskId != null) && answer.AnswerText != null && answer.AnswerText != ""),
                 ResumeQuestionNumber = item.UserAnswers
@@ -1080,6 +1089,44 @@ public sealed partial class ExamExecutionService(
             .OrderByDescending(item => item.StartedAt)
             .ToListAsync(cancellationToken);
 
+        var examIds = attempts.Select(item => item.ExamId).Distinct().ToList();
+
+        var readingCounts = examIds.Count > 0
+            ? await context.Questions
+                .AsNoTracking()
+                .Where(q => q.Group.Passage != null && examIds.Contains(q.Group.Passage.Section.ExamId))
+                .GroupBy(q => q.Group.Passage!.Section.ExamId)
+                .Select(g => new { ExamId = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.ExamId, x => x.Count, cancellationToken)
+            : new Dictionary<Guid, int>();
+
+        var listeningCounts = examIds.Count > 0
+            ? await context.Questions
+                .AsNoTracking()
+                .Where(q => q.Group.ListeningPart != null && examIds.Contains(q.Group.ListeningPart.Section.ExamId))
+                .GroupBy(q => q.Group.ListeningPart!.Section.ExamId)
+                .Select(g => new { ExamId = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.ExamId, x => x.Count, cancellationToken)
+            : new Dictionary<Guid, int>();
+
+        var writingCounts = examIds.Count > 0
+            ? await context.WritingTasks
+                .AsNoTracking()
+                .Where(w => examIds.Contains(w.Section.ExamId))
+                .GroupBy(w => w.Section.ExamId)
+                .Select(g => new { ExamId = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.ExamId, x => x.Count, cancellationToken)
+            : new Dictionary<Guid, int>();
+
+        var speakingCounts = examIds.Count > 0
+            ? await context.SpeakingQuestions
+                .AsNoTracking()
+                .Where(s => examIds.Contains(s.Part.Section.ExamId))
+                .GroupBy(s => s.Part.Section.ExamId)
+                .Select(g => new { ExamId = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.ExamId, x => x.Count, cancellationToken)
+            : new Dictionary<Guid, int>();
+
         return attempts
             .Select(item => new AdminAttemptListItemDto(
                 item.Id,
@@ -1094,7 +1141,10 @@ public sealed partial class ExamExecutionService(
                 item.StartedAt,
                 item.EndedAt,
                 item.TimeRemaining,
-                item.TotalQuestions,
+                readingCounts.GetValueOrDefault(item.ExamId, 0)
+                    + listeningCounts.GetValueOrDefault(item.ExamId, 0)
+                    + writingCounts.GetValueOrDefault(item.ExamId, 0)
+                    + speakingCounts.GetValueOrDefault(item.ExamId, 0),
                 item.AnsweredQuestions,
                 item.ResumeQuestionNumber,
                 item.ReadingScore,

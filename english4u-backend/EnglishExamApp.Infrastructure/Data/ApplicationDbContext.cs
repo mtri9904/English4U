@@ -41,6 +41,8 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     {
         base.OnModelCreating(modelBuilder);
 
+        var defaultDateSql = Database.IsSqlite() ? "CURRENT_TIMESTAMP" : "GETDATE()";
+
         modelBuilder.Entity<User>(entity =>
         {
             entity.ToTable("users");
@@ -70,8 +72,8 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             entity.Property(e => e.DailyStreakCount).HasColumnName("dailyStreakCount").HasDefaultValue(0);
             entity.Property(e => e.LongestStreakCount).HasColumnName("longestStreakCount").HasDefaultValue(0);
             entity.Property(e => e.LastActivityAt).HasColumnName("lastActivityAt");
-            entity.Property(e => e.CreatedAt).HasColumnName("createdAt").HasDefaultValueSql("GETDATE()");
-            entity.Property(e => e.UpdatedAt).HasColumnName("updatedAt").HasDefaultValueSql("GETDATE()");
+            entity.Property(e => e.CreatedAt).HasColumnName("createdAt").HasDefaultValueSql(defaultDateSql);
+            entity.Property(e => e.UpdatedAt).HasColumnName("updatedAt").HasDefaultValueSql(defaultDateSql);
         });
 
         modelBuilder.Entity<Role>(entity =>
@@ -129,7 +131,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             entity.Property(e => e.PaymentMethod).HasColumnName("paymentMethod").HasMaxLength(50);
             entity.Property(e => e.Status).HasColumnName("status").HasMaxLength(50);
             entity.Property(e => e.TransactionId).HasColumnName("transactionId").HasMaxLength(255);
-            entity.Property(e => e.CreatedAt).HasColumnName("createdAt").HasDefaultValueSql("GETDATE()");
+            entity.Property(e => e.CreatedAt).HasColumnName("createdAt").HasDefaultValueSql(defaultDateSql);
             entity.HasOne(e => e.User).WithMany(u => u.Payments).HasForeignKey(e => e.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 
@@ -146,7 +148,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             entity.Property(e => e.SourcePdfUrl).HasColumnName("sourcePdfUrl").HasMaxLength(500);
             entity.Property(e => e.IsPublished).HasColumnName("isPublished").HasDefaultValue(false);
             entity.Property(e => e.CreatedBy).HasColumnName("createdBy").HasMaxLength(36);
-            entity.Property(e => e.CreatedAt).HasColumnName("createdAt").HasDefaultValueSql("GETDATE()");
+            entity.Property(e => e.CreatedAt).HasColumnName("createdAt").HasDefaultValueSql(defaultDateSql);
             entity.HasOne(e => e.Creator).WithMany(u => u.CreatedExams).HasForeignKey(e => e.CreatedBy).OnDelete(DeleteBehavior.SetNull);
         });
 
@@ -282,8 +284,8 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             entity.Property(e => e.ProcessStatus).HasColumnName("processStatus").HasMaxLength(50).HasDefaultValue("Pending");
             entity.Property(e => e.ErrorMessage).HasColumnName("errorMessage");
             entity.Property(e => e.GeneratedExamId).HasColumnName("generatedExamId").HasMaxLength(36);
-            entity.Property(e => e.CreatedAt).HasColumnName("createdAt").HasDefaultValueSql("GETDATE()");
-            entity.Property(e => e.UpdatedAt).HasColumnName("updatedAt").HasDefaultValueSql("GETDATE()");
+            entity.Property(e => e.CreatedAt).HasColumnName("createdAt").HasDefaultValueSql(defaultDateSql);
+            entity.Property(e => e.UpdatedAt).HasColumnName("updatedAt").HasDefaultValueSql(defaultDateSql);
             entity.HasOne(e => e.Uploader).WithMany(u => u.DocumentUploads).HasForeignKey(e => e.UploadedBy).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne(e => e.GeneratedExam).WithMany(ex => ex.DocumentUploads).HasForeignKey(e => e.GeneratedExamId).OnDelete(DeleteBehavior.SetNull);
         });
@@ -296,7 +298,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             entity.Property(e => e.UserId).HasColumnName("userId").HasMaxLength(36);
             entity.Property(e => e.ExamId).HasColumnName("examId").HasMaxLength(36);
             entity.Property(e => e.Status).HasColumnName("status").HasMaxLength(50);
-            entity.Property(e => e.StartedAt).HasColumnName("startedAt").HasDefaultValueSql("GETDATE()");
+            entity.Property(e => e.StartedAt).HasColumnName("startedAt").HasDefaultValueSql(defaultDateSql);
             entity.Property(e => e.EndedAt).HasColumnName("endedAt");
             entity.Property(e => e.TimeRemaining).HasColumnName("timeRemaining");
             entity.Property(e => e.HighlightsData).HasColumnName("highlightsData");
@@ -315,7 +317,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             entity.Property(e => e.SpeakingQuestionId).HasColumnName("speakingQuestionId").HasMaxLength(36);
             entity.Property(e => e.AnswerText).HasColumnName("answerText");
             entity.Property(e => e.ScoreEarned).HasColumnName("scoreEarned").HasDefaultValue(0.0);
-            entity.Property(e => e.SubmittedAt).HasColumnName("submittedAt").HasDefaultValueSql("GETDATE()");
+            entity.Property(e => e.SubmittedAt).HasColumnName("submittedAt").HasDefaultValueSql(defaultDateSql);
             entity.HasOne(e => e.Session).WithMany(s => s.UserAnswers).HasForeignKey(e => e.SessionId).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne(e => e.Question).WithMany(q => q.UserAnswers).HasForeignKey(e => e.QuestionId).OnDelete(DeleteBehavior.NoAction);
             entity.HasOne(e => e.WritingTask).WithMany(w => w.UserAnswers).HasForeignKey(e => e.WritingTaskId).OnDelete(DeleteBehavior.NoAction);
@@ -344,7 +346,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             entity.Property(e => e.UserId).HasColumnName("userId").HasMaxLength(36);
             entity.Property(e => e.QuestionId).HasColumnName("questionId").HasMaxLength(36);
             entity.Property(e => e.Note).HasColumnName("note");
-            entity.Property(e => e.SavedAt).HasColumnName("savedAt").HasDefaultValueSql("GETDATE()");
+            entity.Property(e => e.SavedAt).HasColumnName("savedAt").HasDefaultValueSql(defaultDateSql);
             entity.HasOne(e => e.User).WithMany(u => u.SavedQuestions).HasForeignKey(e => e.UserId).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne(e => e.Question).WithMany(q => q.SavedQuestions).HasForeignKey(e => e.QuestionId).OnDelete(DeleteBehavior.Cascade);
         });
@@ -372,7 +374,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             entity.Property(e => e.WritingScore).HasColumnName("writingScore");
             entity.Property(e => e.SpeakingScore).HasColumnName("speakingScore");
             entity.Property(e => e.OverallFeedback).HasColumnName("overallFeedback");
-            entity.Property(e => e.ScoredAt).HasColumnName("scoredAt").HasDefaultValueSql("GETDATE()");
+            entity.Property(e => e.ScoredAt).HasColumnName("scoredAt").HasDefaultValueSql(defaultDateSql);
             entity.HasOne(e => e.Session).WithMany(s => s.ScoringResults).HasForeignKey(e => e.SessionId).OnDelete(DeleteBehavior.Cascade);
         });
 
@@ -447,7 +449,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             entity.Property(e => e.Title).HasColumnName("title").HasMaxLength(255).IsRequired();
             entity.Property(e => e.Message).HasColumnName("message");
             entity.Property(e => e.IsRead).HasColumnName("isRead").HasDefaultValue(false);
-            entity.Property(e => e.CreatedAt).HasColumnName("createdAt").HasDefaultValueSql("GETDATE()");
+            entity.Property(e => e.CreatedAt).HasColumnName("createdAt").HasDefaultValueSql(defaultDateSql);
             entity.HasOne(e => e.User).WithMany(u => u.Notifications).HasForeignKey(e => e.UserId).OnDelete(DeleteBehavior.Cascade);
         });
     }

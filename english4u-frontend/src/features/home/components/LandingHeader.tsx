@@ -6,6 +6,7 @@ const NAV_LINKS = [
     { label: 'Trang chủ', href: '/' },
     { label: 'Giới thiệu', href: '/about' },
     { label: 'Liên hệ', href: '/contact' },
+    { label: 'Chính sách bảo mật', href: '/privacy-policy' },
 ]
 
 export function LandingHeader() {
@@ -21,16 +22,27 @@ export function LandingHeader() {
     return (
         <header style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 1000, transition: 'all 0.3s cubic-bezier(0.4,0,0.2,1)', background: scrolled ? 'rgba(255,255,255,0.88)' : 'transparent', backdropFilter: scrolled ? 'blur(20px)' : 'none', borderBottom: scrolled ? '1px solid rgba(19,125,197,0.1)' : '1px solid transparent', boxShadow: scrolled ? '0 4px 24px rgba(13,27,42,0.08)' : 'none' }}>
             <div className="container-app" style={{ display: 'flex', alignItems: 'center', height: 68, gap: 32 }}>
-                <a href="/" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', flexShrink: 0 }}>
+                <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', flexShrink: 0 }}>
                     <img
-                        src="logo/Logo.png"
+                        src="/logo/Logo.png"
+                        alt="English4U Logo"
                         style={{
-                            width: 45,
-                            height: 45,
-                            objectFit: 'cover'
+                            width: 42,
+                            height: 42,
+                            objectFit: 'contain'
                         }}
                     />
-                </a>
+                    <span style={{
+                        fontSize: '1.4rem',
+                        fontWeight: 800,
+                        color: '#0f172a',
+                        letterSpacing: '-0.02em',
+                        display: 'flex',
+                        alignItems: 'center'
+                    }}>
+                        English<span style={{ color: '#2563eb' }}>4U</span>
+                    </span>
+                </Link>
                 <nav style={{ flex: 1, display: 'flex', justifyContent: 'center', gap: 4 }}>
                     {NAV_LINKS.map((link) => (
                         <Link

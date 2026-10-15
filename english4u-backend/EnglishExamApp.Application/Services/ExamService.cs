@@ -22,51 +22,81 @@ public class ExamService(
 
     public async Task<List<ExamListItemDto>> GetAllAsync(CancellationToken cancellationToken = default)
     {
-        return await context.Exams
+        var exams = await context.Exams
             .AsNoTracking()
             .OrderByDescending(e => e.CreatedAt)
-            .Select(e => new ExamListItemDto(
-                e.Id, e.Title, e.Description, e.DurationMinutes,
-                e.TotalPoints, e.ExamType, e.IsPublished, e.CreatedBy, e.CreatedAt,
-                e.ExamSections.Select(s => s.SkillType).ToList()))
+            .Include(e => e.ExamSections)
             .ToListAsync(cancellationToken);
+
+        return exams.Select(e => new ExamListItemDto(
+            e.Id, e.Title, e.Description, e.DurationMinutes,
+            e.TotalPoints, e.ExamType, e.IsPublished, e.CreatedBy, e.CreatedAt,
+            e.ExamSections.OrderBy(s => s.OrderIndex).Select(s => s.SkillType).ToList()))
+        .ToList();
     }
 
     public async Task<List<PracticeExamListItemDto>> GetPublishedPracticeExamsAsync(CancellationToken cancellationToken = default)
     {
-        return await context.Exams
+        var exams = await context.Exams
             .AsNoTracking()
             .Where(e => e.IsPublished)
             .OrderByDescending(e => e.CreatedAt)
-            .Select(e => new PracticeExamListItemDto(
-                e.Id,
-                e.Title,
-                e.Description,
-                e.DurationMinutes,
-                e.ExamType,
-                e.CreatedAt,
-                e.ExamSections
-                    .Select(section => section.SkillType)
-                    .Distinct()
-                    .ToList(),
-                e.ExamSections.Count(),
-                e.ExamSections
-                    .SelectMany(section => section.ReadingPassages)
-                    .SelectMany(passage => passage.QuestionGroups)
-                    .SelectMany(group => group.Questions)
-                    .Count(),
-                e.ExamSections
-                    .SelectMany(section => section.ListeningParts)
-                    .SelectMany(part => part.QuestionGroups)
-                    .SelectMany(group => group.Questions)
-                    .Count(),
-                e.ExamSections
-                    .SelectMany(section => section.WritingTasks)
-                    .Count(),
-                e.ExamSections
-                    .SelectMany(section => section.SpeakingParts)
-                    .Count()))
+            .Include(e => e.ExamSections)
             .ToListAsync(cancellationToken);
+
+        if (exams.Count == 0)
+        {
+            return [];
+        }
+
+        var examIds = exams.Select(e => e.Id).ToList();
+
+        var readingCounts = await context.Questions
+            .AsNoTracking()
+            .Where(q => q.Group.Passage != null && examIds.Contains(q.Group.Passage.Section.ExamId))
+            .GroupBy(q => q.Group.Passage!.Section.ExamId)
+            .Select(g => new { ExamId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.ExamId, x => x.Count, cancellationToken);
+
+        var listeningCounts = await context.Questions
+            .AsNoTracking()
+            .Where(q => q.Group.ListeningPart != null && examIds.Contains(q.Group.ListeningPart.Section.ExamId))
+            .GroupBy(q => q.Group.ListeningPart!.Section.ExamId)
+            .Select(g => new { ExamId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.ExamId, x => x.Count, cancellationToken);
+
+        var writingCounts = await context.WritingTasks
+            .AsNoTracking()
+            .Where(w => examIds.Contains(w.Section.ExamId))
+            .GroupBy(w => w.Section.ExamId)
+            .Select(g => new { ExamId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.ExamId, x => x.Count, cancellationToken);
+
+        var speakingPartCounts = await context.SpeakingParts
+            .AsNoTracking()
+            .Where(s => examIds.Contains(s.Section.ExamId))
+            .GroupBy(s => s.Section.ExamId)
+            .Select(g => new { ExamId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.ExamId, x => x.Count, cancellationToken);
+
+        return exams.Select(e => new PracticeExamListItemDto(
+            e.Id,
+            e.Title,
+            e.Description,
+            e.DurationMinutes,
+            e.ExamType,
+            e.CreatedAt,
+            e.ExamSections
+                .OrderBy(section => section.OrderIndex)
+                .Select(section => section.SkillType)
+                .Distinct()
+                .ToList(),
+            e.ExamSections.Count,
+            readingCounts.GetValueOrDefault(e.Id, 0),
+            listeningCounts.GetValueOrDefault(e.Id, 0),
+            writingCounts.GetValueOrDefault(e.Id, 0),
+            speakingPartCounts.GetValueOrDefault(e.Id, 0)
+        )).ToList();
     }
 
     public async Task<bool> DeleteAsync(Guid examId, CancellationToken cancellationToken = default)
@@ -186,56 +216,87 @@ public class ExamService(
 
     public async Task<PracticeExamDetailDto?> GetPublishedPracticeExamDetailAsync(Guid examId, CancellationToken cancellationToken = default)
     {
-        return await context.Exams
+        var exam = await context.Exams
             .AsNoTracking()
             .Where(e => e.IsPublished && e.Id == examId)
-            .Select(e => new PracticeExamDetailDto(
-                e.Id,
-                e.Title,
-                e.Description,
-                e.DurationMinutes,
-                e.TotalPoints,
-                e.ExamType,
-                e.CreatedAt,
-                e.ExamSections
-                    .Select(section => section.SkillType)
-                    .Distinct()
-                    .ToList(),
-                e.ExamSections.Count(),
-                e.ExamSections
-                    .SelectMany(section => section.ReadingPassages)
-                    .SelectMany(passage => passage.QuestionGroups)
-                    .SelectMany(group => group.Questions)
-                    .Count(),
-                e.ExamSections
-                    .SelectMany(section => section.ListeningParts)
-                    .SelectMany(part => part.QuestionGroups)
-                    .SelectMany(group => group.Questions)
-                    .Count(),
-                e.ExamSections
-                    .SelectMany(section => section.WritingTasks)
-                    .Count(),
-                e.ExamSections
-                    .SelectMany(section => section.SpeakingParts)
-                    .Count(),
-                e.ExamSections
-                    .OrderBy(section => section.OrderIndex)
-                    .Select(section => new PracticeExamSectionSummaryDto(
-                        section.Id,
-                        section.SkillType,
-                        section.Title,
-                        section.OrderIndex,
-                        section.ReadingPassages.Count(),
-                        section.ListeningParts.Count(),
-                        section.ReadingPassages.SelectMany(passage => passage.QuestionGroups).Count()
-                            + section.ListeningParts.SelectMany(part => part.QuestionGroups).Count(),
-                        section.ReadingPassages.SelectMany(passage => passage.QuestionGroups).SelectMany(group => group.Questions).Count()
-                            + section.ListeningParts.SelectMany(part => part.QuestionGroups).SelectMany(group => group.Questions).Count(),
-                        section.WritingTasks.Count(),
-                        section.SpeakingParts.Count(),
-                        section.SpeakingParts.SelectMany(part => part.SpeakingQuestions).Count()))
-                    .ToList()))
+            .Include(e => e.ExamSections)
+                .ThenInclude(s => s.ReadingPassages)
+                    .ThenInclude(p => p.QuestionGroups)
+                        .ThenInclude(g => g.Questions)
+            .Include(e => e.ExamSections)
+                .ThenInclude(s => s.ListeningParts)
+                    .ThenInclude(l => l.QuestionGroups)
+                        .ThenInclude(g => g.Questions)
+            .Include(e => e.ExamSections)
+                .ThenInclude(s => s.WritingTasks)
+            .Include(e => e.ExamSections)
+                .ThenInclude(s => s.SpeakingParts)
+                    .ThenInclude(sp => sp.SpeakingQuestions)
+            .AsSplitQuery()
             .FirstOrDefaultAsync(cancellationToken);
+
+        if (exam == null)
+        {
+            return null;
+        }
+
+        var readingQuestionCount = exam.ExamSections
+            .SelectMany(section => section.ReadingPassages)
+            .SelectMany(passage => passage.QuestionGroups)
+            .SelectMany(group => group.Questions)
+            .Count();
+
+        var listeningQuestionCount = exam.ExamSections
+            .SelectMany(section => section.ListeningParts)
+            .SelectMany(part => part.QuestionGroups)
+            .SelectMany(group => group.Questions)
+            .Count();
+
+        var writingTaskCount = exam.ExamSections
+            .SelectMany(section => section.WritingTasks)
+            .Count();
+
+        var speakingPartCount = exam.ExamSections
+            .SelectMany(section => section.SpeakingParts)
+            .Count();
+
+        var sections = exam.ExamSections
+            .OrderBy(section => section.OrderIndex)
+            .Select(section => new PracticeExamSectionSummaryDto(
+                section.Id,
+                section.SkillType,
+                section.Title,
+                section.OrderIndex,
+                section.ReadingPassages.Count,
+                section.ListeningParts.Count,
+                section.ReadingPassages.Sum(passage => passage.QuestionGroups.Count)
+                    + section.ListeningParts.Sum(part => part.QuestionGroups.Count),
+                section.ReadingPassages.Sum(passage => passage.QuestionGroups.Sum(group => group.Questions.Count))
+                    + section.ListeningParts.Sum(part => part.QuestionGroups.Sum(group => group.Questions.Count)),
+                section.WritingTasks.Count,
+                section.SpeakingParts.Count,
+                section.SpeakingParts.Sum(part => part.SpeakingQuestions.Count)))
+            .ToList();
+
+        return new PracticeExamDetailDto(
+            exam.Id,
+            exam.Title,
+            exam.Description,
+            exam.DurationMinutes,
+            exam.TotalPoints,
+            exam.ExamType,
+            exam.CreatedAt,
+            exam.ExamSections
+                .OrderBy(section => section.OrderIndex)
+                .Select(section => section.SkillType)
+                .Distinct()
+                .ToList(),
+            exam.ExamSections.Count,
+            readingQuestionCount,
+            listeningQuestionCount,
+            writingTaskCount,
+            speakingPartCount,
+            sections);
     }
 
     public async Task<Guid> CreateExamAsync(CreateExamDto dto, Guid createdBy, CancellationToken cancellationToken = default)

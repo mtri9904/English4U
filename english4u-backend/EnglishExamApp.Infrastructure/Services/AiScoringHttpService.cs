@@ -21,10 +21,10 @@ public sealed partial class AiScoringHttpService(
 {
     private const int MaxWritingTaskImages = 2;
     private const int DefaultMaxImageBytes = 1_500_000;
-    private const string DefaultGeminiScoringModel = "gemini-2.5-flash-lite";
-    private const string StableGeminiScoringFallbackModel = "gemini-2.5-flash";
-    private const string DefaultFeedbackTranslationModel = "gemma-4-26b-a4b-it";
-    private const string StableFeedbackTranslationFallbackModel = "gemma-4-31b-it";
+    private const string DefaultGeminiScoringModel = "gemini-3.1-flash-lite";
+    private const string StableGeminiScoringFallbackModel = "gemini-3.5-flash-lite";
+    private const string DefaultFeedbackTranslationModel = "gemini-3.1-flash-lite";
+    private const string StableFeedbackTranslationFallbackModel = "gemini-3.5-flash-lite";
     private const int DefaultGeminiMaxAttemptsPerModel = 3;
     private const int DefaultGeminiRetryBaseDelayMs = 1_200;
 

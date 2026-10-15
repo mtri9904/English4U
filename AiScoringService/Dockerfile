@@ -19,8 +19,10 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Montreal Forced Aligner (MFA) via Conda using conda-forge only
-RUN conda clean --all -y && conda install --solver=classic -y -c conda-forge --override-channels montreal-forced-aligner
+# Install Montreal Forced Aligner (MFA) via Conda using libmamba solver (fast, low memory)
+RUN conda install -n base -y -c conda-forge conda-libmamba-solver && \
+    conda install --solver=libmamba -y -c conda-forge --override-channels montreal-forced-aligner && \
+    conda clean --all -y
 
 # Pre-download English acoustic model and dictionary for MFA
 ENV MFA_ROOT_DIR=/code/mfa_models
