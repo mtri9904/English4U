@@ -42,9 +42,19 @@ public class AuthController(
         Google.Apis.Auth.GoogleJsonWebSignature.Payload payload;
         try
         {
+            var expectedClientId = configuration["Google:ClientId"];
+            var audiences = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "1003768898386-g9md0081ueou3pj0j93uba4t6j0vn3cg.apps.googleusercontent.com"
+            };
+            if (!string.IsNullOrWhiteSpace(expectedClientId))
+            {
+                audiences.Add(expectedClientId);
+            }
+
             var settings = new Google.Apis.Auth.GoogleJsonWebSignature.ValidationSettings
             {
-                Audience = [configuration["Google:ClientId"]!]
+                Audience = audiences.ToList()
             };
             payload = await Google.Apis.Auth.GoogleJsonWebSignature.ValidateAsync(request.IdToken, settings);
         }
