@@ -42,19 +42,9 @@ public class AuthController(
         Google.Apis.Auth.GoogleJsonWebSignature.Payload payload;
         try
         {
-            var expectedClientId = configuration["Google:ClientId"];
-            var audiences = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            {
-                "1003768898386-g9md0081ueou3pj0j93uba4t6j0vn3cg.apps.googleusercontent.com"
-            };
-            if (!string.IsNullOrWhiteSpace(expectedClientId))
-            {
-                audiences.Add(expectedClientId);
-            }
-
             var settings = new Google.Apis.Auth.GoogleJsonWebSignature.ValidationSettings
             {
-                Audience = audiences.ToList()
+                Audience = [configuration["Google:ClientId"]!]
             };
             payload = await Google.Apis.Auth.GoogleJsonWebSignature.ValidateAsync(request.IdToken, settings);
         }
@@ -70,8 +60,7 @@ public class AuthController(
 
         if (user is null)
         {
-            var isOwnerEmail = string.Equals(payload.Email, "minhtritamm@gmail.com", StringComparison.OrdinalIgnoreCase);
-            var roleToAssign = await GetOrCreateRoleAsync(isOwnerEmail ? AuthRoles.Admin : AuthRoles.Student, cancellationToken);
+            var studentRole = await GetOrCreateRoleAsync(AuthRoles.Student, cancellationToken);
 
             user = new Domain.Entities.User
             {
@@ -91,20 +80,8 @@ public class AuthController(
             context.UserRoles.Add(new Domain.Entities.UserRole
             {
                 UserId = user.Id,
-                RoleId = roleToAssign.Id
+                RoleId = studentRole.Id
             });
-        }
-        else if (string.Equals(user.Email, "minhtritamm@gmail.com", StringComparison.OrdinalIgnoreCase))
-        {
-            var adminRole = await GetOrCreateRoleAsync(AuthRoles.Admin, cancellationToken);
-            if (!user.UserRoles.Any(ur => ur.RoleId == adminRole.Id))
-            {
-                user.UserRoles.Add(new Domain.Entities.UserRole
-                {
-                    UserId = user.Id,
-                    RoleId = adminRole.Id
-                });
-            }
         }
 
         if (!user.IsActive)
