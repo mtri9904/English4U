@@ -37,6 +37,8 @@ public interface IApplicationDbContext
     DbSet<Tag> Tags { get; }
     DbSet<ExamTag> ExamTags { get; }
     DbSet<Notification> Notifications { get; }
+    DbSet<FlashcardDeck> FlashcardDecks { get; }
+    DbSet<FlashcardItem> FlashcardItems { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

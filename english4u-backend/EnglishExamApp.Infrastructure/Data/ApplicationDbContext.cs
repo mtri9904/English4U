@@ -36,6 +36,8 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<Tag> Tags => Set<Tag>();
     public DbSet<ExamTag> ExamTags => Set<ExamTag>();
     public DbSet<Notification> Notifications => Set<Notification>();
+    public DbSet<FlashcardDeck> FlashcardDecks => Set<FlashcardDeck>();
+    public DbSet<FlashcardItem> FlashcardItems => Set<FlashcardItem>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -451,6 +453,52 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             entity.Property(e => e.IsRead).HasColumnName("isRead").HasDefaultValue(false);
             entity.Property(e => e.CreatedAt).HasColumnName("createdAt").HasDefaultValueSql(defaultDateSql);
             entity.HasOne(e => e.User).WithMany(u => u.Notifications).HasForeignKey(e => e.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<FlashcardDeck>(entity =>
+        {
+            entity.ToTable("flashcard_decks");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasColumnName("id").HasMaxLength(36);
+            entity.Property(e => e.UserId).HasColumnName("userId").HasMaxLength(36);
+            entity.Property(e => e.Title).HasColumnName("title").HasMaxLength(255).IsRequired();
+            entity.Property(e => e.Description).HasColumnName("description").HasMaxLength(1000);
+            entity.Property(e => e.Color).HasColumnName("color").HasMaxLength(50).HasDefaultValue("#3b82f6");
+            entity.Property(e => e.Icon).HasColumnName("icon").HasMaxLength(50).HasDefaultValue("Book");
+            entity.Property(e => e.IsPublic).HasColumnName("isPublic").HasDefaultValue(false);
+            entity.Property(e => e.CreatedAt).HasColumnName("createdAt").HasDefaultValueSql(defaultDateSql);
+            entity.Property(e => e.UpdatedAt).HasColumnName("updatedAt").HasDefaultValueSql(defaultDateSql);
+            entity.HasOne(e => e.User).WithMany().HasForeignKey(e => e.UserId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasMany(e => e.Items).WithOne(i => i.Deck).HasForeignKey(i => i.DeckId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<FlashcardItem>(entity =>
+        {
+            entity.ToTable("flashcard_items");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasColumnName("id").HasMaxLength(36);
+            entity.Property(e => e.DeckId).HasColumnName("deckId").HasMaxLength(36);
+            entity.Property(e => e.UserId).HasColumnName("userId").HasMaxLength(36);
+            entity.Property(e => e.Word).HasColumnName("word").HasMaxLength(255).IsRequired();
+            entity.Property(e => e.Phonetic).HasColumnName("phonetic").HasMaxLength(255);
+            entity.Property(e => e.PartOfSpeech).HasColumnName("partOfSpeech").HasMaxLength(100);
+            entity.Property(e => e.MeaningVi).HasColumnName("meaningVi").HasMaxLength(1000).IsRequired();
+            entity.Property(e => e.DefinitionEn).HasColumnName("definitionEn").HasMaxLength(1000);
+            entity.Property(e => e.ExampleSentence).HasColumnName("exampleSentence").HasMaxLength(2000);
+            entity.Property(e => e.ExampleSentenceVi).HasColumnName("exampleSentenceVi").HasMaxLength(2000);
+            entity.Property(e => e.Collocations).HasColumnName("collocations").HasMaxLength(1000);
+            entity.Property(e => e.ImageUrl).HasColumnName("imageUrl").HasMaxLength(1000);
+            entity.Property(e => e.AudioUrl).HasColumnName("audioUrl").HasMaxLength(1000);
+            entity.Property(e => e.ContextNote).HasColumnName("contextNote").HasMaxLength(500);
+            entity.Property(e => e.Repetitions).HasColumnName("repetitions").HasDefaultValue(0);
+            entity.Property(e => e.EaseFactor).HasColumnName("easeFactor").HasDefaultValue(2.5);
+            entity.Property(e => e.IntervalDays).HasColumnName("intervalDays").HasDefaultValue(0);
+            entity.Property(e => e.NextReviewDate).HasColumnName("nextReviewDate").HasDefaultValueSql(defaultDateSql);
+            entity.Property(e => e.LastReviewedAt).HasColumnName("lastReviewedAt");
+            entity.Property(e => e.ReviewCount).HasColumnName("reviewCount").HasDefaultValue(0);
+            entity.Property(e => e.CreatedAt).HasColumnName("createdAt").HasDefaultValueSql(defaultDateSql);
+            entity.Property(e => e.UpdatedAt).HasColumnName("updatedAt").HasDefaultValueSql(defaultDateSql);
+            entity.HasOne(e => e.User).WithMany().HasForeignKey(e => e.UserId).OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

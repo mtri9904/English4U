@@ -38,6 +38,11 @@ import {
     ClientSessionSubmitPage,
     ClientProgressPage,
 } from '@/features/client';
+import {
+    FlashcardDeckListPage,
+    FlashcardDeckDetailPage,
+    FlashcardStudyPage,
+} from '@/features/flashcard';
 
 
 export const appRouter = createBrowserRouter([
@@ -202,8 +207,38 @@ export const appRouter = createBrowserRouter([
                 element: <ClientProgressPage />,
             },
             {
+                path: 'flashcards',
+                element: <FlashcardDeckListPage />,
+            },
+            {
+                path: 'flashcards/:deckId',
+                element: <FlashcardDeckDetailPage />,
+            },
+            {
+                path: 'flashcards/:deckId/study',
+                element: <FlashcardStudyPage />,
+            },
+            {
                 path: 'profile',
                 element: <ClientProfilePage />,
+            },
+        ]
+    },
+    {
+        path: '/flashcards',
+        element: <ClientLayout />,
+        children: [
+            {
+                index: true,
+                element: <FlashcardDeckListPage />,
+            },
+            {
+                path: ':deckId',
+                element: <FlashcardDeckDetailPage />,
+            },
+            {
+                path: ':deckId/study',
+                element: <FlashcardStudyPage />,
             },
         ]
     },

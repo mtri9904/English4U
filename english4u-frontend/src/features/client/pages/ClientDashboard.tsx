@@ -252,39 +252,6 @@ export const ClientDashboard: React.FC = () => {
         [skillRows],
     );
 
-    const bandTrendData = useMemo(
-        () => finishedSessions
-            .map((session) => {
-                const band = getSessionBandScore(session);
-                const completedAtMs = parseDateMs(session.endedAt);
-                if (band == null || completedAtMs <= 0) return null;
-
-                const skill = getSkillKey(session.skillType);
-                return {
-                    label: formatShortDate(session.endedAt),
-                    attemptLabel: formatShortDate(session.endedAt),
-                    band: Number(band.toFixed(1)),
-                    skill: skillMeta[skill].label,
-                    examTitle: session.examTitle,
-                    completedAt: session.endedAt ?? session.startedAt,
-                };
-            })
-            .filter((item): item is {
-                label: string;
-                attemptLabel: string;
-                band: number;
-                skill: string;
-                examTitle: string;
-                completedAt: string;
-            } => item != null)
-            .sort((left, right) => parseDateMs(left.completedAt) - parseDateMs(right.completedAt))
-            .slice(-8)
-            .map((item, index) => ({
-                ...item,
-                label: `${index + 1}`,
-            })),
-        [finishedSessions],
-    );
 
     const fluencyTrendData = useMemo(
         () => speakingDetailQueries
@@ -391,7 +358,7 @@ export const ClientDashboard: React.FC = () => {
         },
         {
             title: 'Hoàn thành mục tiêu tuần',
-            note: `${completedThisWeek}/${WEEKLY_GOAL} bài đã hoàn thành`,
+            note: `${completedThisWeek}/${WEEKLY_GOAL} bài đã hoàn thành (${weeklyProgress}%)`,
             action: 'Luyện',
             done: completedThisWeek >= WEEKLY_GOAL,
             onClick: () => navigate('/app/practice'),

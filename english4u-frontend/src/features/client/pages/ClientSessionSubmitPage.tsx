@@ -28,6 +28,7 @@ import { ReviewCopilotDrawer } from '../components/ReviewCopilotDrawer';
 import { ListeningAttemptModeModal } from '../components/ListeningAttemptModeModal';
 import { SpeakingSessionReview } from '../components/speaking/SpeakingSessionReview';
 import { ObjectiveSessionReviewRunner } from '../components/ObjectiveSessionReviewRunner';
+import { ReviewAddToFlashcard } from '../components/ReviewAddToFlashcard';
 import {
     buildWritingReviewCopilotContext,
     buildWritingTaskFocusPayload,
@@ -1850,6 +1851,7 @@ export const ClientSessionSubmitPage = () => {
                     ) : null}
                 </Space>
             </div>
+            <ReviewAddToFlashcard />
             <ListeningAttemptModeModal
                 open={pendingListeningRestart}
                 loading={startSessionMutation.isPending}

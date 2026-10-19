@@ -13,6 +13,7 @@ import {
     CheckCircleOutlined,
     ReloadOutlined,
     RiseOutlined,
+    ThunderboltOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useUserProfileQuery, userApi } from '@/features/admin/api/user.api';
@@ -211,6 +212,11 @@ export const ClientLayout: React.FC = () => {
             label: 'Bài thi của tôi',
         },
         {
+            key: '/app/flashcards',
+            icon: <ThunderboltOutlined />,
+            label: 'Flashcard Từ vựng',
+        },
+        {
             key: '/app/progress',
             icon: <RiseOutlined />,
             label: 'Tiến trình học',
@@ -326,7 +332,7 @@ export const ClientLayout: React.FC = () => {
 
                     <Menu
                         mode="inline"
-                        selectedKeys={[location.pathname]}
+                        selectedKeys={[location.pathname.startsWith('/app/flashcards') ? '/app/flashcards' : location.pathname]}
                         items={sidebarItems}
                         onClick={({ key }) => navigate(key)}
                         style={{
