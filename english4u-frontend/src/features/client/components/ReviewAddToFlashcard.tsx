@@ -582,7 +582,7 @@ export const ReviewAddToFlashcard: React.FC = () => {
                         >
                             <Spin indicator={<LoadingOutlined style={{ fontSize: 32, color: '#4f46e5' }} spin />} />
                             <div style={{ marginTop: 12, color: '#4f46e5', fontWeight: 600, fontSize: '0.95rem' }}>
-                                AI đang tra cứu phiên âm, dịch nghĩa theo ngữ cảnh và vẽ ảnh minh họa 3D...
+                                AI đang tra cứu phiên âm, dịch nghĩa theo ngữ cảnh và lấy ảnh minh họa...
                             </div>
                         </div>
                     )}
