@@ -102,11 +102,44 @@ public static class DatabaseInitializer
 
             try
             {
-                await context.Database.ExecuteSqlRawAsync("ALTER TABLE flashcard_items ADD COLUMN quizDistractors TEXT;");
+                var connection = context.Database.GetDbConnection();
+                var shouldClose = false;
+                if (connection.State != System.Data.ConnectionState.Open)
+                {
+                    await connection.OpenAsync();
+                    shouldClose = true;
+                }
+
+                using (var cmd = connection.CreateCommand())
+                {
+                    cmd.CommandText = "PRAGMA table_info(flashcard_items);";
+                    using var reader = await cmd.ExecuteReaderAsync();
+                    var hasQuizDistractors = false;
+                    while (await reader.ReadAsync())
+                    {
+                        var colName = reader["name"]?.ToString();
+                        if (string.Equals(colName, "quizDistractors", StringComparison.OrdinalIgnoreCase))
+                        {
+                            hasQuizDistractors = true;
+                            break;
+                        }
+                    }
+
+                    if (!hasQuizDistractors)
+                    {
+                        await reader.CloseAsync();
+                        await context.Database.ExecuteSqlRawAsync("ALTER TABLE flashcard_items ADD COLUMN quizDistractors TEXT;");
+                    }
+                }
+
+                if (shouldClose)
+                {
+                    await connection.CloseAsync();
+                }
             }
             catch
             {
-                // Column already exists or freshly created
+                // Column check or add already satisfied
             }
         }
         catch (Exception ex)

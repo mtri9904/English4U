@@ -13,6 +13,10 @@ __pycache__/
 # .NET build outputs
 bin/
 obj/
+appsettings.Development.json
+appsettings.Local.json
+**/appsettings.Development.json
+**/appsettings.Local.json
 
 # Speaking evaluation local media and generated outputs
 AiScoringService/evaluation/audio/*

@@ -6,11 +6,13 @@ internal static class GeminiConfiguration
 {
     private static readonly string[] SharedApiKeyKeys =
     [
+        "Gemini:ApiKey",
         "GEMINI_API_KEY",
-        "GemmaExamGeneration:ApiKey",
         "GeminiScoring:ApiKey",
+        "GemmaExamGeneration:ApiKey",
         "GeminiCopilot:ApiKey",
-        "GeminiVisualExtraction:ApiKey"
+        "GeminiVisualExtraction:ApiKey",
+        "GeminiPdfNativeExtraction:ApiKey"
     ];
 
     public static string ResolveApiKey(IConfiguration configuration, params string[] preferredKeys)

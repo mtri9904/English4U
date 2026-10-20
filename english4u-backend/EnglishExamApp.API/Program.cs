@@ -20,7 +20,18 @@ if (builder.Environment.IsDevelopment())
     builder.Logging.AddDebug();
 }
 
-var jwtKey = RequireConfiguration(builder.Configuration, "Jwt:Key");
+var jwtKey = builder.Configuration["Jwt:Key"];
+if (string.IsNullOrWhiteSpace(jwtKey))
+{
+    if (builder.Environment.IsDevelopment())
+    {
+        jwtKey = "English4U_Secret_Key_For_Development_32_Bytes_Long_2026!";
+    }
+    else
+    {
+        jwtKey = RequireConfiguration(builder.Configuration, "Jwt:Key");
+    }
+}
 var defaultConnectionString = RequireConnectionString(builder.Configuration, "DefaultConnection");
 if (defaultConnectionString.Contains("Server=", StringComparison.OrdinalIgnoreCase)
     || defaultConnectionString.Contains("Initial Catalog", StringComparison.OrdinalIgnoreCase)
@@ -84,7 +95,9 @@ builder.Services.AddHttpClient<IAiIntegrationService, AiScoringHttpService>(clie
     client.Timeout = TimeSpan.FromMinutes(Math.Clamp(timeoutMinutes, 1d, 60d));
     client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
 
-    var hfToken = Environment.GetEnvironmentVariable("HF_TOKEN") ?? Environment.GetEnvironmentVariable("HF_API_TOKEN");
+    var hfToken = builder.Configuration["HuggingFace:Token"]
+        ?? Environment.GetEnvironmentVariable("HF_TOKEN")
+        ?? Environment.GetEnvironmentVariable("HF_API_TOKEN");
     if (!string.IsNullOrWhiteSpace(hfToken))
     {
         client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", hfToken);
@@ -263,19 +276,4 @@ static string RequireConnectionString(IConfiguration configuration, string name)
 
     throw new InvalidOperationException(
         $"Missing required connection string '{name}'. Set it with environment variable 'ConnectionStrings__{name}' or user-secrets key 'ConnectionStrings:{name}'.");
-}
-
-static string AddDevelopmentSqlServerDefaults(string connectionString)
-{
-    var configuredValues = new DbConnectionStringBuilder
-    {
-        ConnectionString = connectionString
-    };
-    if (configuredValues.ContainsKey("Encrypt"))
-    {
-        return connectionString;
-    }
-
-    configuredValues["Encrypt"] = "False";
-    return configuredValues.ConnectionString;
 }

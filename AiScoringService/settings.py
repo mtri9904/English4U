@@ -72,6 +72,16 @@ LISTENING_TRANSCRIPT_WHISPER_MODEL_SIZE = (
 )
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
+if not GEMINI_API_KEY:
+    try:
+        import json
+        _appsettings_path = os.path.join(PROJECT_ROOT, "english4u-backend", "EnglishExamApp.API", "appsettings.Development.json")
+        if os.path.exists(_appsettings_path):
+            with open(_appsettings_path, "r", encoding="utf-8") as _f:
+                _data = json.load(_f)
+                GEMINI_API_KEY = (_data.get("Gemini", {}).get("ApiKey") or _data.get("GeminiScoring", {}).get("ApiKey") or "").strip()
+    except Exception:
+        pass
 GEMINI_SCORING_MODEL = os.getenv("GEMINI_SCORING_MODEL", "gemini-3.1-flash-lite").strip()
 GEMINI_SCORING_FALLBACK_MODELS = parse_env_list(
     "GEMINI_SCORING_FALLBACK_MODELS",

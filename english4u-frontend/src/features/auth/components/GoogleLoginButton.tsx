@@ -54,7 +54,7 @@ export function GoogleLoginButton({ requiredRole, redirectTo = '/' }: GoogleLogi
                 });
                 google.accounts.id.renderButton(buttonRef.current, {
                     theme: 'outline',
-                    size: 'medium',
+                    size: 'large',
                     text: 'signin_with',
                     shape: 'rectangular',
                     logo_alignment: 'left',
@@ -101,11 +101,10 @@ export function GoogleLoginButton({ requiredRole, redirectTo = '/' }: GoogleLogi
             ref={buttonRef} 
             style={{ 
                 width: '100%', 
-                height: '32px', 
+                minHeight: '44px', 
                 display: 'flex', 
                 justifyContent: 'center', 
-                alignItems: 'center',
-                overflow: 'hidden'
+                alignItems: 'center'
             }} 
         />
     );

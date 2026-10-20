@@ -21,7 +21,6 @@ public sealed class GeminiExamAiGenerationService(
     IPdfGenerationProgressTracker pdfGenerationProgressTracker,
     IRealtimeEventPublisher realtimeEventPublisher,
     IPdfTextExtractionService pdfTextExtractionService,
-    IConfiguration configuration,
     ILogger<GeminiExamAiGenerationService> logger) : IExamAiGenerationService
 {
     private const string PdfGenerationProgressEventType = "exam.pdf-generation.progress";

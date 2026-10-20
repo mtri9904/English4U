@@ -43,11 +43,12 @@ public sealed partial class GemmaPdfExamGenerationService
             catch {}
         }
 
-        if (questions.Count <= 1 ||
+        if (questions == null ||
+            questions.Count <= 1 ||
             string.IsNullOrWhiteSpace(passageContent) ||
             string.IsNullOrWhiteSpace(builder.RawBlockText))
         {
-            return questions;
+            return questions ?? [];
         }
 
         try

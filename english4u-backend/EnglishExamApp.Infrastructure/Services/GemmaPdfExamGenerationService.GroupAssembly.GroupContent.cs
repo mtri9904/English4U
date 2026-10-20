@@ -228,7 +228,7 @@ public sealed partial class GemmaPdfExamGenerationService
                 {
                     using var doc = JsonDocument.Parse(rawTableJson);
                     var root = doc.RootElement;
-                    List<string[]> rowsList = null;
+                    List<string[]>? rowsList = null;
                     string[]? tableHeaders = null;
 
                     if (root.ValueKind == JsonValueKind.Array)

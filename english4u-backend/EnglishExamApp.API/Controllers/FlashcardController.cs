@@ -10,8 +10,7 @@ namespace EnglishExamApp.API.Controllers;
 [Route("api/[controller]")]
 public class FlashcardController(
     IFlashcardService flashcardService,
-    IApplicationDbContext context,
-    ILogger<FlashcardController> logger) : ControllerBase
+    IApplicationDbContext context) : ControllerBase
 {
     private Guid GetCurrentUserId()
     {

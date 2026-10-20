@@ -16,6 +16,15 @@ export function LoginForm() {
     const loginMutation = useLoginMutation()
 
     useEffect(() => {
+        const savedRemember = localStorage.getItem('remember_me') === 'true'
+        if (savedRemember) {
+            const savedEmail = localStorage.getItem('remembered_email') || ''
+            const savedPassword = localStorage.getItem('remembered_password') || ''
+            if (savedEmail) setEmail(savedEmail)
+            if (savedPassword) setPassword(savedPassword)
+            setKeepLogged(true)
+        }
+
         const forcedLogoutReason = consumeForcedLogoutReason()
         if (forcedLogoutReason) {
             message.warning(forcedLogoutReason)
@@ -47,6 +56,17 @@ export function LoginForm() {
                     localStorage.setItem('token', data.token)
                     localStorage.setItem('refreshToken', data.refreshToken)
                     localStorage.setItem('userId', data.userId)
+
+                    if (keepLogged) {
+                        localStorage.setItem('remember_me', 'true')
+                        localStorage.setItem('remembered_email', email)
+                        localStorage.setItem('remembered_password', password)
+                    } else {
+                        localStorage.removeItem('remember_me')
+                        localStorage.removeItem('remembered_email')
+                        localStorage.removeItem('remembered_password')
+                    }
+
                     message.success('Đăng nhập thành công!')
                     navigate('/app')
                 },
@@ -91,14 +111,9 @@ export function LoginForm() {
                 </div>
 
                 <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                        <label style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--color-text-primary)' }}>
-                            Mật khẩu
-                        </label>
-                        <Link to="/forgot-password" style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--color-primary)', textDecoration: 'none' }}>
-                            Quên mật khẩu?
-                        </Link>
-                    </div>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--color-text-primary)', marginBottom: '8px' }}>
+                        Mật khẩu
+                    </label>
                     <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                         <Lock style={{ position: 'absolute', left: '16px', color: 'var(--color-text-muted)' }} size={18} />
                         <input
@@ -117,31 +132,37 @@ export function LoginForm() {
                     </div>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px', marginBottom: '8px' }}>
-                    <button
-                        type="button"
-                        onClick={() => setKeepLogged(!keepLogged)}
-                        style={{
-                            width: '18px',
-                            height: '18px',
-                            borderRadius: '50%',
-                            border: keepLogged ? '1px solid var(--color-primary)' : '1px solid var(--color-border-strong)',
-                            background: keepLogged ? 'var(--color-primary)' : '#fff',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            cursor: 'pointer',
-                            padding: 0
-                        }}
-                    >
-                        {keepLogged && <Check size={12} color="#fff" strokeWidth={3} />}
-                    </button>
-                    <span
-                        onClick={() => setKeepLogged(!keepLogged)}
-                        style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)', cursor: 'pointer', userSelect: 'none' }}
-                    >
-                        Duy trì đăng nhập trong 30 ngày
-                    </span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px', marginBottom: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <button
+                            type="button"
+                            onClick={() => setKeepLogged(!keepLogged)}
+                            style={{
+                                width: '18px',
+                                height: '18px',
+                                borderRadius: '50%',
+                                border: keepLogged ? '1px solid var(--color-primary)' : '1px solid var(--color-border-strong)',
+                                background: keepLogged ? 'var(--color-primary)' : '#fff',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                cursor: 'pointer',
+                                padding: 0
+                            }}
+                        >
+                            {keepLogged && <Check size={12} color="#fff" strokeWidth={3} />}
+                        </button>
+                        <span
+                            onClick={() => setKeepLogged(!keepLogged)}
+                            style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)', cursor: 'pointer', userSelect: 'none' }}
+                        >
+                            Ghi nhớ đăng nhập
+                        </span>
+                    </div>
+
+                    <Link to="/forgot-password" style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--color-primary)', textDecoration: 'none' }}>
+                        Quên mật khẩu?
+                    </Link>
                 </div>
 
                 <button
@@ -168,7 +189,7 @@ export function LoginForm() {
                     onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
                 >
                     {loginMutation.isPending && <Loader2 size={18} className="animate-spin" />}
-                    {loginMutation.isPending ? 'Đang xử lý...' : 'Đăng nhập hệ thống'}
+                    {loginMutation.isPending ? 'Đang xử lý...' : 'Đăng nhập'}
                 </button>
             </form>
 

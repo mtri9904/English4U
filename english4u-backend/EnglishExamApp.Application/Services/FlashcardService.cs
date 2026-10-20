@@ -379,8 +379,8 @@ Return a strict JSON object with:
                     using var geminiCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                     geminiCts.CancelAfter(TimeSpan.FromSeconds(25));
 
-                    var is31b = model.Contains("31b", StringComparison.OrdinalIgnoreCase);
-                    object requestBody = is31b
+                    var isGemma = model.Contains("gemma", StringComparison.OrdinalIgnoreCase);
+                    object requestBody = isGemma
                         ? new
                         {
                             contents = new[] { new { parts = new[] { new { text = prompt } } } },
@@ -550,8 +550,8 @@ Evaluate thoroughly and return a strict JSON object with:
                 using var geminiCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 geminiCts.CancelAfter(TimeSpan.FromSeconds(25));
 
-                var is31b = model.Contains("31b", StringComparison.OrdinalIgnoreCase);
-                object requestBody = is31b
+                var isGemma = model.Contains("gemma", StringComparison.OrdinalIgnoreCase);
+                object requestBody = isGemma
                     ? new
                     {
                         contents = new[] { new { parts = new[] { new { text = prompt } } } },
@@ -865,8 +865,9 @@ Evaluate thoroughly and return a strict JSON object with:
 
     private string? ResolveGeminiApiKey()
     {
-        var key = configuration["GeminiScoring:ApiKey"]
+        var key = configuration["Gemini:ApiKey"]
             ?? configuration["GEMINI_API_KEY"]
+            ?? configuration["GeminiScoring:ApiKey"]
             ?? configuration["GeminiCopilot:ApiKey"]
             ?? configuration["GemmaExamGeneration:ApiKey"]
             ?? Environment.GetEnvironmentVariable("GEMINI_API_KEY");
@@ -875,31 +876,40 @@ Evaluate thoroughly and return a strict JSON object with:
 
         try
         {
-            var baseDir = AppContext.BaseDirectory;
-            var candidates = new[]
+            var searchRoots = new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory };
+            foreach (var root in searchRoots)
             {
-                Path.Combine(baseDir, "..", "..", "..", "..", "AiScoringService", ".env"),
-                Path.Combine(Directory.GetCurrentDirectory(), "..", "AiScoringService", ".env"),
-                Path.Combine(Directory.GetCurrentDirectory(), "AiScoringService", ".env"),
-            };
-
-            foreach (var envPath in candidates)
-            {
-                if (File.Exists(envPath))
+                var dir = new DirectoryInfo(root);
+                for (int i = 0; i < 6 && dir != null; i++)
                 {
-                    foreach (var line in File.ReadAllLines(envPath))
-                    {
-                        if (line.StartsWith("GEMINI_API_KEY=", StringComparison.OrdinalIgnoreCase))
-                        {
-                            var val = line.Substring("GEMINI_API_KEY=".Length).Trim();
-                            if (!string.IsNullOrWhiteSpace(val)) return val;
-                        }
-                    }
+                    var found = ReadApiKeyFromEnvFile(Path.Combine(dir.FullName, "AiScoringService", ".env"))
+                             ?? ReadApiKeyFromEnvFile(Path.Combine(dir.FullName, ".env"));
+                    if (!string.IsNullOrWhiteSpace(found)) return found;
+                    dir = dir.Parent;
                 }
             }
         }
         catch { }
 
+        return null;
+    }
+
+    private static string? ReadApiKeyFromEnvFile(string filePath)
+    {
+        try
+        {
+            if (!File.Exists(filePath)) return null;
+            foreach (var line in File.ReadAllLines(filePath))
+            {
+                var trimmed = line.Trim();
+                if (trimmed.StartsWith("GEMINI_API_KEY=", StringComparison.OrdinalIgnoreCase))
+                {
+                    var val = trimmed.Substring("GEMINI_API_KEY=".Length).Trim().Trim('"', '\'');
+                    if (!string.IsNullOrWhiteSpace(val)) return val;
+                }
+            }
+        }
+        catch { }
         return null;
     }
 

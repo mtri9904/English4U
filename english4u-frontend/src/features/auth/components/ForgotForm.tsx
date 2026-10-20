@@ -108,7 +108,7 @@ export function ForgotForm() {
                         boxShadow: '0 4px 12px rgba(19, 125, 197, 0.2)'
                     }}
                 >
-                    {forgotMutation.isPending ? 'Đang gửi...' : 'Gửi Liên Kết Khôi Phục'}
+                    {forgotMutation.isPending ? 'Đang gửi...' : 'Gửi liên kết khôi phục'}
                 </button>
             </form>
         </>
