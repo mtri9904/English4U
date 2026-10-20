@@ -377,7 +377,7 @@ Return a strict JSON object with:
                 {
                     var url = $"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={apiKey}";
                     using var geminiCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                    geminiCts.CancelAfter(TimeSpan.FromSeconds(25));
+                    geminiCts.CancelAfter(TimeSpan.FromSeconds(9));
 
                     var isGemma = model.Contains("gemma", StringComparison.OrdinalIgnoreCase);
                     object requestBody = isGemma
@@ -392,7 +392,13 @@ Return a strict JSON object with:
                             generationConfig = new { response_mime_type = "application/json", temperature = 0.2 }
                         };
 
-                    var response = await httpClient.PostAsJsonAsync(url, requestBody, geminiCts.Token);
+                    using var httpRequest = new HttpRequestMessage(HttpMethod.Post, url)
+                    {
+                        Content = JsonContent.Create(requestBody, options: JsonOptions)
+                    };
+                    httpRequest.Headers.TryAddWithoutValidation("x-goog-api-key", apiKey);
+
+                    var response = await httpClient.SendAsync(httpRequest, geminiCts.Token);
 
                     if (response.IsSuccessStatusCode)
                     {
@@ -548,7 +554,7 @@ Evaluate thoroughly and return a strict JSON object with:
             {
                 var url = $"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={apiKey}";
                 using var geminiCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                geminiCts.CancelAfter(TimeSpan.FromSeconds(25));
+                geminiCts.CancelAfter(TimeSpan.FromSeconds(9));
 
                 var isGemma = model.Contains("gemma", StringComparison.OrdinalIgnoreCase);
                 object requestBody = isGemma
@@ -563,7 +569,13 @@ Evaluate thoroughly and return a strict JSON object with:
                         generationConfig = new { response_mime_type = "application/json", temperature = 0.2 }
                     };
 
-                var response = await httpClient.PostAsJsonAsync(url, requestBody, geminiCts.Token);
+                using var httpRequest = new HttpRequestMessage(HttpMethod.Post, url)
+                {
+                    Content = JsonContent.Create(requestBody, options: JsonOptions)
+                };
+                httpRequest.Headers.TryAddWithoutValidation("x-goog-api-key", apiKey);
+
+                var response = await httpClient.SendAsync(httpRequest, geminiCts.Token);
 
                 if (response.IsSuccessStatusCode)
                 {
@@ -865,14 +877,24 @@ Evaluate thoroughly and return a strict JSON object with:
 
     private string? ResolveGeminiApiKey()
     {
-        var key = configuration["Gemini:ApiKey"]
-            ?? configuration["GEMINI_API_KEY"]
-            ?? configuration["GeminiScoring:ApiKey"]
-            ?? configuration["GeminiCopilot:ApiKey"]
-            ?? configuration["GemmaExamGeneration:ApiKey"]
-            ?? Environment.GetEnvironmentVariable("GEMINI_API_KEY");
+        string?[] candidates =
+        [
+            configuration["Gemini:ApiKey"],
+            configuration["GEMINI_API_KEY"],
+            configuration["GeminiScoring:ApiKey"],
+            configuration["GeminiCopilot:ApiKey"],
+            configuration["GemmaExamGeneration:ApiKey"],
+            Environment.GetEnvironmentVariable("GEMINI_API_KEY"),
+            Environment.GetEnvironmentVariable("Gemini__ApiKey"),
+            Environment.GetEnvironmentVariable("GeminiScoring__ApiKey"),
+            Environment.GetEnvironmentVariable("GeminiCopilot__ApiKey")
+        ];
 
-        if (!string.IsNullOrWhiteSpace(key)) return key;
+        foreach (var c in candidates)
+        {
+            if (!string.IsNullOrWhiteSpace(c))
+                return c.Trim();
+        }
 
         try
         {
@@ -884,7 +906,7 @@ Evaluate thoroughly and return a strict JSON object with:
                 {
                     var found = ReadApiKeyFromEnvFile(Path.Combine(dir.FullName, "AiScoringService", ".env"))
                              ?? ReadApiKeyFromEnvFile(Path.Combine(dir.FullName, ".env"));
-                    if (!string.IsNullOrWhiteSpace(found)) return found;
+                    if (!string.IsNullOrWhiteSpace(found)) return found.Trim();
                     dir = dir.Parent;
                 }
             }
@@ -924,7 +946,11 @@ Evaluate thoroughly and return a strict JSON object with:
             .GetChildren()
             .Select(child => child.Value);
 
-        return new[] { preferredModel, configuredModel }
+        string[] fastModels = ["gemini-2.5-flash", "gemini-2.5-flash-lite"];
+
+        return new[] { preferredModel }
+            .Concat(fastModels)
+            .Concat(new[] { configuredModel })
             .Concat(configuredFallbackModels)
             .Concat(AiModelDefaults.GlobalFallbackModels)
             .Where(model => !string.IsNullOrWhiteSpace(model))
