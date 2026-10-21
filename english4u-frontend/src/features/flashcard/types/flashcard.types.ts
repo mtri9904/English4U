@@ -99,6 +99,7 @@ export interface AiEnrichWordResponse {
     audioUrl?: string;
     quizDistractors?: string;
     modelUsed?: string;
+    candidateImages?: string[];
 }
 
 export interface SentenceExampleItem {

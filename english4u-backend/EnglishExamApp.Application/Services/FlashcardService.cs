@@ -189,7 +189,8 @@ public class FlashcardService(
         var imageUrl = request.ImageUrl;
         if (string.IsNullOrWhiteSpace(imageUrl))
         {
-            imageUrl = await FetchFastImageUrlAsync(request.Word, cancellationToken);
+            var (primaryImg, _) = await FetchEducationalImagesAsync(request.Word, null, cancellationToken);
+            imageUrl = primaryImg;
         }
 
         var distractors = !string.IsNullOrWhiteSpace(request.QuizDistractors)
@@ -317,16 +318,16 @@ public class FlashcardService(
     {
         var cleanWord = word.Trim();
 
-        // Step 1: Fetch fast dictionary data (Datamuse 0.05s), Google Translate (0.2s), and Wikimedia photo (0.2s) concurrently
+        // Step 1: Fetch fast dictionary data (Datamuse 0.05s), Google Translate (0.2s), and Academic Images (0.2s) concurrently
         var dictTask = FetchFastDictionaryAsync(cleanWord, cancellationToken);
         var transTask = FetchGoogleTranslateAsync(cleanWord, "vi", cancellationToken);
-        var imageTask = FetchFastImageUrlAsync(cleanWord, cancellationToken);
+        var imageTask = FetchEducationalImagesAsync(cleanWord, null, cancellationToken);
 
         await Task.WhenAll(dictTask, transTask, imageTask);
 
         var (phonetic, audioUrl, partOfSpeech, definitionEn, exampleSentence) = await dictTask;
         var meaningVi = await transTask;
-        var imageUrl = await imageTask;
+        var (imageUrl, candidateImages) = await imageTask;
 
         if (string.IsNullOrWhiteSpace(meaningVi) || meaningVi.Equals(cleanWord, StringComparison.OrdinalIgnoreCase))
         {
@@ -438,6 +439,21 @@ Return a strict JSON object with:
                                             }
                                         }
 
+                                        var finalImageUrl = imageUrl;
+                                        var finalCandidates = candidateImages;
+
+                                        if (!string.IsNullOrWhiteSpace(enriched.ImagePrompt) &&
+                                            !string.Equals(enriched.ImagePrompt, cleanWord, StringComparison.OrdinalIgnoreCase) &&
+                                            !string.IsNullOrWhiteSpace(ResolvePixabayApiKey()))
+                                        {
+                                            var refined = await FetchEducationalImagesAsync(cleanWord, enriched.ImagePrompt, cancellationToken);
+                                            if (!string.IsNullOrWhiteSpace(refined.PrimaryUrl) && refined.CandidateUrls.Count > 0)
+                                            {
+                                                finalImageUrl = refined.PrimaryUrl;
+                                                finalCandidates = refined.CandidateUrls;
+                                            }
+                                        }
+
                                         return new AiEnrichWordResponse(
                                             cleanWord,
                                             !string.IsNullOrWhiteSpace(enriched.Phonetic) ? enriched.Phonetic : phonetic,
@@ -447,11 +463,12 @@ Return a strict JSON object with:
                                             !string.IsNullOrWhiteSpace(enriched.ExampleSentence) ? enriched.ExampleSentence : exampleSentence,
                                             !string.IsNullOrWhiteSpace(enriched.ExampleSentenceVi) ? enriched.ExampleSentenceVi : exampleSentenceVi,
                                             enriched.Collocations,
-                                            imageUrl,
+                                            finalImageUrl,
                                             enriched.ImagePrompt ?? cleanWord,
                                             audioUrl,
                                             geminiDistractors,
-                                            model);
+                                            model,
+                                            finalCandidates);
                                     }
                                 }
                             }
@@ -470,7 +487,7 @@ Return a strict JSON object with:
             }
         }
 
-        // Return Free Dictionary + Google Translate + Fast Wikimedia result without mock data
+        // Return Free Dictionary + Google Translate + Fast Academic image result without mock data
         return new AiEnrichWordResponse(
             cleanWord,
             phonetic,
@@ -483,7 +500,9 @@ Return a strict JSON object with:
             imageUrl,
             cleanWord,
             audioUrl,
-            null);
+            null,
+            null,
+            candidateImages);
     }
 
     public async Task<AiCheckSentenceResponse> CheckSentenceWithAiAsync(string word, string meaningVi, string sentence, string? preferredModel = null, CancellationToken cancellationToken = default)
@@ -831,14 +850,95 @@ Evaluate thoroughly and return a strict JSON object with:
         return "";
     }
 
-    private async Task<string> FetchFastImageUrlAsync(string word, CancellationToken cancellationToken)
+    private async Task<(string PrimaryUrl, List<string> CandidateUrls)> FetchEducationalImagesAsync(
+        string word,
+        string? imagePrompt,
+        CancellationToken cancellationToken)
     {
+        var cleanWord = word.Trim();
+        var candidateUrls = new List<string>();
+
+        // Priority 1: Pixabay Real-Life Photos (primary) & Educational Illustrations (secondary)
+        var pixabayKey = ResolvePixabayApiKey();
+        if (!string.IsNullOrWhiteSpace(pixabayKey))
+        {
+            var query = !string.IsNullOrWhiteSpace(imagePrompt) ? imagePrompt.Trim() : cleanWord;
+            try
+            {
+                // Fetch real-life photos (photo) and educational illustrations concurrently (<0.2s)
+                var photoTask = FetchPixabayImagesAsync(pixabayKey, query, "photo", 6, cancellationToken);
+                var illustrationTask = FetchPixabayImagesAsync(pixabayKey, query, "illustration", 4, cancellationToken);
+                await Task.WhenAll(photoTask, illustrationTask);
+
+                var photos = await photoTask;
+                var illustrations = await illustrationTask;
+
+                // Fallback query to cleanWord if specific prompt returned no photos
+                if (photos.Count == 0 && !string.IsNullOrWhiteSpace(imagePrompt))
+                {
+                    photos = await FetchPixabayImagesAsync(pixabayKey, cleanWord, "photo", 6, cancellationToken);
+                }
+
+                // Add real-life photos FIRST so PrimaryUrl is a real-world photo
+                foreach (var p in photos)
+                {
+                    if (!candidateUrls.Contains(p))
+                    {
+                        candidateUrls.Add(p);
+                    }
+                }
+
+                // Add illustrations as secondary options so user can cycle to drawings if desired
+                foreach (var il in illustrations)
+                {
+                    if (!candidateUrls.Contains(il))
+                    {
+                        candidateUrls.Add(il);
+                    }
+                }
+
+                if (candidateUrls.Count > 0)
+                {
+                    return (candidateUrls[0], candidateUrls);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogDebug(ex, "Pixabay image fetch failed for {Word}", word);
+            }
+        }
+
+        // Priority 2: Wikipedia Official Article Lead Image (Authoritative encyclopedic image)
         try
         {
-            var cleanWord = Uri.EscapeDataString(word.Trim());
-            var url = $"https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch={cleanWord}+filetype:bitmap&gsrnamespace=6&prop=imageinfo&iiprop=url&iiurlwidth=500&format=json";
+            var wikiUrl = $"https://en.wikipedia.org/api/rest_v1/page/summary/{Uri.EscapeDataString(cleanWord)}";
+            using var request = new HttpRequestMessage(HttpMethod.Get, wikiUrl);
+            request.Headers.Add("User-Agent", "English4U/1.0 (contact@english4u.com)");
 
-            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            using var response = await httpClient.SendAsync(request, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var json = await response.Content.ReadAsStringAsync(cancellationToken);
+                using var doc = JsonDocument.Parse(json);
+                if (doc.RootElement.TryGetProperty("thumbnail", out var thumb) &&
+                    thumb.TryGetProperty("source", out var src) &&
+                    !string.IsNullOrWhiteSpace(src.GetString()))
+                {
+                    var leadImg = src.GetString()!;
+                    candidateUrls.Add(leadImg);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Wikipedia article summary image fetch failed for {Word}", word);
+        }
+
+        // Priority 3: Wikimedia Commons Filtered (Exclude scanned stamps, coins, pdfs, and documents)
+        try
+        {
+            var searchUrl = $"https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch={Uri.EscapeDataString(cleanWord)}+filetype:bitmap+-svg+-scan+-pdf+-document+-stamp+-coin&gsrnamespace=6&prop=imageinfo&iiprop=url&iiurlwidth=640&format=json&gsrlimit=6&origin=*";
+            using var request = new HttpRequestMessage(HttpMethod.Get, searchUrl);
             request.Headers.Add("User-Agent", "English4U/1.0 (contact@english4u.com)");
 
             using var response = await httpClient.SendAsync(request, cancellationToken);
@@ -850,16 +950,17 @@ Evaluate thoroughly and return a strict JSON object with:
                 {
                     foreach (var page in pages.EnumerateObject())
                     {
-                        if (page.Value.TryGetProperty("imageinfo", out var imgInfo) && imgInfo.ValueKind == JsonValueKind.Array && imgInfo.GetArrayLength() > 0)
+                        if (page.Value.TryGetProperty("imageinfo", out var imgInfo) &&
+                            imgInfo.ValueKind == JsonValueKind.Array &&
+                            imgInfo.GetArrayLength() > 0)
                         {
                             var info0 = imgInfo[0];
-                            if (info0.TryGetProperty("thumburl", out var thumb) && !string.IsNullOrWhiteSpace(thumb.GetString()))
+                            var thumb = info0.TryGetProperty("thumburl", out var t) ? t.GetString() : null;
+                            var full = info0.TryGetProperty("url", out var u) ? u.GetString() : null;
+                            var chosen = thumb ?? full;
+                            if (!string.IsNullOrWhiteSpace(chosen) && !candidateUrls.Contains(chosen))
                             {
-                                return thumb.GetString()!;
-                            }
-                            if (info0.TryGetProperty("url", out var full) && !string.IsNullOrWhiteSpace(full.GetString()))
-                            {
-                                return full.GetString()!;
+                                candidateUrls.Add(chosen);
                             }
                         }
                     }
@@ -868,11 +969,70 @@ Evaluate thoroughly and return a strict JSON object with:
         }
         catch (Exception ex)
         {
-            logger.LogDebug(ex, "Wikimedia photo search failed for {Word}", word);
+            logger.LogDebug(ex, "Wikimedia filtered search failed for {Word}", word);
         }
 
-        // Fallback: high-resolution study photography (0.05s)
-        return "https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?auto=format&fit=crop&w=500&q=80";
+        // Priority 4: High-resolution curated educational fallback
+        const string fallbackUrl = "https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?auto=format&fit=crop&w=640&q=80";
+        if (candidateUrls.Count == 0)
+        {
+            candidateUrls.Add(fallbackUrl);
+        }
+
+        return (candidateUrls[0], candidateUrls);
+    }
+
+    private async Task<List<string>> FetchPixabayImagesAsync(
+        string apiKey,
+        string query,
+        string imageType,
+        int perPage,
+        CancellationToken cancellationToken)
+    {
+        var urls = new List<string>();
+        var escaped = Uri.EscapeDataString(query.Trim());
+        var url = $"https://pixabay.com/api/?key={apiKey}&q={escaped}&image_type={imageType}&safesearch=true&per_page={perPage}";
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) English4U/1.0");
+        using var response = await httpClient.SendAsync(request, cancellationToken);
+        if (response.IsSuccessStatusCode)
+        {
+            var json = await response.Content.ReadAsStringAsync(cancellationToken);
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("hits", out var hits) && hits.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var hit in hits.EnumerateArray())
+                {
+                    var webformat = hit.TryGetProperty("webformatURL", out var w) ? w.GetString() : null;
+                    var large = hit.TryGetProperty("largeImageURL", out var l) ? l.GetString() : null;
+                    var chosen = webformat ?? large;
+                    if (!string.IsNullOrWhiteSpace(chosen) && !urls.Contains(chosen))
+                    {
+                        urls.Add(chosen);
+                    }
+                }
+            }
+        }
+        return urls;
+    }
+
+    private string? ResolvePixabayApiKey()
+    {
+        string?[] candidates =
+        [
+            configuration["Pixabay:ApiKey"],
+            configuration["PIXABAY_API_KEY"],
+            Environment.GetEnvironmentVariable("PIXABAY_API_KEY"),
+            Environment.GetEnvironmentVariable("Pixabay__ApiKey")
+        ];
+
+        foreach (var c in candidates)
+        {
+            if (!string.IsNullOrWhiteSpace(c))
+                return c.Trim();
+        }
+        return null;
     }
 
     private string? ResolveGeminiApiKey()

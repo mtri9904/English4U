@@ -103,7 +103,8 @@ public sealed record AiEnrichWordResponse(
     string? ImagePrompt = null,
     string? AudioUrl = null,
     string? QuizDistractors = null,
-    string? ModelUsed = null);
+    string? ModelUsed = null,
+    IReadOnlyList<string>? CandidateImages = null);
 
 public sealed record AiCheckSentenceRequest(
     string Word,

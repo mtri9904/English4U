@@ -66,9 +66,25 @@ export const FlashcardDeckDetailPage: React.FC = () => {
     const fetchWikimediaImages = async (word: string): Promise<string[]> => {
         try {
             const cleanWord = encodeURIComponent(word.trim());
-            const url = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${cleanWord}+filetype:bitmap&gsrnamespace=6&prop=imageinfo&iiprop=url&iiurlwidth=500&format=json&origin=*&gsrlimit=10`;
-            const res = await fetch(url);
             const urls: string[] = [];
+
+            // 1. Check Wikipedia official article lead image
+            try {
+                const wikiRes = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${cleanWord}`);
+                if (wikiRes.ok) {
+                    const wikiData = await wikiRes.json();
+                    const src = wikiData?.thumbnail?.source;
+                    if (src && !urls.includes(src)) {
+                        urls.push(src);
+                    }
+                }
+            } catch {
+                // ignore
+            }
+
+            // 2. Filtered Wikimedia Commons search (exclude scans, stamps, pdfs)
+            const url = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${cleanWord}+filetype:bitmap+-svg+-scan+-pdf+-document+-stamp+-coin&gsrnamespace=6&prop=imageinfo&iiprop=url&iiurlwidth=640&format=json&origin=*&gsrlimit=6`;
+            const res = await fetch(url);
             if (res.ok) {
                 const data = await res.json();
                 if (data.query?.pages) {
@@ -77,23 +93,6 @@ export const FlashcardDeckDetailPage: React.FC = () => {
                         const thumb = imgInfo?.thumburl || imgInfo?.url;
                         if (thumb && !urls.includes(thumb)) {
                             urls.push(thumb);
-                        }
-                    }
-                }
-            }
-
-            if (urls.length < 3 && word.trim().includes(' ')) {
-                const firstWord = encodeURIComponent(word.trim().split(' ')[0]);
-                const res2 = await fetch(`https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${firstWord}+filetype:bitmap&gsrnamespace=6&prop=imageinfo&iiprop=url&iiurlwidth=500&format=json&origin=*&gsrlimit=6`);
-                if (res2.ok) {
-                    const data2 = await res2.json();
-                    if (data2.query?.pages) {
-                        for (const pageId in data2.query.pages) {
-                            const imgInfo = data2.query.pages[pageId]?.imageinfo?.[0];
-                            const thumb = imgInfo?.thumburl || imgInfo?.url;
-                            if (thumb && !urls.includes(thumb)) {
-                                urls.push(thumb);
-                            }
                         }
                     }
                 }
@@ -156,17 +155,23 @@ export const FlashcardDeckDetailPage: React.FC = () => {
                 quizDistractors: res.quizDistractors,
             });
 
-            // Asynchronously fetch extra image choices for instant "Đổi hình khác"
-            fetchWikimediaImages(word.trim()).then((images) => {
-                if (images.length > 0) {
-                    const list = res.imageUrl && !images.includes(res.imageUrl)
-                        ? [res.imageUrl, ...images]
-                        : images;
-                    setCandidateImages(list);
-                    const idx = list.indexOf(res.imageUrl);
-                    setCurrentImageIndex(idx >= 0 ? idx : 0);
-                }
-            });
+            // Candidate images for instant "Đổi hình khác"
+            if (res.candidateImages && res.candidateImages.length > 0) {
+                setCandidateImages(res.candidateImages);
+                const idx = res.candidateImages.indexOf(res.imageUrl);
+                setCurrentImageIndex(idx >= 0 ? idx : 0);
+            } else {
+                fetchWikimediaImages(word.trim()).then((images) => {
+                    if (images.length > 0) {
+                        const list = res.imageUrl && !images.includes(res.imageUrl)
+                            ? [res.imageUrl, ...images]
+                            : images;
+                        setCandidateImages(list);
+                        const idx = list.indexOf(res.imageUrl);
+                        setCurrentImageIndex(idx >= 0 ? idx : 0);
+                    }
+                });
+            }
 
             const modelNotice = res.modelUsed ? ` (${res.modelUsed})` : '';
             message.success(`Đã tự động điền đầy đủ từ vựng & câu hỏi trắc nghiệm bằng AI${modelNotice}!`);
@@ -188,12 +193,13 @@ export const FlashcardDeckDetailPage: React.FC = () => {
             setIsChangingImage(true);
             let list = candidateImages;
             if (list.length <= 1) {
-                list = await fetchWikimediaImages(word.trim());
+                const more = await fetchWikimediaImages(word.trim());
                 const currentImg = form.getFieldValue('imageUrl');
-                if (currentImg && !list.includes(currentImg)) {
-                    list = [currentImg, ...list];
+                const combined = Array.from(new Set([currentImg, ...list, ...more].filter(Boolean) as string[]));
+                if (combined.length > 1) {
+                    list = combined;
+                    setCandidateImages(list);
                 }
-                setCandidateImages(list);
             }
 
             if (list.length > 1) {
@@ -202,7 +208,7 @@ export const FlashcardDeckDetailPage: React.FC = () => {
                 form.setFieldValue('imageUrl', list[nextIdx]);
                 message.success(`Đã đổi sang hình ${nextIdx + 1}/${list.length}!`);
             } else if (list.length === 1) {
-                message.info('Chỉ tìm thấy 1 hình ảnh phù hợp trên Wikimedia.');
+                message.info('Chỉ có 1 hình ảnh phù hợp cho từ vựng này.');
             } else {
                 message.warning('Không tìm thấy thêm ảnh cho từ vựng này.');
             }
