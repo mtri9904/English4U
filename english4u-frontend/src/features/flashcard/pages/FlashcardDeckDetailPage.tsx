@@ -14,6 +14,7 @@ import {
     Popconfirm,
     Empty,
     Spin,
+    Image,
 } from 'antd';
 import {
     ArrowLeftOutlined,
@@ -27,6 +28,7 @@ import {
     CheckCircleOutlined,
     ReloadOutlined,
     PictureOutlined,
+    LoadingOutlined,
 } from '@ant-design/icons';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
@@ -60,49 +62,10 @@ export const FlashcardDeckDetailPage: React.FC = () => {
     const [candidateImages, setCandidateImages] = useState<string[]>([]);
     const [currentImageIndex, setCurrentImageIndex] = useState(0);
     const [isChangingImage, setIsChangingImage] = useState(false);
+    const [selectedImageUrl, setSelectedImageUrl] = useState<string>('');
+    const [enrichedWord, setEnrichedWord] = useState<string>('');
     const [form] = Form.useForm();
     const currentImageUrl = Form.useWatch('imageUrl', form);
-
-    const fetchWikimediaImages = async (word: string): Promise<string[]> => {
-        try {
-            const cleanWord = encodeURIComponent(word.trim());
-            const urls: string[] = [];
-
-            // 1. Check Wikipedia official article lead image
-            try {
-                const wikiRes = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${cleanWord}`);
-                if (wikiRes.ok) {
-                    const wikiData = await wikiRes.json();
-                    const src = wikiData?.thumbnail?.source;
-                    if (src && !urls.includes(src)) {
-                        urls.push(src);
-                    }
-                }
-            } catch {
-                // ignore
-            }
-
-            // 2. Filtered Wikimedia Commons search (exclude scans, stamps, pdfs)
-            const url = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${cleanWord}+filetype:bitmap+-svg+-scan+-pdf+-document+-stamp+-coin&gsrnamespace=6&prop=imageinfo&iiprop=url&iiurlwidth=640&format=json&origin=*&gsrlimit=6`;
-            const res = await fetch(url);
-            if (res.ok) {
-                const data = await res.json();
-                if (data.query?.pages) {
-                    for (const pageId in data.query.pages) {
-                        const imgInfo = data.query.pages[pageId]?.imageinfo?.[0];
-                        const thumb = imgInfo?.thumburl || imgInfo?.url;
-                        if (thumb && !urls.includes(thumb)) {
-                            urls.push(thumb);
-                        }
-                    }
-                }
-            }
-
-            return urls;
-        } catch {
-            return [];
-        }
-    };
 
     const playAudio = (text: string, audioUrl?: string) => {
         if (audioUrl) {
@@ -141,7 +104,14 @@ export const FlashcardDeckDetailPage: React.FC = () => {
 
         try {
             setIsAiLoading(true);
+            // Xóa ngay ảnh cũ từ lần phân tích trước để không bị lưu/hiển thị ảnh cũ trong lúc chờ phản hồi mới
+            setSelectedImageUrl('');
+            setCandidateImages([]);
+            setCurrentImageIndex(0);
+
             const res = await flashcardApi.enrichWord(word.trim());
+            setEnrichedWord(word.trim().toLowerCase());
+
             form.setFieldsValue({
                 phonetic: res.phonetic,
                 partOfSpeech: res.partOfSpeech,
@@ -154,23 +124,24 @@ export const FlashcardDeckDetailPage: React.FC = () => {
                 audioUrl: res.audioUrl,
                 quizDistractors: res.quizDistractors,
             });
+            setSelectedImageUrl(res.imageUrl || '');
 
-            // Candidate images for instant "Đổi hình khác"
-            if (res.candidateImages && res.candidateImages.length > 0) {
-                setCandidateImages(res.candidateImages);
-                const idx = res.candidateImages.indexOf(res.imageUrl);
+            // Candidate images strictly from Pixabay
+            const candidates = Array.from(
+                new Set([res.imageUrl, ...(res.candidateImages || [])].filter(Boolean) as string[])
+            );
+            if (candidates.length > 0) {
+                setCandidateImages(candidates);
+                const idx = candidates.indexOf(res.imageUrl);
                 setCurrentImageIndex(idx >= 0 ? idx : 0);
+                if (candidates.length > 1) {
+                    const nextUrl = candidates[(idx >= 0 ? idx + 1 : 1) % candidates.length];
+                    const preload = new window.Image();
+                    preload.src = nextUrl;
+                }
             } else {
-                fetchWikimediaImages(word.trim()).then((images) => {
-                    if (images.length > 0) {
-                        const list = res.imageUrl && !images.includes(res.imageUrl)
-                            ? [res.imageUrl, ...images]
-                            : images;
-                        setCandidateImages(list);
-                        const idx = list.indexOf(res.imageUrl);
-                        setCurrentImageIndex(idx >= 0 ? idx : 0);
-                    }
-                });
+                setCandidateImages(res.imageUrl ? [res.imageUrl] : []);
+                setCurrentImageIndex(0);
             }
 
             const modelNotice = res.modelUsed ? ` (${res.modelUsed})` : '';
@@ -191,26 +162,51 @@ export const FlashcardDeckDetailPage: React.FC = () => {
 
         try {
             setIsChangingImage(true);
+            const currentWord = word.trim().toLowerCase();
             let list = candidateImages;
-            if (list.length <= 1) {
-                const more = await fetchWikimediaImages(word.trim());
-                const currentImg = form.getFieldValue('imageUrl');
-                const combined = Array.from(new Set([currentImg, ...list, ...more].filter(Boolean) as string[]));
-                if (combined.length > 1) {
-                    list = combined;
-                    setCandidateImages(list);
+
+            // Nếu danh sách <= 1 ảnh hoặc từ vựng đã đổi khác so với lúc phân tích trước đó, lấy mới danh sách ảnh theo từ hiện tại
+            if (list.length <= 1 || (enrichedWord && currentWord !== enrichedWord)) {
+                const res = await flashcardApi.enrichWord(word.trim());
+                setEnrichedWord(currentWord);
+                const fetched = res.candidateImages?.filter(Boolean) || [];
+                const freshList = Array.from(
+                    new Set([res.imageUrl, ...fetched].filter(Boolean) as string[])
+                );
+                if (freshList.length > 0) {
+                    list = freshList;
+                    setCandidateImages(freshList);
                 }
             }
 
             if (list.length > 1) {
-                const nextIdx = (currentImageIndex + 1) % list.length;
+                const current = selectedImageUrl || form.getFieldValue('imageUrl') || '';
+                let currentIdx = list.indexOf(current);
+                if (currentIdx === -1) {
+                    currentIdx = currentImageIndex;
+                }
+                const nextIdx = (currentIdx + 1) % list.length;
+                const nextUrl = list[nextIdx];
+
+                // 1. Update state immediately so React re-renders UI right away
                 setCurrentImageIndex(nextIdx);
-                form.setFieldValue('imageUrl', list[nextIdx]);
+                setSelectedImageUrl(nextUrl);
+
+                // 2. Sync to form field
+                form.setFieldValue('imageUrl', nextUrl);
+
+                // 3. Preload subsequent image in background
+                const subsequentIdx = (nextIdx + 1) % list.length;
+                if (subsequentIdx !== nextIdx) {
+                    const preload = new window.Image();
+                    preload.src = list[subsequentIdx];
+                }
+
                 message.success(`Đã đổi sang hình ${nextIdx + 1}/${list.length}!`);
             } else if (list.length === 1) {
-                message.info('Chỉ có 1 hình ảnh phù hợp cho từ vựng này.');
+                message.info('Chỉ có 1 hình ảnh từ Pixabay cho từ vựng này.');
             } else {
-                message.warning('Không tìm thấy thêm ảnh cho từ vựng này.');
+                message.warning('Không tìm thấy thêm ảnh Pixabay cho từ vựng này.');
             }
         } catch {
             message.error('Không thể đổi hình lúc này.');
@@ -234,6 +230,9 @@ export const FlashcardDeckDetailPage: React.FC = () => {
 
             setIsAddModalOpen(false);
             setEditingCard(null);
+            setSelectedImageUrl('');
+            setCandidateImages([]);
+            setCurrentImageIndex(0);
             form.resetFields();
             queryClient.invalidateQueries({ queryKey: flashcardKeys.deckCards(deckId) });
             queryClient.invalidateQueries({ queryKey: flashcardKeys.allDecks });
@@ -256,6 +255,7 @@ export const FlashcardDeckDetailPage: React.FC = () => {
     const openEditModal = (card: FlashcardItemDto) => {
         setEditingCard(card);
         form.setFieldsValue(card);
+        setSelectedImageUrl(card.imageUrl || '');
         setCandidateImages(card.imageUrl ? [card.imageUrl] : []);
         setCurrentImageIndex(0);
         setIsAddModalOpen(true);
@@ -334,6 +334,7 @@ export const FlashcardDeckDetailPage: React.FC = () => {
                         onClick={() => {
                             setEditingCard(null);
                             form.resetFields();
+                            setSelectedImageUrl('');
                             setCandidateImages([]);
                             setCurrentImageIndex(0);
                             setIsAddModalOpen(true);
@@ -371,6 +372,9 @@ export const FlashcardDeckDetailPage: React.FC = () => {
                             onClick={() => {
                                 setEditingCard(null);
                                 form.resetFields();
+                                setSelectedImageUrl('');
+                                setCandidateImages([]);
+                                setCurrentImageIndex(0);
                                 setIsAddModalOpen(true);
                             }}
                         >
@@ -555,6 +559,8 @@ export const FlashcardDeckDetailPage: React.FC = () => {
                 onCancel={() => {
                     setIsAddModalOpen(false);
                     setEditingCard(null);
+                    setSelectedImageUrl('');
+                    setCandidateImages([]);
                 }}
                 footer={null}
                 width={860}
@@ -647,23 +653,36 @@ export const FlashcardDeckDetailPage: React.FC = () => {
                                     height: 165,
                                     borderRadius: 14,
                                     background: '#f8fafc',
-                                    border: currentImageUrl ? '1px solid #e2e8f0' : '2px dashed #cbd5e1',
+                                    border: (selectedImageUrl || currentImageUrl) ? '1px solid #e2e8f0' : '2px dashed #cbd5e1',
                                     overflow: 'hidden',
                                     position: 'relative',
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
-                                    boxShadow: currentImageUrl ? '0 4px 12px rgba(0,0,0,0.06)' : 'none'
+                                    boxShadow: (selectedImageUrl || currentImageUrl) ? '0 4px 12px rgba(0,0,0,0.06)' : 'none'
                                 }}>
-                                    {currentImageUrl ? (
+                                    {isAiLoading ? (
+                                        <div style={{ textAlign: 'center', color: '#2563eb', padding: '16px' }}>
+                                            <Spin indicator={<LoadingOutlined style={{ fontSize: 28, color: '#2563eb' }} spin />} />
+                                            <div style={{ fontSize: '0.82rem', marginTop: 8, fontWeight: 600 }}>AI đang tra cứu hình ảnh mới...</div>
+                                        </div>
+                                    ) : (selectedImageUrl || currentImageUrl) ? (
                                         <>
-                                            <img
-                                                src={currentImageUrl}
+                                            <Image
+                                                key={`${selectedImageUrl || currentImageUrl}-${currentImageIndex}`}
+                                                src={selectedImageUrl || currentImageUrl}
                                                 alt="Hình minh họa"
+                                                preview={false}
+                                                width="100%"
+                                                height="100%"
+                                                wrapperStyle={{ width: '100%', height: '100%' }}
                                                 style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                                                onError={(e) => {
-                                                    (e.target as any).src = "https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?auto=format&fit=crop&w=500&q=80";
-                                                }}
+                                                placeholder={
+                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%', background: '#f8fafc' }}>
+                                                        <Spin indicator={<LoadingOutlined style={{ fontSize: 24, color: '#2563eb' }} spin />} />
+                                                    </div>
+                                                }
+                                                fallback="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100%25' height='100%25' viewBox='0 0 100 100' fill='%23f1f5f9'><rect width='100' height='100' fill='%23f1f5f9'/><text x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' font-family='sans-serif' font-size='10' fill='%2394a3b8'>Ảnh lỗi - Bấm đổi hình</text></svg>"
                                             />
                                             <Button
                                                 size="small"
@@ -680,7 +699,8 @@ export const FlashcardDeckDetailPage: React.FC = () => {
                                                     border: 'none',
                                                     borderRadius: 8,
                                                     fontWeight: 600,
-                                                    fontSize: '0.78rem'
+                                                    fontSize: '0.78rem',
+                                                    zIndex: 2,
                                                 }}
                                             >
                                                 Đổi hình khác
@@ -700,6 +720,7 @@ export const FlashcardDeckDetailPage: React.FC = () => {
                                         size="small"
                                         placeholder="Link URL ảnh (https://...)"
                                         style={{ borderRadius: 8, fontSize: '0.8rem', color: '#64748b' }}
+                                        onChange={(e) => setSelectedImageUrl(e.target.value)}
                                     />
                                 </Form.Item>
                             </div>

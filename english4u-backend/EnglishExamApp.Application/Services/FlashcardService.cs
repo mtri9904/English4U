@@ -442,9 +442,9 @@ Return a strict JSON object with:
                                         var finalImageUrl = imageUrl;
                                         var finalCandidates = candidateImages;
 
-                                        if (!string.IsNullOrWhiteSpace(enriched.ImagePrompt) &&
-                                            !string.Equals(enriched.ImagePrompt, cleanWord, StringComparison.OrdinalIgnoreCase) &&
-                                            !string.IsNullOrWhiteSpace(ResolvePixabayApiKey()))
+                                        if ((string.IsNullOrWhiteSpace(finalImageUrl) || finalCandidates.Count == 0) &&
+                                            !string.IsNullOrWhiteSpace(enriched.ImagePrompt) &&
+                                            !string.Equals(enriched.ImagePrompt, cleanWord, StringComparison.OrdinalIgnoreCase))
                                         {
                                             var refined = await FetchEducationalImagesAsync(cleanWord, enriched.ImagePrompt, cancellationToken);
                                             if (!string.IsNullOrWhiteSpace(refined.PrimaryUrl) && refined.CandidateUrls.Count > 0)
@@ -850,56 +850,43 @@ Evaluate thoroughly and return a strict JSON object with:
         return "";
     }
 
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (DateTime ExpireAt, List<string> Urls)> ImageCache = new(StringComparer.OrdinalIgnoreCase);
+
     private async Task<(string PrimaryUrl, List<string> CandidateUrls)> FetchEducationalImagesAsync(
         string word,
         string? imagePrompt,
         CancellationToken cancellationToken)
     {
         var cleanWord = word.Trim();
-        var candidateUrls = new List<string>();
+        var cacheKey = !string.IsNullOrWhiteSpace(imagePrompt) ? $"{cleanWord}::{imagePrompt.Trim()}" : cleanWord;
 
-        // Priority 1: Pixabay Real-Life Photos (primary) & Educational Illustrations (secondary)
+        // 1. In-memory cache check (avoids redundant network calls and Pixabay rate limits)
+        if (ImageCache.TryGetValue(cacheKey, out var cached) && cached.ExpireAt > DateTime.UtcNow && cached.Urls.Count > 0)
+        {
+            return (cached.Urls[0], cached.Urls);
+        }
+
+        var candidateUrls = new List<string>();
         var pixabayKey = ResolvePixabayApiKey();
+
         if (!string.IsNullOrWhiteSpace(pixabayKey))
         {
             var query = !string.IsNullOrWhiteSpace(imagePrompt) ? imagePrompt.Trim() : cleanWord;
             try
             {
-                // Fetch real-life photos (photo) and educational illustrations concurrently (<0.2s)
-                var photoTask = FetchPixabayImagesAsync(pixabayKey, query, "photo", 6, cancellationToken);
-                var illustrationTask = FetchPixabayImagesAsync(pixabayKey, query, "illustration", 4, cancellationToken);
-                await Task.WhenAll(photoTask, illustrationTask);
-
-                var photos = await photoTask;
-                var illustrations = await illustrationTask;
-
-                // Fallback query to cleanWord if specific prompt returned no photos
-                if (photos.Count == 0 && !string.IsNullOrWhiteSpace(imagePrompt))
+                // Single request for up to 12 images (image_type=all) to avoid rate limits
+                var pixabayImages = await FetchPixabayImagesAsync(pixabayKey, query, 12, cancellationToken);
+                if (pixabayImages.Count == 0 && !string.IsNullOrWhiteSpace(imagePrompt))
                 {
-                    photos = await FetchPixabayImagesAsync(pixabayKey, cleanWord, "photo", 6, cancellationToken);
+                    pixabayImages = await FetchPixabayImagesAsync(pixabayKey, cleanWord, 12, cancellationToken);
                 }
 
-                // Add real-life photos FIRST so PrimaryUrl is a real-world photo
-                foreach (var p in photos)
+                foreach (var img in pixabayImages)
                 {
-                    if (!candidateUrls.Contains(p))
+                    if (!candidateUrls.Contains(img))
                     {
-                        candidateUrls.Add(p);
+                        candidateUrls.Add(img);
                     }
-                }
-
-                // Add illustrations as secondary options so user can cycle to drawings if desired
-                foreach (var il in illustrations)
-                {
-                    if (!candidateUrls.Contains(il))
-                    {
-                        candidateUrls.Add(il);
-                    }
-                }
-
-                if (candidateUrls.Count > 0)
-                {
-                    return (candidateUrls[0], candidateUrls);
                 }
             }
             catch (Exception ex)
@@ -908,93 +895,57 @@ Evaluate thoroughly and return a strict JSON object with:
             }
         }
 
-        // Priority 2: Wikipedia Official Article Lead Image (Authoritative encyclopedic image)
-        try
+        // 2. Resilient Fallback: If Pixabay rate-limits (HTTP 429) or has no hits,
+        // use Wikipedia's official curated encyclopedic lead image + clean Wikimedia photos
+        // so candidateUrls is NEVER empty and user can always cycle through images.
+        if (candidateUrls.Count == 0)
         {
-            var wikiUrl = $"https://en.wikipedia.org/api/rest_v1/page/summary/{Uri.EscapeDataString(cleanWord)}";
-            using var request = new HttpRequestMessage(HttpMethod.Get, wikiUrl);
-            request.Headers.Add("User-Agent", "English4U/1.0 (contact@english4u.com)");
-
-            using var response = await httpClient.SendAsync(request, cancellationToken);
-            if (response.IsSuccessStatusCode)
+            try
             {
-                var json = await response.Content.ReadAsStringAsync(cancellationToken);
-                using var doc = JsonDocument.Parse(json);
-                if (doc.RootElement.TryGetProperty("thumbnail", out var thumb) &&
-                    thumb.TryGetProperty("source", out var src) &&
-                    !string.IsNullOrWhiteSpace(src.GetString()))
+                var fallbackImages = await FetchWikipediaFallbackImagesAsync(cleanWord, cancellationToken);
+                foreach (var img in fallbackImages)
                 {
-                    var leadImg = src.GetString()!;
-                    candidateUrls.Add(leadImg);
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            logger.LogDebug(ex, "Wikipedia article summary image fetch failed for {Word}", word);
-        }
-
-        // Priority 3: Wikimedia Commons Filtered (Exclude scanned stamps, coins, pdfs, and documents)
-        try
-        {
-            var searchUrl = $"https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch={Uri.EscapeDataString(cleanWord)}+filetype:bitmap+-svg+-scan+-pdf+-document+-stamp+-coin&gsrnamespace=6&prop=imageinfo&iiprop=url&iiurlwidth=640&format=json&gsrlimit=6&origin=*";
-            using var request = new HttpRequestMessage(HttpMethod.Get, searchUrl);
-            request.Headers.Add("User-Agent", "English4U/1.0 (contact@english4u.com)");
-
-            using var response = await httpClient.SendAsync(request, cancellationToken);
-            if (response.IsSuccessStatusCode)
-            {
-                var json = await response.Content.ReadAsStringAsync(cancellationToken);
-                using var doc = JsonDocument.Parse(json);
-                if (doc.RootElement.TryGetProperty("query", out var query) && query.TryGetProperty("pages", out var pages))
-                {
-                    foreach (var page in pages.EnumerateObject())
+                    if (!candidateUrls.Contains(img))
                     {
-                        if (page.Value.TryGetProperty("imageinfo", out var imgInfo) &&
-                            imgInfo.ValueKind == JsonValueKind.Array &&
-                            imgInfo.GetArrayLength() > 0)
-                        {
-                            var info0 = imgInfo[0];
-                            var thumb = info0.TryGetProperty("thumburl", out var t) ? t.GetString() : null;
-                            var full = info0.TryGetProperty("url", out var u) ? u.GetString() : null;
-                            var chosen = thumb ?? full;
-                            if (!string.IsNullOrWhiteSpace(chosen) && !candidateUrls.Contains(chosen))
-                            {
-                                candidateUrls.Add(chosen);
-                            }
-                        }
+                        candidateUrls.Add(img);
                     }
                 }
             }
-        }
-        catch (Exception ex)
-        {
-            logger.LogDebug(ex, "Wikimedia filtered search failed for {Word}", word);
-        }
-
-        // Priority 4: High-resolution curated educational fallback
-        const string fallbackUrl = "https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?auto=format&fit=crop&w=640&q=80";
-        if (candidateUrls.Count == 0)
-        {
-            candidateUrls.Add(fallbackUrl);
+            catch (Exception ex)
+            {
+                logger.LogDebug(ex, "Wikipedia image fallback failed for {Word}", word);
+            }
         }
 
-        return (candidateUrls[0], candidateUrls);
+        // Save to cache with 4-hour TTL
+        if (candidateUrls.Count > 0)
+        {
+            ImageCache[cacheKey] = (DateTime.UtcNow.AddHours(4), candidateUrls);
+            if (!string.Equals(cacheKey, cleanWord, StringComparison.OrdinalIgnoreCase))
+            {
+                ImageCache[cleanWord] = (DateTime.UtcNow.AddHours(4), candidateUrls);
+            }
+        }
+
+        var primary = candidateUrls.Count > 0 ? candidateUrls[0] : "";
+        return (primary, candidateUrls);
     }
 
     private async Task<List<string>> FetchPixabayImagesAsync(
         string apiKey,
         string query,
-        string imageType,
         int perPage,
         CancellationToken cancellationToken)
     {
         var urls = new List<string>();
         var escaped = Uri.EscapeDataString(query.Trim());
-        var url = $"https://pixabay.com/api/?key={apiKey}&q={escaped}&image_type={imageType}&safesearch=true&per_page={perPage}";
+        var url = $"https://pixabay.com/api/?key={apiKey}&q={escaped}&image_type=all&safesearch=true&per_page={perPage}";
 
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
-        request.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) English4U/1.0");
+        request.Version = System.Net.HttpVersion.Version11;
+        request.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36");
+        request.Headers.Add("Accept", "application/json, text/plain, */*");
+
         using var response = await httpClient.SendAsync(request, cancellationToken);
         if (response.IsSuccessStatusCode)
         {
@@ -1004,16 +955,111 @@ Evaluate thoroughly and return a strict JSON object with:
             {
                 foreach (var hit in hits.EnumerateArray())
                 {
-                    var webformat = hit.TryGetProperty("webformatURL", out var w) ? w.GetString() : null;
-                    var large = hit.TryGetProperty("largeImageURL", out var l) ? l.GetString() : null;
-                    var chosen = webformat ?? large;
-                    if (!string.IsNullOrWhiteSpace(chosen) && !urls.Contains(chosen))
+                    // IMPORTANT: Pixabay webformatURL (pixabay.com/get/...) blocks third-party browser hotlinking with HTTP 429.
+                    // Instead, convert previewURL (https://cdn.pixabay.com/photo/..._150.ext) to _640.ext.
+                    // This permanent CDN URL returns HTTP 200 OK without hotlink blocking.
+                    string? chosenUrl = null;
+                    if (hit.TryGetProperty("previewURL", out var prevElem))
                     {
-                        urls.Add(chosen);
+                        var prev = prevElem.GetString();
+                        if (!string.IsNullOrWhiteSpace(prev) && prev.Contains("cdn.pixabay.com"))
+                        {
+                            chosenUrl = prev.Replace("_150.", "_640.");
+                        }
+                    }
+
+                    if (string.IsNullOrWhiteSpace(chosenUrl))
+                    {
+                        if (hit.TryGetProperty("webformatURL", out var wElem))
+                        {
+                            var w = wElem.GetString();
+                            if (!string.IsNullOrWhiteSpace(w)) chosenUrl = w;
+                        }
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(chosenUrl) && !urls.Contains(chosenUrl))
+                    {
+                        urls.Add(chosenUrl);
                     }
                 }
             }
         }
+        else
+        {
+            logger.LogWarning("[FlashcardAI] Pixabay API returned HTTP {StatusCode} for query '{Query}'", (int)response.StatusCode, query);
+        }
+
+        return urls;
+    }
+
+    private async Task<List<string>> FetchWikipediaFallbackImagesAsync(string word, CancellationToken cancellationToken)
+    {
+        var urls = new List<string>();
+        var clean = word.Trim();
+
+        // 1. Wikipedia summary official lead image
+        try
+        {
+            var summaryUrl = $"https://en.wikipedia.org/api/rest_v1/page/summary/{Uri.EscapeDataString(clean)}";
+            using var req = new HttpRequestMessage(HttpMethod.Get, summaryUrl);
+            req.Headers.Add("User-Agent", "English4U/1.0 (https://english4u.local; contact@english4u.local)");
+            using var res = await httpClient.SendAsync(req, cancellationToken);
+            if (res.IsSuccessStatusCode)
+            {
+                var json = await res.Content.ReadAsStringAsync(cancellationToken);
+                using var doc = JsonDocument.Parse(json);
+                if (doc.RootElement.TryGetProperty("originalimage", out var orig) && orig.TryGetProperty("source", out var sElem))
+                {
+                    var src = sElem.GetString();
+                    if (!string.IsNullOrWhiteSpace(src) && !urls.Contains(src))
+                    {
+                        urls.Add(src);
+                    }
+                }
+                else if (doc.RootElement.TryGetProperty("thumbnail", out var thumb) && thumb.TryGetProperty("source", out var tElem))
+                {
+                    var src = tElem.GetString();
+                    if (!string.IsNullOrWhiteSpace(src) && !urls.Contains(src))
+                    {
+                        urls.Add(src);
+                    }
+                }
+            }
+        }
+        catch { }
+
+        // 2. High-quality Wikimedia photo search (filtering out non-bitmaps, documents, coats of arms)
+        try
+        {
+            var searchUrl = $"https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch={Uri.EscapeDataString(clean)}+filetype:bitmap+-svg+-scan+-pdf+-document+-seal+-stamp+-coin&gsrlimit=6&prop=imageinfo&iiprop=url&iiurlwidth=640&format=json";
+            using var req = new HttpRequestMessage(HttpMethod.Get, searchUrl);
+            req.Headers.Add("User-Agent", "English4U/1.0 (https://english4u.local; contact@english4u.local)");
+            using var res = await httpClient.SendAsync(req, cancellationToken);
+            if (res.IsSuccessStatusCode)
+            {
+                var json = await res.Content.ReadAsStringAsync(cancellationToken);
+                using var doc = JsonDocument.Parse(json);
+                if (doc.RootElement.TryGetProperty("query", out var q) && q.TryGetProperty("pages", out var pages))
+                {
+                    foreach (var page in pages.EnumerateObject())
+                    {
+                        if (page.Value.TryGetProperty("imageinfo", out var infoArr) && infoArr.GetArrayLength() > 0)
+                        {
+                            var info = infoArr[0];
+                            var thumb = info.TryGetProperty("thumburl", out var th) ? th.GetString() : null;
+                            var full = info.TryGetProperty("url", out var u) ? u.GetString() : null;
+                            var chosen = thumb ?? full;
+                            if (!string.IsNullOrWhiteSpace(chosen) && !urls.Contains(chosen))
+                            {
+                                urls.Add(chosen);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        catch { }
+
         return urls;
     }
 

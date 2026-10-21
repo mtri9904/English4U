@@ -10,12 +10,14 @@ import {
     Spin,
     Tag,
     Typography,
+    Image,
     message,
 } from 'antd';
 import {
     BulbOutlined,
     LoadingOutlined,
     PlusOutlined,
+    ReloadOutlined,
     SoundOutlined,
 } from '@ant-design/icons';
 import { useQueryClient } from '@tanstack/react-query';
@@ -56,6 +58,8 @@ export const ReviewAddToFlashcard: React.FC = () => {
     const [activeContext, setActiveContext] = useState('');
     const [isAiLoading, setIsAiLoading] = useState(false);
     const [enrichedResult, setEnrichedResult] = useState<AiEnrichWordResponse | null>(null);
+    const [currentImageIndex, setCurrentImageIndex] = useState(0);
+    const [isChangingImage, setIsChangingImage] = useState(false);
     const [selectedDeckId, setSelectedDeckId] = useState<string>(CREATE_EXAM_DECK_KEY);
     const [isSaving, setIsSaving] = useState(false);
 
@@ -256,13 +260,62 @@ export const ReviewAddToFlashcard: React.FC = () => {
 
         try {
             setIsAiLoading(true);
+            setEnrichedResult(null); // Xóa ngay kết quả cũ để đảm bảo không lưu hay hiển thị ảnh cũ
             const res = await flashcardApi.enrichWord(clean, contextToUse);
             setEnrichedResult(res);
+            setCurrentImageIndex(0);
+
+            // Preload next image if available
+            if (res.candidateImages && res.candidateImages.length > 1) {
+                const preload = new window.Image();
+                preload.src = res.candidateImages[1];
+            }
+
             message.success('AI đã phân tích ngữ cảnh bài thi và tra cứu thành công!');
         } catch {
             message.error('Không thể tra cứu thông tin từ vựng. Vui lòng thử lại.');
         } finally {
             setIsAiLoading(false);
+        }
+    };
+
+    const handleCycleNextImage = () => {
+        if (!enrichedResult) return;
+        const candidates = enrichedResult.candidateImages && enrichedResult.candidateImages.length > 0
+            ? enrichedResult.candidateImages
+            : (enrichedResult.imageUrl ? [enrichedResult.imageUrl] : []);
+
+        if (candidates.length <= 1) {
+            message.info('Chỉ có 1 hình ảnh minh họa cho từ vựng này.');
+            return;
+        }
+
+        try {
+            setIsChangingImage(true);
+            const current = enrichedResult.imageUrl || '';
+            let currentIdx = candidates.indexOf(current);
+            if (currentIdx === -1) {
+                currentIdx = currentImageIndex;
+            }
+            const nextIdx = (currentIdx + 1) % candidates.length;
+            const nextUrl = candidates[nextIdx];
+
+            setCurrentImageIndex(nextIdx);
+            setEnrichedResult({
+                ...enrichedResult,
+                imageUrl: nextUrl,
+            });
+
+            // Preload subsequent image in background
+            const subsequentIdx = (nextIdx + 1) % candidates.length;
+            if (subsequentIdx !== nextIdx) {
+                const preload = new window.Image();
+                preload.src = candidates[subsequentIdx];
+            }
+
+            message.success(`Đã đổi sang hình ${nextIdx + 1}/${candidates.length}!`);
+        } finally {
+            setIsChangingImage(false);
         }
     };
 
@@ -600,19 +653,49 @@ export const ReviewAddToFlashcard: React.FC = () => {
                         >
                             <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
                                 {enrichedResult.imageUrl && (
-                                    <img
-                                        src={enrichedResult.imageUrl}
-                                        alt={enrichedResult.word}
-                                        style={{
-                                            width: 140,
-                                            height: 110,
-                                            borderRadius: 12,
-                                            objectFit: 'cover',
-                                            boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                                            border: '1px solid #e2e8f0',
-                                            flexShrink: 0,
-                                        }}
-                                    />
+                                    <div style={{ position: 'relative', width: 140, height: 110, borderRadius: 12, overflow: 'hidden', flexShrink: 0, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', border: '1px solid #e2e8f0' }}>
+                                        <Image
+                                            key={`${enrichedResult.imageUrl}-${currentImageIndex}`}
+                                            src={enrichedResult.imageUrl}
+                                            alt={enrichedResult.word}
+                                            preview={false}
+                                            width={140}
+                                            height={110}
+                                            wrapperStyle={{ width: 140, height: 110 }}
+                                            style={{ width: 140, height: 110, objectFit: 'cover' }}
+                                            placeholder={
+                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 140, height: 110, background: '#f1f5f9' }}>
+                                                    <Spin indicator={<LoadingOutlined style={{ fontSize: 20, color: '#4f46e5' }} spin />} />
+                                                </div>
+                                            }
+                                            fallback="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100%25' height='100%25' viewBox='0 0 100 100' fill='%23f1f5f9'><rect width='100' height='100' fill='%23f1f5f9'/><text x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' font-family='sans-serif' font-size='10' fill='%2394a3b8'>Ảnh lỗi</text></svg>"
+                                        />
+                                        {enrichedResult.candidateImages && enrichedResult.candidateImages.length > 1 && (
+                                            <Button
+                                                size="small"
+                                                type="primary"
+                                                icon={<ReloadOutlined />}
+                                                loading={isChangingImage}
+                                                onClick={handleCycleNextImage}
+                                                style={{
+                                                    position: 'absolute',
+                                                    bottom: 4,
+                                                    right: 4,
+                                                    background: 'rgba(15, 23, 42, 0.85)',
+                                                    backdropFilter: 'blur(4px)',
+                                                    border: 'none',
+                                                    borderRadius: 6,
+                                                    fontWeight: 600,
+                                                    fontSize: '0.72rem',
+                                                    height: 24,
+                                                    padding: '0 6px',
+                                                    zIndex: 2,
+                                                }}
+                                            >
+                                                Đổi hình
+                                            </Button>
+                                        )}
+                                    </div>
                                 )}
                                 <div style={{ flex: 1, minWidth: 0 }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
