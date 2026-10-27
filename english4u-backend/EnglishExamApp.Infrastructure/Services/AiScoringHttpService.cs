@@ -240,7 +240,7 @@ public sealed partial class AiScoringHttpService(
                     transcript_text = transcriptText
                 };
 
-                using var response = await httpClient.PostAsJsonAsync("api/ai/score-speaking", requestPayload, CancellationToken.None);
+                using var response = await SendWithWakeupRetryAsync(() => httpClient.PostAsJsonAsync("api/ai/score-speaking", requestPayload, CancellationToken.None), cancellationToken);
                 if (!response.IsSuccessStatusCode)
                 {
                     var errorBody = await response.Content.ReadAsStringAsync(CancellationToken.None);
@@ -464,10 +464,12 @@ public sealed partial class AiScoringHttpService(
 
         try
         {
-            using var response = await httpClient.PostAsJsonAsync(
-                "api/ai/score-speaking-session",
-                request,
-                JsonOptions,
+            using var response = await SendWithWakeupRetryAsync(
+                () => httpClient.PostAsJsonAsync(
+                    "api/ai/score-speaking-session",
+                    request,
+                    JsonOptions,
+                    cancellationToken),
                 cancellationToken);
 
             if (!response.IsSuccessStatusCode)
@@ -507,13 +509,15 @@ public sealed partial class AiScoringHttpService(
             return null;
         }
 
-        using var response = await httpClient.PostAsJsonAsync(
-            "api/ai/generate-speaking-prompt-audio",
-            new
-            {
-                promptText = promptText.Trim(),
-            },
-            JsonOptions,
+        using var response = await SendWithWakeupRetryAsync(
+            () => httpClient.PostAsJsonAsync(
+                "api/ai/generate-speaking-prompt-audio",
+                new
+                {
+                    promptText = promptText.Trim(),
+                },
+                JsonOptions,
+                cancellationToken),
             cancellationToken);
 
         if (!response.IsSuccessStatusCode)
@@ -555,14 +559,16 @@ public sealed partial class AiScoringHttpService(
             throw new InvalidOperationException("AudioUrl is required to generate listening transcript.");
         }
 
-        using var response = await httpClient.PostAsJsonAsync(
-            "api/ai/generate-listening-transcript",
-            new
-            {
-                audio_url = request.AudioUrl.Trim(),
-                language = string.IsNullOrWhiteSpace(request.Language) ? "en" : request.Language.Trim(),
-            },
-            JsonOptions,
+        using var response = await SendWithWakeupRetryAsync(
+            () => httpClient.PostAsJsonAsync(
+                "api/ai/generate-listening-transcript",
+                new
+                {
+                    audio_url = request.AudioUrl.Trim(),
+                    language = string.IsNullOrWhiteSpace(request.Language) ? "en" : request.Language.Trim(),
+                },
+                JsonOptions,
+                cancellationToken),
             cancellationToken);
 
         if (!response.IsSuccessStatusCode)
@@ -613,8 +619,9 @@ public sealed partial class AiScoringHttpService(
             throw new InvalidOperationException("Questions are required to align listening transcript.");
         }
 
-        using var response = await httpClient.PostAsJsonAsync(
-            "api/ai/align-listening-transcript",
+        using var response = await SendWithWakeupRetryAsync(
+            () => httpClient.PostAsJsonAsync(
+                "api/ai/align-listening-transcript",
             new
             {
                 transcript_segments = request.TranscriptSegments.Select(segment => new
@@ -675,10 +682,12 @@ public sealed partial class AiScoringHttpService(
 
         try
         {
-            using var response = await httpClient.PostAsJsonAsync(
-                "api/ai/analyze-readability",
-                new { text = text.Trim() },
-                JsonOptions,
+            using var response = await SendWithWakeupRetryAsync(
+                () => httpClient.PostAsJsonAsync(
+                    "api/ai/analyze-readability",
+                    new { text = text.Trim() },
+                    JsonOptions,
+                    cancellationToken),
                 cancellationToken);
 
             if (!response.IsSuccessStatusCode)
