@@ -17,7 +17,7 @@ public sealed class UserPresenceService(
         user.IsOnline = true;
         user.UpdatedAt = now;
 
-        await context.SaveChangesAsync(cancellationToken);
+        await context.SaveChangesAsync(CancellationToken.None);
         await PublishPresenceChangedAsync(cancellationToken);
     }
 
@@ -25,7 +25,7 @@ public sealed class UserPresenceService(
         Guid userId,
         CancellationToken cancellationToken = default)
     {
-        var user = await context.Users.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+        var user = await context.Users.FirstOrDefaultAsync(u => u.Id == userId, CancellationToken.None);
         if (user is null)
         {
             return new UserPresenceHeartbeatResult(UserPresenceHeartbeatStatus.NotFound);
@@ -36,7 +36,7 @@ public sealed class UserPresenceService(
             var wasOnline = user.IsOnline;
             user.IsOnline = false;
 
-            await context.SaveChangesAsync(cancellationToken);
+            await context.SaveChangesAsync(CancellationToken.None);
             if (wasOnline)
             {
                 await PublishPresenceChangedAsync(cancellationToken);
@@ -51,7 +51,7 @@ public sealed class UserPresenceService(
         user.IsOnline = true;
         user.UpdatedAt = now;
 
-        await context.SaveChangesAsync(cancellationToken);
+        await context.SaveChangesAsync(CancellationToken.None);
         if (!wasPreviouslyOnline)
         {
             await PublishPresenceChangedAsync(cancellationToken);
@@ -62,7 +62,7 @@ public sealed class UserPresenceService(
 
     public async Task<bool> MarkOfflineAsync(Guid userId, CancellationToken cancellationToken = default)
     {
-        var user = await context.Users.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+        var user = await context.Users.FirstOrDefaultAsync(u => u.Id == userId, CancellationToken.None);
         if (user is null)
         {
             return false;
@@ -74,7 +74,7 @@ public sealed class UserPresenceService(
         user.IsOnline = false;
         user.UpdatedAt = now;
 
-        await context.SaveChangesAsync(cancellationToken);
+        await context.SaveChangesAsync(CancellationToken.None);
         if (wasOnline)
         {
             await PublishPresenceChangedAsync(cancellationToken);

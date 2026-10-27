@@ -306,18 +306,25 @@ public class UserController(
         if (!currentUser.TryGetUserId(out var userId))
             return TypedResults.Unauthorized();
 
-        var result = await userPresenceService.HeartbeatAsync(userId, cancellationToken);
-        if (result.Status == UserPresenceHeartbeatStatus.NotFound)
+        try
         {
-            return TypedResults.NotFound();
-        }
+            var result = await userPresenceService.HeartbeatAsync(userId, CancellationToken.None);
+            if (result.Status == UserPresenceHeartbeatStatus.NotFound)
+            {
+                return TypedResults.NotFound();
+            }
 
-        if (result.Status == UserPresenceHeartbeatStatus.Inactive)
+            if (result.Status == UserPresenceHeartbeatStatus.Inactive)
+            {
+                return TypedResults.Forbid();
+            }
+
+            return TypedResults.Ok(new { message = "Heartbeat updated." });
+        }
+        catch (Exception)
         {
-            return TypedResults.Forbid();
+            return TypedResults.Ok(new { message = "Heartbeat skipped." });
         }
-
-        return TypedResults.Ok(new { message = "Heartbeat updated." });
     }
 
     [HttpPost("activity/offline")]
@@ -326,11 +333,18 @@ public class UserController(
         if (!currentUser.TryGetUserId(out var userId))
             return TypedResults.Unauthorized();
 
-        var userFound = await userPresenceService.MarkOfflineAsync(userId, cancellationToken);
-        if (!userFound)
-            return TypedResults.Ok();
+        try
+        {
+            var userFound = await userPresenceService.MarkOfflineAsync(userId, CancellationToken.None);
+            if (!userFound)
+                return TypedResults.Ok();
 
-        return TypedResults.Ok(new { message = "User marked offline." });
+            return TypedResults.Ok(new { message = "User marked offline." });
+        }
+        catch (Exception)
+        {
+            return TypedResults.Ok(new { message = "Offline mark skipped." });
+        }
     }
 
     [HttpDelete]

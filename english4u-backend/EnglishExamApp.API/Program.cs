@@ -309,12 +309,20 @@ static string NormalizeConnectionString(string connectionString)
                 database = "test";
             }
 
-            return $"Server={host};Port={port};Database={database};User Id={user};Password={password};SslMode=Required;AllowPublicKeyRetrieval=True;";
+            trimmed = $"Server={host};Port={port};Database={database};User Id={user};Password={password};SslMode=Required;AllowPublicKeyRetrieval=True;";
         }
         catch
         {
-            return trimmed;
         }
+    }
+
+    var isMySql = trimmed.StartsWith("Server=", StringComparison.OrdinalIgnoreCase)
+        || trimmed.Contains("tidbcloud.com", StringComparison.OrdinalIgnoreCase)
+        || trimmed.Contains("Port=4000", StringComparison.OrdinalIgnoreCase);
+
+    if (isMySql && !trimmed.Contains("CancellationTimeout", StringComparison.OrdinalIgnoreCase))
+    {
+        trimmed = trimmed.TrimEnd(';') + ";CancellationTimeout=-1;";
     }
 
     return trimmed;
