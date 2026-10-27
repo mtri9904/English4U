@@ -22,7 +22,6 @@
         "noUnusedParameters": true,
         "noFallthroughCasesInSwitch": true,
         /* Aliases for FSD */
-        "baseUrl": ".",
         "paths": {
             "@/*": [
                 "./src/*"

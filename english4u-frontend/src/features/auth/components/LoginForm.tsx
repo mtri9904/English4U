@@ -3,9 +3,9 @@ import { Link, useNavigate } from 'react-router-dom'
 import { Mail, Lock, Eye, EyeOff, Check, Loader2 } from 'lucide-react'
 import { SocialLogin } from './SocialLogin'
 import { AuthDivider } from './AuthDivider'
-import { useLoginMutation } from '../api/auth.api'
+import { useLoginMutation } from '../hooks/useAuthQueries'
 import { message } from 'antd'
-import { consumeForcedLogoutReason } from '../lib/sessionSignals'
+import { consumeForcedLogoutReason } from '../utils/auth.utils'
 
 export function LoginForm() {
     const [email, setEmail] = useState('')

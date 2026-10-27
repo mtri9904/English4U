@@ -14,10 +14,12 @@ public class AdminAttemptController(IExamExecutionService examExecutionService) 
     public async Task<IResult> GetAttempts(
         [FromQuery] string? status,
         [FromQuery] string? search,
-        CancellationToken cancellationToken)
+        [FromQuery] int pageNumber = 1,
+        [FromQuery] int pageSize = 10,
+        CancellationToken cancellationToken = default)
     {
-        var attempts = await examExecutionService.GetAdminAttemptsAsync(
-            new AdminAttemptQueryDto(status, search),
+        var attempts = await examExecutionService.GetPagedAdminAttemptsAsync(
+            new AdminAttemptQueryDto(status, search, pageNumber, pageSize),
             cancellationToken);
 
         return TypedResults.Ok(attempts);

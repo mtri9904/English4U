@@ -4,9 +4,9 @@ import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { message } from 'antd';
 import { GalaxyBackground } from '../components/GalaxyBackground';
-import { useLoginMutation } from '@/features/auth/api/auth.api';
+import { useLoginMutation } from '@/features/auth';
 import { GoogleLoginButton } from '@/features/auth/components/GoogleLoginButton';
-import { consumeForcedLogoutReason } from '@/features/auth/lib/sessionSignals';
+import { consumeForcedLogoutReason } from '@/features/auth';
 
 
 export function AdminLoginPage() {

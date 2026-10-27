@@ -1,3 +1,4 @@
+using EnglishExamApp.Application.DTOs.Common;
 using EnglishExamApp.Application.DTOs.Exams;
 
 namespace EnglishExamApp.Application.Services;
@@ -5,8 +6,10 @@ namespace EnglishExamApp.Application.Services;
 public interface IExamService
 {
     Task<List<ExamListItemDto>> GetAllAsync(CancellationToken cancellationToken = default);
+    Task<PagedResult<ExamListItemDto>> GetPagedExamsAsync(ExamPagedRequest request, CancellationToken cancellationToken = default);
     Task<ExamDetailDto?> GetExamDetailAsync(Guid examId, CancellationToken cancellationToken = default);
     Task<List<PracticeExamListItemDto>> GetPublishedPracticeExamsAsync(CancellationToken cancellationToken = default);
+    Task<PagedResult<PracticeExamListItemDto>> GetPagedPublishedPracticeExamsAsync(PracticeExamPagedRequest request, CancellationToken cancellationToken = default);
     Task<PracticeExamDetailDto?> GetPublishedPracticeExamDetailAsync(Guid examId, CancellationToken cancellationToken = default);
     Task<Guid> CreateExamAsync(CreateExamDto dto, Guid createdBy, CancellationToken cancellationToken = default);
     Task<bool> DeleteAsync(Guid examId, CancellationToken cancellationToken = default);

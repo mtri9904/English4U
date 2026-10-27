@@ -38,10 +38,10 @@ public class ExamController(
     };
 
     [HttpGet]
-    public async Task<IResult> GetAll(CancellationToken cancellationToken)
+    public async Task<IResult> GetAll([FromQuery] ExamPagedRequest request, CancellationToken cancellationToken)
     {
-        var exams = await examService.GetAllAsync(cancellationToken);
-        return TypedResults.Ok(exams);
+        var result = await examService.GetPagedExamsAsync(request, cancellationToken);
+        return TypedResults.Ok(result);
     }
 
     [HttpGet("{examId}")]

@@ -1,12 +1,9 @@
+// Constants
+export * from './constants/client.constants';
+
+// Utils
+export * from './utils/client.utils';
+
+// Pages
 export { ClientDashboard } from './pages/ClientDashboard';
 export { ClientNotFoundPage } from './pages/ClientNotFoundPage';
-export { ClientPracticePage } from './pages/ClientPracticePage';
-export { ClientPracticeExamPage } from './pages/ClientPracticeExamPage';
-export { ClientMyExamsPage } from './pages/ClientMyExamsPage';
-export { ClientProfilePage } from './pages/ClientProfilePage';
-export { ClientReadingSessionPage, ClientListeningSessionPage } from './pages/ClientObjectiveSessionRunnerPage';
-export { ClientWritingSessionPage } from './pages/ClientWritingSessionRunnerPage';
-export { ClientSpeakingSessionPage } from './pages/ClientSpeakingSessionRunnerPage';
-export { ClientSessionSubmitPage } from './pages/ClientSessionSubmitPage';
-export { ClientProgressPage } from './pages/ClientProgressPage';
-

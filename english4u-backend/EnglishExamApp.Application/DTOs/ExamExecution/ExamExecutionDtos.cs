@@ -1,10 +1,5 @@
 namespace EnglishExamApp.Application.DTOs.ExamExecution;
 
-public sealed record AutoSaveAnswerDto(
-    Guid SessionId,
-    Guid QuestionId,
-    string? AnswerText);
-
 public sealed record PracticeSessionAnswerInputDto(
     Guid? QuestionId,
     Guid? WritingTaskId,
@@ -242,7 +237,8 @@ public sealed record PracticeSessionListItemDto(
     double? TotalAutoScore,
     double? WritingScore = null,
     double? SpeakingScore = null,
-    double? TotalBandScore = null);
+    double? TotalBandScore = null,
+    int AttemptCount = 1);
 
 public sealed record UploadPracticeSpeakingRecordingDto(
     Guid SpeakingQuestionId,
@@ -261,9 +257,17 @@ public sealed record PracticeSessionSpeakingUploadResultDto(
     string? AnswerText,
     PracticeSessionSpeakingAnalyticsDto? SpeakingAnalytics = null);
 
+public sealed record PracticeSessionPagedRequest(
+    int PageNumber = 1,
+    int PageSize = 10,
+    string? Skill = null,
+    string? Status = null);
+
 public sealed record AdminAttemptQueryDto(
     string? Status,
-    string? Search);
+    string? Search,
+    int PageNumber = 1,
+    int PageSize = 10);
 
 public sealed record AdminAttemptListItemDto(
     Guid SessionId,
@@ -313,13 +317,3 @@ public sealed record AdminAttemptDetailDto(
     int? ResumeQuestionNumber,
     PracticeSessionResultDto? Result,
     IReadOnlyList<AdminAttemptAnswerDto> Answers);
-
-public sealed record SubmitExamResultDto(
-    Guid SessionId,
-    double ReadingScore,
-    double ListeningScore,
-    double TotalAutoScore,
-    bool HasWriting,
-    bool HasSpeaking,
-    string Status,
-    double? TotalBandScore = null);

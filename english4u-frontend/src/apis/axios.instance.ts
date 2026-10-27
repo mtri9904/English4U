@@ -1,6 +1,8 @@
 import axios from 'axios';
+import { ENV } from '@/constants/env';
+import { ROUTE_PATHS } from '@/constants/route-paths';
 
-const BASE_URL = (import.meta as any).env.VITE_API_BASE_URL || 'http://localhost:5237/api';
+const BASE_URL = ENV.API_BASE_URL;
 
 export const axiosInstance = axios.create({
     baseURL: BASE_URL,
@@ -30,10 +32,16 @@ const clearSession = () => {
 };
 
 const redirectToLogin = () => {
-    const loginPath = window.location.pathname.startsWith('/admin')
-        ? '/admin/login'
-        : '/login';
-    const publicPaths = ['/login', '/admin/login', '/register', '/forgot-password', '/reset-password'];
+    const loginPath = window.location.pathname.startsWith(ROUTE_PATHS.ADMIN_ROOT)
+        ? ROUTE_PATHS.ADMIN_LOGIN
+        : ROUTE_PATHS.LOGIN;
+    const publicPaths = [
+        ROUTE_PATHS.LOGIN,
+        ROUTE_PATHS.ADMIN_LOGIN,
+        ROUTE_PATHS.REGISTER,
+        ROUTE_PATHS.FORGOT_PASSWORD,
+        ROUTE_PATHS.RESET_PASSWORD,
+    ];
     const isPublicPage = publicPaths.some(p => window.location.pathname.startsWith(p));
     if (!isPublicPage) {
         window.location.replace(loginPath);

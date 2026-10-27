@@ -1,58 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Badge } from '@/shared/ui/Badge'
 import { ProgressBar } from '@/shared/ui/ProgressBar'
-
-interface Skill {
-    id: string; icon: string; title: string; description: string; color: string; bg: string; progress: number; tag: string; features: string[]; animated?: boolean
-}
-
-const SKILLS: Skill[] = [
-    { 
-        id: 'listening', 
-        icon: '🎧', 
-        title: 'Listening', 
-        description: 'Luyện đề thi IELTS Listening trọn vẹn với audio liền mạch cho toàn bài thi. Giao diện phòng thi thật giúp nâng cao kỹ năng nghe hiểu và điền từ.', 
-        color: '#137dc5', 
-        bg: 'rgba(19,125,197,0.08)', 
-        progress: 78, 
-        tag: 'IELTS Band 7+', 
-        features: ['Audio toàn bài liền mạch', 'Giao diện phòng thi thật', 'Chấm điểm tự động ngay'] 
-    },
-    { 
-        id: 'speaking', 
-        icon: '🎙️', 
-        title: 'Speaking', 
-        description: 'Luyện thi IELTS Speaking trực tiếp cùng 3D Avatar Examiner tương tác thời gian thực. Hệ thống AI phân tích giọng nói và chấm điểm theo 4 tiêu chí chuẩn IELTS.', 
-        color: '#7c3aed', 
-        bg: 'rgba(124,58,237,0.08)', 
-        progress: 65, 
-        tag: '3D Examiner AI', 
-        features: ['3D Avatar tương tác trực quan', 'Chấm 4 tiêu chuẩn IELTS', 'Phân tích lỗi phát âm & ngắt nghỉ'], 
-        animated: true 
-    },
-    { 
-        id: 'reading', 
-        icon: '📖', 
-        title: 'Reading', 
-        description: 'Đọc và trả lời câu hỏi trực tiếp trên giao diện split-screen chia đôi màn hình. Dễ dàng điều hướng và quản lý thời gian giữa 3 passage của đề thi.', 
-        color: '#0891b2', 
-        bg: 'rgba(8,145,178,0.08)', 
-        progress: 82, 
-        tag: '3 Passages', 
-        features: ['Giao diện split-screen tiện lợi', 'Đủ 3 passage chuẩn Academic', 'Chấm điểm và hiển thị đáp án ngay'] 
-    },
-    { 
-        id: 'writing', 
-        icon: '✏️', 
-        title: 'Writing', 
-        description: 'Viết luận và nộp bài để nhận phản hồi chi tiết từ AI Review Copilot. Nhận gợi ý sửa lỗi ngữ pháp, từ vựng và tối ưu cấu trúc bài viết chỉ sau vài giây.', 
-        color: '#c2410c', 
-        bg: 'rgba(194,65,12,0.08)', 
-        progress: 71, 
-        tag: 'AI Copilot', 
-        features: ['AI Review Copilot phân tích', 'Sửa lỗi ngữ pháp & từ vựng', 'Phân tích tiêu chí IELTS Writing'] 
-    },
-]
+import { HOME_SKILLS, type HomeSkill } from '../constants/home.constants'
 
 export function FeaturesSection() {
     return (
@@ -71,7 +20,7 @@ export function FeaturesSection() {
                     </div>
                 </FadeIn>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 20 }}>
-                    {SKILLS.map((skill, i) => (
+                    {HOME_SKILLS.map((skill, i) => (
                         <FadeIn key={skill.id} delay={i * 100}><SkillCard skill={skill} /></FadeIn>
                     ))}
                 </div>
@@ -80,7 +29,7 @@ export function FeaturesSection() {
     )
 }
 
-function SkillCard({ skill }: { skill: Skill }) {
+function SkillCard({ skill }: { skill: HomeSkill }) {
     const [hovered, setHovered] = useState(false)
     return (
         <div onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}

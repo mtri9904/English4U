@@ -12,42 +12,45 @@ import { ConfirmEmailPage } from '@/features/auth/pages/ConfirmEmailPage';
 import {
     AdminLoginPage,
     AdminDashboard,
-    StudentManagementPage,
-    ExamManagement,
+    AdminNotFoundPage,
+} from '@/features/admin';
+import { StudentManagementPage, ProfilePage, ClientProfilePage } from '@/features/students';
+import { AttemptManagementPage } from '@/features/attempts';
+import { NotificationManagementPage } from '@/features/notifications';
+import { ProgressPage } from '@/features/gamification';
+import {
+    ExamManagementPage,
     ExamDetailPage,
     ExamEditorPage,
-    AdminExamAiGenerationPage,
-    AttemptManagementPage,
-    ProfilePage,
-    NotificationManagementPage,
-    AdminNotFoundPage,
-    GamificationPage,
-} from '@/features/admin';
+    ExamAiGenerationPage,
+    PracticeCatalogPage,
+    PracticeExamDetailPage,
+    MyExamsPage,
+} from '@/features/exams';
 import { AdminLayout } from '@/layouts/AdminLayout';
 import {
     ClientDashboard,
     ClientNotFoundPage,
-    ClientMyExamsPage,
-    ClientPracticeExamPage,
-    ClientPracticePage,
-    ClientReadingSessionPage,
-    ClientProfilePage,
-    ClientListeningSessionPage,
-    ClientWritingSessionPage,
-    ClientSpeakingSessionPage,
-    ClientSessionSubmitPage,
-    ClientProgressPage,
 } from '@/features/client';
+import {
+    ReadingSessionPage,
+    ListeningSessionPage,
+    WritingSessionPage,
+    SpeakingSessionPage,
+    SessionSubmitPage,
+} from '@/features/exam-taking';
 import {
     FlashcardDeckListPage,
     FlashcardDeckDetailPage,
     FlashcardStudyPage,
 } from '@/features/flashcard';
+import { ROUTE_PATHS } from '@/constants/route-paths';
+import { RequirePolicy } from '@/components/RequirePolicy';
 
 
 export const appRouter = createBrowserRouter([
     {
-        path: '/',
+        path: ROUTE_PATHS.HOME,
         element: <PublicLayout />,
         children: [
             {
@@ -81,32 +84,36 @@ export const appRouter = createBrowserRouter([
         ],
     },
     {
-        path: '/login',
+        path: ROUTE_PATHS.LOGIN,
         element: <LoginPage mode="login" />,
     },
     {
-        path: '/register',
+        path: ROUTE_PATHS.REGISTER,
         element: <LoginPage mode="register" />,
     },
     {
-        path: '/forgot-password',
+        path: ROUTE_PATHS.FORGOT_PASSWORD,
         element: <LoginPage mode="forgot" />,
     },
     {
-        path: '/reset-password',
+        path: ROUTE_PATHS.RESET_PASSWORD,
         element: <ResetPasswordPage />,
     },
     {
-        path: '/confirm-email',
+        path: ROUTE_PATHS.CONFIRM_EMAIL,
         element: <ConfirmEmailPage />,
     },
     {
-        path: '/admin/login',
+        path: ROUTE_PATHS.ADMIN_LOGIN,
         element: <AdminLoginPage />,
     },
     {
-        path: '/admin',
-        element: <AdminLayout />,
+        path: ROUTE_PATHS.ADMIN_ROOT,
+        element: (
+            <RequirePolicy requiredRole="Admin">
+                <AdminLayout />
+            </RequirePolicy>
+        ),
         children: [
             {
                 index: true,
@@ -122,7 +129,7 @@ export const appRouter = createBrowserRouter([
             },
             {
                 path: 'exams',
-                element: <ExamManagement />,
+                element: <ExamManagementPage />,
             },
             {
                 path: 'attempts',
@@ -138,15 +145,11 @@ export const appRouter = createBrowserRouter([
             },
             {
                 path: 'exams/generate-ai',
-                element: <AdminExamAiGenerationPage />,
+                element: <ExamAiGenerationPage />,
             },
             {
                 path: 'exams/edit/:id',
                 element: <ExamEditorPage />,
-            },
-            {
-                path: 'gamification',
-                element: <GamificationPage />,
             },
             {
                 path: 'profile',
@@ -163,8 +166,12 @@ export const appRouter = createBrowserRouter([
         ]
     },
     {
-        path: '/app',
-        element: <ClientLayout />,
+        path: ROUTE_PATHS.APP_ROOT,
+        element: (
+            <RequirePolicy>
+                <ClientLayout />
+            </RequirePolicy>
+        ),
         children: [
             {
                 index: true,
@@ -172,39 +179,39 @@ export const appRouter = createBrowserRouter([
             },
             {
                 path: 'practice',
-                element: <ClientPracticePage />,
+                element: <PracticeCatalogPage />,
             },
             {
                 path: 'practice/:examId',
-                element: <ClientPracticeExamPage />,
+                element: <PracticeExamDetailPage />,
             },
             {
                 path: 'my-exams',
-                element: <ClientMyExamsPage />,
+                element: <MyExamsPage />,
             },
             {
                 path: 'sessions/:sessionId/reading',
-                element: <ClientReadingSessionPage />,
+                element: <ReadingSessionPage />,
             },
             {
                 path: 'sessions/:sessionId/listening',
-                element: <ClientListeningSessionPage />,
+                element: <ListeningSessionPage />,
             },
             {
                 path: 'sessions/:sessionId/writing',
-                element: <ClientWritingSessionPage />,
+                element: <WritingSessionPage />,
             },
             {
                 path: 'sessions/:sessionId/speaking',
-                element: <ClientSpeakingSessionPage />,
+                element: <SpeakingSessionPage />,
             },
             {
                 path: 'sessions/:sessionId/submit',
-                element: <ClientSessionSubmitPage />,
+                element: <SessionSubmitPage />,
             },
             {
                 path: 'progress',
-                element: <ClientProgressPage />,
+                element: <ProgressPage />,
             },
             {
                 path: 'flashcards',
@@ -225,7 +232,7 @@ export const appRouter = createBrowserRouter([
         ]
     },
     {
-        path: '/flashcards',
+        path: ROUTE_PATHS.FLASHCARDS_ROOT,
         element: <ClientLayout />,
         children: [
             {

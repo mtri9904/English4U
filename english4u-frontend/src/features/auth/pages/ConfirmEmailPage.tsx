@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { CheckCircle, XCircle, Loader2 } from 'lucide-react';
-import { useConfirmEmailMutation } from '../api/auth.api';
+import { useConfirmEmailMutation } from '../hooks/useAuthQueries';
 
 export function ConfirmEmailPage() {
     const [searchParams] = useSearchParams();

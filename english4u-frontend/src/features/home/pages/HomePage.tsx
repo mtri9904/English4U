@@ -5,7 +5,6 @@ import { SpeakingCoachDemo } from '../components/SpeakingCoachDemo'
 import { WritingFeedbackDemo } from '../components/WritingFeedbackDemo'
 import { ExamGeneratorDemo } from '../components/ExamGeneratorDemo'
 import { ExamSimulatorShowcase } from '../components/ExamSimulatorShowcase'
-import { GamificationSection } from '../components/GamificationSection'
 import { CallToAction } from '../components/CallToAction'
 import { LandingFooter } from '../components/LandingFooter'
 
@@ -19,7 +18,6 @@ export function HomePage() {
             <WritingFeedbackDemo />
             <ExamGeneratorDemo />
             <ExamSimulatorShowcase />
-            <GamificationSection />
             <CallToAction />
             <LandingFooter />
         </div>

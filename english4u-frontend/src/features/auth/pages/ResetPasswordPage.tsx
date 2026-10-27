@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useSearchParams, useNavigate, Link } from 'react-router-dom'
 import { Lock, Eye, EyeOff, CheckCircle } from 'lucide-react'
 import { message } from 'antd'
-import { useResetPasswordMutation } from '../api/auth.api'
+import { useResetPasswordMutation } from '../hooks/useAuthQueries'
 
 export default function ResetPasswordPage() {
     const [searchParams] = useSearchParams()

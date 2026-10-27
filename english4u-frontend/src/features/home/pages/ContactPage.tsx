@@ -1,29 +1,7 @@
 import { LandingHeader } from '../components/LandingHeader'
 import { LandingFooter } from '../components/LandingFooter'
 import { MapPin, Phone, Mail, Send } from 'lucide-react'
-
-const FAQ_LIST = [
-    {
-        question: 'Hệ thống AI chấm điểm Speaking và Writing hoạt động như thế nào?',
-        answer: 'English4U tích hợp hệ thống AI tiên tiến. Đối với Speaking, hệ thống tự động phân tích và chấm điểm giọng nói của bạn theo 4 tiêu chí IELTS (Phát âm, Độ trôi chảy, Từ vựng, Ngữ pháp) dựa trên bản ghi âm câu trả lời. Đối với Writing, hệ thống tích hợp AI Review Copilot cung cấp báo cáo chi tiết và gợi ý sửa lỗi ngữ pháp ngay lập tức.'
-    },
-    {
-        question: 'Kết quả thi thử IELTS trên trình giả lập Exam Simulator có được chấm điểm ngay không?',
-        answer: 'Các phần thi trắc nghiệm (Reading và Listening) sẽ được chấm điểm tự động và trả kết quả ngay lập tức khi bạn nhấn "Submit Test". Phần thi Speaking và Writing sẽ được hệ thống AI phân tích và trả kết quả band score chi tiết chỉ sau vài giây.'
-    },
-    {
-        question: 'Tính năng "Sinh đề thi AI" (AI Exam Generator) hoạt động ra sao?',
-        answer: 'Bạn có thể tải lên tài liệu học tập cá nhân (PDF, Word) hoặc nhập một chủ đề bất kỳ. Hệ thống sẽ tự động chạy qua AI QA Pipeline để thiết lập đề thi IELTS chuẩn format. Đề thi sau đó được kiểm định qua Validator Agent độc lập để cam kết độ chính xác 100% của đáp án.'
-    },
-    {
-        question: 'Tôi có thể sử dụng English4U miễn phí không?',
-        answer: 'Có, tất cả các tính năng trên English4U (luyện thi thử IELTS Academic, giả lập phòng thi, chấm điểm Speaking & Writing) đều được cung cấp hoàn toàn miễn phí mà không giới hạn lượt sử dụng hay yêu cầu trả phí.'
-    },
-    {
-        question: 'Tôi cần làm gì nếu gặp sự cố âm thanh hoặc micro khi thi thử?',
-        answer: 'Hãy đảm bảo bạn đã cấp quyền truy cập Microphone cho trình duyệt khi bắt đầu phần thi Speaking và kiểm tra thiết bị phát âm thanh trong phần thi Listening. Chúng tôi khuyến nghị sử dụng Google Chrome để đạt độ ổn định tốt nhất. Nếu cần hỗ trợ thêm, hãy gửi lời nhắn ở biểu mẫu bên dưới.'
-    },
-]
+import { CONTACT_FAQ_LIST } from '../constants/home.constants'
 
 export function ContactPage() {
     return (
@@ -140,7 +118,7 @@ export function ContactPage() {
                         </div>
 
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                            {FAQ_LIST.map((faq, idx) => (
+                            {CONTACT_FAQ_LIST.map((faq, idx) => (
                                 <div key={idx} style={{ background: '#fff', padding: '24px 32px', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.03)', border: '1px solid rgba(0,0,0,0.02)' }}>
                                     <h3 style={{ fontSize: '1.0625rem', fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: '12px' }}>{faq.question}</h3>
                                     <p style={{ fontSize: '0.9375rem', color: 'var(--color-text-secondary)', lineHeight: 1.6 }}>{faq.answer}</p>

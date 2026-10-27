@@ -130,14 +130,13 @@ public class UserController(
             return Math.Max(1, (int)Math.Ceiling(duration.TotalMinutes));
         });
 
-        var gamificationProgress = UserGamificationCalculator.BuildProgress(rawProfile.ExperiencePoints);
         var gamification = new UserGamificationDto(
-            gamificationProgress.ExperiencePoints,
-            gamificationProgress.CurrentLevel,
-            gamificationProgress.CurrentLevelStartExperience,
-            gamificationProgress.NextLevelExperience,
-            gamificationProgress.ExperienceToNextLevel,
-            gamificationProgress.LevelProgressPercent,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
             rawProfile.DailyStreakCount,
             rawProfile.LongestStreakCount,
             VietnamDateTimeFormatter.ToDisplay(rawProfile.LastActivityAt));

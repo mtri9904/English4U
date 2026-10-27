@@ -87,8 +87,8 @@ public class UserService(IApplicationDbContext context) : IUserService
                 VietnamDateTimeFormatter.ToDisplay(u.LastLoginAt),
                 VietnamDateTimeFormatter.ToDisplay(u.LastSeenAt),
                 u.UserRoles.FirstOrDefault()?.Role?.Name ?? "User",
-                activeSub,
-                CalculateIeltsLevel(avgScore),
+                null,
+                string.Empty,
                 Math.Round(avgScore, 1)
             );
         }).ToList();
@@ -143,8 +143,8 @@ public class UserService(IApplicationDbContext context) : IUserService
             VietnamDateTimeFormatter.ToDisplay(user.LastLoginAt),
             VietnamDateTimeFormatter.ToDisplay(user.LastSeenAt),
             user.UserRoles.FirstOrDefault()?.Role?.Name ?? "User",
-            user.UserSubscriptions.FirstOrDefault(us => us.Status == "Active")?.Subscription?.Name ?? "Free",
-            CalculateIeltsLevel(averageScore),
+            null,
+            string.Empty,
             totalExamsTaken,
             Math.Round(averageScore, 2),
             recentSessions
@@ -162,14 +162,7 @@ public class UserService(IApplicationDbContext context) : IUserService
             u => u.IsActive && u.IsOnline && u.LastSeenAt != null && u.LastSeenAt >= onlineFrom,
             cancellationToken);
         
-        var premiumUsers = await context.UserSubscriptions
-            .Where(us =>
-                us.Status == "Active"
-                && us.Subscription.Name != "Free"
-                && us.User.UserRoles.Any(ur => ManagedRoles.Contains(ur.Role.Name)))
-            .Select(us => us.UserId)
-            .Distinct()
-            .CountAsync(cancellationToken);
+        var premiumUsers = 0;
 
         var results = await context.ScoringResults
             .Select(r => r.TotalBandScore)

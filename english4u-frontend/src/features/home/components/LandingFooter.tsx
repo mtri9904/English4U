@@ -1,30 +1,6 @@
 import { Link } from 'react-router-dom'
 import { Button } from '@/shared/ui/Button'
-
-interface FooterLinkItem {
-    label: string
-    href: string
-}
-
-const FOOTER_SECTIONS: Record<string, FooterLinkItem[]> = {
-    'Sản phẩm': [
-        { label: 'Thi thử IELTS', href: '/app/practice' },
-        { label: 'Luyện Nói AI', href: '/app/practice' },
-        { label: 'Luyện Viết AI', href: '/app/practice' },
-        { label: 'Trang cá nhân', href: '/app/profile' }
-    ],
-    'Tài nguyên': [
-        { label: 'Giới thiệu', href: '/about' },
-        { label: 'Liên hệ', href: '/contact' },
-        { label: 'Chính sách Bảo mật', href: '/privacy-policy' },
-        { label: 'Điều khoản Dịch vụ', href: '/terms-of-service' },
-    ],
-    'Hệ thống': [
-        { label: 'Đăng nhập', href: '/login' },
-        { label: 'Đăng ký', href: '/register' },
-        { label: 'Quản trị viên (CMS)', href: '/admin/login' },
-    ],
-}
+import { LANDING_FOOTER_SECTIONS } from '../constants/home.constants'
 
 export function LandingFooter() {
     return (
@@ -55,7 +31,7 @@ export function LandingFooter() {
                             ))}
                         </div>
                     </div>
-                    {Object.entries(FOOTER_SECTIONS).map(([group, links]) => (
+                    {Object.entries(LANDING_FOOTER_SECTIONS).map(([group, links]) => (
                         <div key={group}>
                             <div style={{ fontSize: '0.75rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)', marginBottom: 16 }}>{group}</div>
                             <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 10 }}>

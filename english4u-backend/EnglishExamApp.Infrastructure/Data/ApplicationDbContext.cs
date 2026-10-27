@@ -43,7 +43,14 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     {
         base.OnModelCreating(modelBuilder);
 
-        var defaultDateSql = Database.IsSqlite() ? "CURRENT_TIMESTAMP" : "GETDATE()";
+        if (Database.ProviderName?.Contains("MySql") == true)
+        {
+            modelBuilder.UseGuidCollation(string.Empty);
+        }
+
+        var defaultDateSql = Database.ProviderName?.Contains("SqlServer") == true ? "GETDATE()" :
+                             Database.ProviderName?.Contains("MySql") == true ? "CURRENT_TIMESTAMP(6)" :
+                             "CURRENT_TIMESTAMP";
 
         modelBuilder.Entity<User>(entity =>
         {

@@ -16,7 +16,7 @@ import {
     ThunderboltOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { useUserProfileQuery, userApi } from '@/features/admin/api/user.api';
+import { useUserProfileQuery, studentService as userApi } from '@/features/students';
 import { isTokenExpired } from '@/apis/axios.instance';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -24,8 +24,8 @@ import {
     useClientNotificationsQuery,
     useMarkAllClientNotificationsReadMutation,
     useUpdateClientNotificationReadMutation,
-} from '@/features/client/api/notification.api';
-import { getStreakDisplayMeta } from '@/features/client/lib/streakDisplay';
+} from '@/features/notifications';
+import { getStreakDisplayMeta } from '@/features/gamification';
 import { useRealtimeSync } from '@/features/realtime/hooks/useRealtimeSync';
 import { formatDateTimeToMinute } from '@/shared/lib/dateTime';
 

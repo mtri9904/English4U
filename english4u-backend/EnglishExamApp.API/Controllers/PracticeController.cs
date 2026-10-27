@@ -1,3 +1,4 @@
+using EnglishExamApp.Application.DTOs.Exams;
 using EnglishExamApp.API.Authentication;
 using EnglishExamApp.Application.DTOs.ExamExecution;
 using EnglishExamApp.Application.Services;
@@ -16,10 +17,10 @@ public class PracticeController(
 {
     [HttpGet("exams")]
     [AllowAnonymous]
-    public async Task<IResult> GetPublishedExams(CancellationToken cancellationToken)
+    public async Task<IResult> GetPublishedExams([FromQuery] PracticeExamPagedRequest request, CancellationToken cancellationToken)
     {
-        var exams = await examService.GetPublishedPracticeExamsAsync(cancellationToken);
-        return TypedResults.Ok(exams);
+        var result = await examService.GetPagedPublishedPracticeExamsAsync(request, cancellationToken);
+        return TypedResults.Ok(result);
     }
 
     [HttpGet("exams/{examId:guid}")]
@@ -57,6 +58,7 @@ public class PracticeController(
 
     [HttpGet("my-exams")]
     public async Task<IResult> GetMyPracticeSessions(
+        [FromQuery] PracticeSessionPagedRequest request,
         CancellationToken cancellationToken)
     {
         if (!currentUser.TryGetUserId(out var userId))
@@ -64,7 +66,7 @@ public class PracticeController(
             return TypedResults.Unauthorized();
         }
 
-        var sessions = await examExecutionService.GetPracticeSessionsAsync(userId, cancellationToken);
+        var sessions = await examExecutionService.GetPagedPracticeSessionsAsync(userId, request, cancellationToken);
         return TypedResults.Ok(sessions);
     }
 

@@ -17,23 +17,89 @@ public static class DatabaseInitializer
         var passwordHasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
         var logger = scope.ServiceProvider.GetRequiredService<ILogger<ApplicationDbContext>>();
 
-        logger.LogInformation("[*] Ensuring SQLite database and tables are created...");
-        var dbFile = "english4u.db";
-        var b64File = "english4u.db.b64";
-        var candidateB64 = File.Exists(b64File) ? b64File : (File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, b64File)) ? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, b64File) : null);
-        if (!File.Exists(dbFile) && !File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, dbFile)) && candidateB64 != null)
+        var isSqlite = context.Database.IsSqlite();
+        logger.LogInformation("[*] Ensuring database and tables are created (Provider: {Provider})...", context.Database.ProviderName);
+
+        if (isSqlite)
+        {
+            var dbFile = "english4u.db";
+            var b64File = "english4u.db.b64";
+            var candidateB64 = File.Exists(b64File) ? b64File : (File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, b64File)) ? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, b64File) : null);
+            if (!File.Exists(dbFile) && !File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, dbFile)) && candidateB64 != null)
+            {
+                try
+                {
+                    logger.LogInformation("[*] Restoring database from base64 seed template ({Path})...", candidateB64);
+                    var b64Content = File.ReadAllText(candidateB64).Trim();
+                    var dbBytes = Convert.FromBase64String(b64Content);
+                    File.WriteAllBytes(dbFile, dbBytes);
+                    logger.LogInformation("[+] Database successfully restored from base64 template ({Bytes} bytes).", dbBytes.Length);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "[!] Failed to restore database from base64 template.");
+                }
+            }
+        }
+
+        if (!isSqlite)
         {
             try
             {
-                logger.LogInformation("[*] Restoring database from base64 seed template ({Path})...", candidateB64);
-                var b64Content = File.ReadAllText(candidateB64).Trim();
-                var dbBytes = Convert.FromBase64String(b64Content);
-                File.WriteAllBytes(dbFile, dbBytes);
-                logger.LogInformation("[+] Database successfully restored from base64 template ({Bytes} bytes).", dbBytes.Length);
+                var connection = context.Database.GetDbConnection();
+                var shouldClose = false;
+                if (connection.State != System.Data.ConnectionState.Open)
+                {
+                    await connection.OpenAsync();
+                    shouldClose = true;
+                }
+
+                using var checkCmd = connection.CreateCommand();
+                checkCmd.CommandText = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'exams';";
+                var examsCount = Convert.ToInt64(await checkCmd.ExecuteScalarAsync());
+
+                if (examsCount == 0)
+                {
+                    using var dropFkCmd = connection.CreateCommand();
+                    dropFkCmd.CommandText = "SET FOREIGN_KEY_CHECKS = 0;";
+                    await dropFkCmd.ExecuteNonQueryAsync();
+
+                    var tableNames = new List<string>();
+                    using (var listCmd = connection.CreateCommand())
+                    {
+                        listCmd.CommandText = "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE();";
+                        using var reader = await listCmd.ExecuteReaderAsync();
+                        while (await reader.ReadAsync())
+                        {
+                            tableNames.Add(reader.GetString(0));
+                        }
+                    }
+
+                    foreach (var tbl in tableNames)
+                    {
+                        using var dropTableCmd = connection.CreateCommand();
+                        dropTableCmd.CommandText = "DROP TABLE IF EXISTS `" + tbl + "`;";
+                        await dropTableCmd.ExecuteNonQueryAsync();
+                    }
+
+                    using var reenableFkCmd = connection.CreateCommand();
+                    reenableFkCmd.CommandText = "SET FOREIGN_KEY_CHECKS = 1;";
+                    await reenableFkCmd.ExecuteNonQueryAsync();
+
+                    if (tableNames.Count > 0)
+                    {
+                        logger.LogInformation("[*] Reset {Count} partial tables in Cloud Database for clean schema initialization.", tableNames.Count);
+                    }
+                }
+
+                if (shouldClose)
+                {
+                    await connection.CloseAsync();
+                }
             }
             catch (Exception ex)
             {
-                logger.LogWarning(ex, "[!] Failed to restore database from base64 template.");
+                logger.LogWarning(ex, "[!] Schema check warning: {Message}", ex.Message);
             }
         }
 
@@ -55,9 +121,11 @@ public static class DatabaseInitializer
         }
 
         // Ensure flashcard tables exist in SQLite
-        try
+        if (isSqlite)
         {
-            await context.Database.ExecuteSqlRawAsync(@"
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(@"
                 CREATE TABLE IF NOT EXISTS flashcard_decks (
                     id TEXT PRIMARY KEY,
                     userId TEXT NOT NULL,
@@ -146,6 +214,10 @@ public static class DatabaseInitializer
         {
             logger.LogWarning(ex, "[!] Could not run flashcard tables check.");
         }
+
+        }
+
+
 
         // 1. Seed Roles
         var seedRoles = new[] { "Admin", "Student", "Teacher", "ContentCreator" };
@@ -252,11 +324,16 @@ public static class DatabaseInitializer
             logger.LogInformation("[+] Created Client Student account: {Email} / Student@123456", studentEmail);
         }
 
+        if (!isSqlite && !await context.Exams.AnyAsync())
+        {
+            await TryMigrateFromLocalSqliteAsync(context, existingAdmin?.Id, logger);
+        }
+
         // 4. Seed Default IELTS Flashcard Deck
         var existingDeck = await context.FlashcardDecks.Include(d => d.Items).FirstOrDefaultAsync(d => d.Title.Contains("IELTS Band 7.0+"));
         if (existingDeck == null)
         {
-            var targetUserId = existingAdmin?.Id ?? existingStudent?.Id ?? Guid.NewGuid();
+            var targetUserId = (await context.Users.FirstOrDefaultAsync(u => u.Email == adminEmail))?.Id ?? (await context.Users.Select(u => u.Id).FirstAsync());
             var sampleDeck = new FlashcardDeck
             {
                 Id = Guid.NewGuid(),
@@ -370,5 +447,91 @@ public static class DatabaseInitializer
 
         await context.SaveChangesAsync();
         logger.LogInformation("[+] Database initialization and user seeding completed.");
+    }
+
+    private static async Task TryMigrateFromLocalSqliteAsync(ApplicationDbContext targetContext, Guid? defaultAdminId, ILogger logger)
+    {
+        var dbFile = "english4u.db";
+        var b64File = "english4u.db.b64";
+        var candidateB64 = File.Exists(b64File) ? b64File : (File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, b64File)) ? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, b64File) : null);
+        var candidateDb = File.Exists(dbFile) ? dbFile : (File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, dbFile)) ? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, dbFile) : null);
+
+        if (candidateDb == null && candidateB64 != null)
+        {
+            try
+            {
+                var b64Content = File.ReadAllText(candidateB64).Trim();
+                var dbBytes = Convert.FromBase64String(b64Content);
+                File.WriteAllBytes(dbFile, dbBytes);
+                candidateDb = dbFile;
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "[!] Could not extract base64 sqlite for migration.");
+            }
+        }
+
+        if (candidateDb == null || !File.Exists(candidateDb))
+        {
+            return;
+        }
+
+        try
+        {
+            logger.LogInformation("[*] Migrating initial IELTS exams from local SQLite ({Path}) to Cloud Database...", candidateDb);
+            var sqliteOptions = new DbContextOptionsBuilder<ApplicationDbContext>()
+                .UseSqlite($"Data Source={candidateDb}")
+                .Options;
+
+            using var sourceContext = new ApplicationDbContext(sqliteOptions);
+            var sourceExams = await sourceContext.Exams
+                .AsSplitQuery()
+                .Include(e => e.ExamSections)
+                    .ThenInclude(s => s.ReadingPassages)
+                        .ThenInclude(p => p.QuestionGroups)
+                            .ThenInclude(g => g.Questions)
+                                .ThenInclude(q => q.QuestionOptions)
+                .Include(e => e.ExamSections)
+                    .ThenInclude(s => s.ListeningParts)
+                        .ThenInclude(l => l.QuestionGroups)
+                            .ThenInclude(g => g.Questions)
+                                .ThenInclude(q => q.QuestionOptions)
+                .Include(e => e.ExamSections)
+                    .ThenInclude(s => s.WritingTasks)
+                .Include(e => e.ExamSections)
+                    .ThenInclude(s => s.SpeakingParts)
+                        .ThenInclude(sp => sp.SpeakingQuestions)
+                .AsNoTracking()
+                .ToListAsync();
+
+            if (sourceExams.Count > 0)
+            {
+                foreach (var exam in sourceExams)
+                {
+                    exam.CreatedBy = defaultAdminId;
+                }
+
+                try
+                {
+                    await targetContext.Database.ExecuteSqlRawAsync("SET FOREIGN_KEY_CHECKS = 0;");
+                }
+                catch { }
+
+                targetContext.Exams.AddRange(sourceExams);
+                await targetContext.SaveChangesAsync();
+
+                try
+                {
+                    await targetContext.Database.ExecuteSqlRawAsync("SET FOREIGN_KEY_CHECKS = 1;");
+                }
+                catch { }
+
+                logger.LogInformation("[+] Successfully migrated {Count} exams to Cloud Database!", sourceExams.Count);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "[!] Failed to migrate initial exams from local SQLite: {Message}", ex.Message);
+        }
     }
 }

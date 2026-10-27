@@ -1,13 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { isTokenExpired } from '@/apis/axios.instance'
-
-const NAV_LINKS = [
-    { label: 'Trang chủ', href: '/' },
-    { label: 'Giới thiệu', href: '/about' },
-    { label: 'Liên hệ', href: '/contact' },
-    { label: 'Chính sách bảo mật', href: '/privacy-policy' },
-]
+import { LANDING_NAV_LINKS } from '../constants/home.constants'
 
 export function LandingHeader() {
     const [scrolled, setScrolled] = useState(false)
@@ -44,7 +38,7 @@ export function LandingHeader() {
                     </span>
                 </Link>
                 <nav style={{ flex: 1, display: 'flex', justifyContent: 'center', gap: 4 }}>
-                    {NAV_LINKS.map((link) => (
+                    {LANDING_NAV_LINKS.map((link) => (
                         <Link
                             key={link.label}
                             to={link.href}

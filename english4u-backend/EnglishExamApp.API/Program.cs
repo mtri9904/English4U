@@ -1,7 +1,6 @@
 using System.Data.Common;
 using System.IdentityModel.Tokens.Jwt;
 using EnglishExamApp.API.Authentication;
-using EnglishExamApp.API.Payments;
 using EnglishExamApp.API.Realtime;
 using EnglishExamApp.Application.Interfaces;
 using EnglishExamApp.Application.Services;
@@ -32,13 +31,12 @@ if (string.IsNullOrWhiteSpace(jwtKey))
         jwtKey = RequireConfiguration(builder.Configuration, "Jwt:Key");
     }
 }
-var defaultConnectionString = RequireConnectionString(builder.Configuration, "DefaultConnection");
-if (defaultConnectionString.Contains("Server=", StringComparison.OrdinalIgnoreCase)
-    || defaultConnectionString.Contains("Initial Catalog", StringComparison.OrdinalIgnoreCase)
-    || (defaultConnectionString.Contains("User Id=", StringComparison.OrdinalIgnoreCase) && !defaultConnectionString.Contains("Data Source=", StringComparison.OrdinalIgnoreCase)))
-{
-    defaultConnectionString = "Data Source=english4u.db";
-}
+var rawConnectionString = RequireConnectionString(builder.Configuration, "DefaultConnection");
+var defaultConnectionString = NormalizeConnectionString(rawConnectionString);
+
+var isMySql = defaultConnectionString.StartsWith("Server=", StringComparison.OrdinalIgnoreCase)
+    || defaultConnectionString.Contains("tidbcloud.com", StringComparison.OrdinalIgnoreCase)
+    || defaultConnectionString.Contains("Port=4000", StringComparison.OrdinalIgnoreCase);
 
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
@@ -62,15 +60,23 @@ builder.Services.AddCors(options =>
     });
 });
 
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlite(defaultConnectionString));
+if (isMySql)
+{
+    var serverVersion = new MySqlServerVersion(new Version(8, 0, 36));
+    builder.Services.AddDbContext<ApplicationDbContext>(options =>
+        options.UseMySql(defaultConnectionString, serverVersion));
+}
+else
+{
+    builder.Services.AddDbContext<ApplicationDbContext>(options =>
+        options.UseSqlite(defaultConnectionString));
+}
 
 builder.Services.AddScoped<IApplicationDbContext>(provider =>
     provider.GetRequiredService<ApplicationDbContext>());
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<IAuthCodeGenerator, SecureAuthCodeGenerator>();
-builder.Services.AddScoped<IVnpayPaymentService, VnpayPaymentService>();
 
 builder.Services.AddScoped<IExamService, ExamService>();
 builder.Services.AddScoped<IExamExecutionService, ExamExecutionService>();
@@ -276,4 +282,40 @@ static string RequireConnectionString(IConfiguration configuration, string name)
 
     throw new InvalidOperationException(
         $"Missing required connection string '{name}'. Set it with environment variable 'ConnectionStrings__{name}' or user-secrets key 'ConnectionStrings:{name}'.");
+}
+
+static string NormalizeConnectionString(string connectionString)
+{
+    if (string.IsNullOrWhiteSpace(connectionString))
+    {
+        return "Data Source=english4u.db";
+    }
+
+    var trimmed = connectionString.Trim();
+    if (trimmed.StartsWith("mysql://", StringComparison.OrdinalIgnoreCase)
+        || trimmed.StartsWith("mariadb://", StringComparison.OrdinalIgnoreCase))
+    {
+        try
+        {
+            var uri = new Uri(trimmed);
+            var userInfo = uri.UserInfo.Split(':');
+            var user = Uri.UnescapeDataString(userInfo[0]);
+            var password = userInfo.Length > 1 ? Uri.UnescapeDataString(userInfo[1]) : "";
+            var host = uri.Host;
+            var port = uri.Port > 0 ? uri.Port : 4000;
+            var database = uri.AbsolutePath.TrimStart('/');
+            if (string.IsNullOrWhiteSpace(database) || database.Equals("sys", StringComparison.OrdinalIgnoreCase))
+            {
+                database = "test";
+            }
+
+            return $"Server={host};Port={port};Database={database};User Id={user};Password={password};SslMode=Required;AllowPublicKeyRetrieval=True;";
+        }
+        catch
+        {
+            return trimmed;
+        }
+    }
+
+    return trimmed;
 }

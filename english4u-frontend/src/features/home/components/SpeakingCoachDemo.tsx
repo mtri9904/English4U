@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Badge } from '@/shared/ui/Badge'
 import { FadeIn } from './FeaturesSection'
-import { SpeakingExaminerModel } from '@/features/client/components/speaking/SpeakingExaminerModel'
+import { SpeakingExaminerModel } from '@/features/exam-taking/components/speaking/SpeakingExaminerModel'
 
 type Status = 'speaking_prompt' | 'idle' | 'recording' | 'analyzing' | 'done'
 type Viseme = 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'X'

@@ -1,3 +1,4 @@
+using EnglishExamApp.Application.DTOs.Common;
 using EnglishExamApp.Application.DTOs.Exams;
 using EnglishExamApp.Application.Interfaces;
 using EnglishExamApp.Domain.Entities;
@@ -33,6 +34,55 @@ public class ExamService(
             e.TotalPoints, e.ExamType, e.IsPublished, e.CreatedBy, e.CreatedAt,
             e.ExamSections.OrderBy(s => s.OrderIndex).Select(s => s.SkillType).ToList()))
         .ToList();
+    }
+
+    public async Task<PagedResult<ExamListItemDto>> GetPagedExamsAsync(ExamPagedRequest request, CancellationToken cancellationToken = default)
+    {
+        var pageNumber = request.PageNumber <= 0 ? 1 : request.PageNumber;
+        var pageSize = request.PageSize <= 0 ? 10 : Math.Min(request.PageSize, 100);
+
+        var query = context.Exams
+            .AsNoTracking()
+            .Include(e => e.ExamSections)
+            .AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(request.SearchTerm))
+        {
+            var search = request.SearchTerm.Trim().ToLower();
+            query = query.Where(e => e.Title.ToLower().Contains(search) || (e.Description != null && e.Description.ToLower().Contains(search)));
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.ExamType) && !request.ExamType.Equals("ALL", StringComparison.OrdinalIgnoreCase))
+        {
+            query = query.Where(e => e.ExamType == request.ExamType);
+        }
+
+        if (request.IsPublished.HasValue)
+        {
+            query = query.Where(e => e.IsPublished == request.IsPublished.Value);
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Skill) && !request.Skill.Equals("ALL", StringComparison.OrdinalIgnoreCase))
+        {
+            var skill = request.Skill.Trim().ToUpper();
+            query = query.Where(e => e.ExamSections.Any(s => s.SkillType.ToUpper() == skill));
+        }
+
+        var totalCount = await query.CountAsync(cancellationToken);
+
+        var exams = await query
+            .OrderByDescending(e => e.CreatedAt)
+            .Skip((pageNumber - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(cancellationToken);
+
+        var items = exams.Select(e => new ExamListItemDto(
+            e.Id, e.Title, e.Description, e.DurationMinutes,
+            e.TotalPoints, e.ExamType, e.IsPublished, e.CreatedBy, e.CreatedAt,
+            e.ExamSections.OrderBy(s => s.OrderIndex).Select(s => s.SkillType).ToList()))
+        .ToList();
+
+        return new PagedResult<ExamListItemDto>(items, totalCount, pageNumber, pageSize);
     }
 
     public async Task<List<PracticeExamListItemDto>> GetPublishedPracticeExamsAsync(CancellationToken cancellationToken = default)
@@ -97,6 +147,99 @@ public class ExamService(
             writingCounts.GetValueOrDefault(e.Id, 0),
             speakingPartCounts.GetValueOrDefault(e.Id, 0)
         )).ToList();
+    }
+
+    public async Task<PagedResult<PracticeExamListItemDto>> GetPagedPublishedPracticeExamsAsync(PracticeExamPagedRequest request, CancellationToken cancellationToken = default)
+    {
+        var pageNumber = request.PageNumber <= 0 ? 1 : request.PageNumber;
+        var pageSize = request.PageSize <= 0 ? 9 : Math.Min(request.PageSize, 50);
+
+        var query = context.Exams
+            .AsNoTracking()
+            .Where(e => e.IsPublished)
+            .Include(e => e.ExamSections)
+            .AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(request.Search))
+        {
+            var search = request.Search.Trim().ToLower();
+            query = query.Where(e => e.Title.ToLower().Contains(search) || (e.Description != null && e.Description.ToLower().Contains(search)));
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.ExamType) && !request.ExamType.Equals("ALL", StringComparison.OrdinalIgnoreCase))
+        {
+            var type = request.ExamType.Trim().ToLower();
+            query = query.Where(e => e.ExamType != null && e.ExamType.ToLower() == type);
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Skill) && !request.Skill.Equals("ALL", StringComparison.OrdinalIgnoreCase))
+        {
+            var skill = request.Skill.Trim().ToUpper();
+            query = query.Where(e => e.ExamSections.Any(s => s.SkillType.ToUpper() == skill));
+        }
+
+        var totalCount = await query.CountAsync(cancellationToken);
+        if (totalCount == 0)
+        {
+            return new PagedResult<PracticeExamListItemDto>([], 0, pageNumber, pageSize);
+        }
+
+        var exams = await query
+            .OrderByDescending(e => e.CreatedAt)
+            .Skip((pageNumber - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(cancellationToken);
+
+        var examIds = exams.Select(e => e.Id).ToList();
+
+        var readingCounts = await context.Questions
+            .AsNoTracking()
+            .Where(q => q.Group.Passage != null && examIds.Contains(q.Group.Passage.Section.ExamId))
+            .GroupBy(q => q.Group.Passage!.Section.ExamId)
+            .Select(g => new { ExamId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.ExamId, x => x.Count, cancellationToken);
+
+        var listeningCounts = await context.Questions
+            .AsNoTracking()
+            .Where(q => q.Group.ListeningPart != null && examIds.Contains(q.Group.ListeningPart.Section.ExamId))
+            .GroupBy(q => q.Group.ListeningPart!.Section.ExamId)
+            .Select(g => new { ExamId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.ExamId, x => x.Count, cancellationToken);
+
+        var writingCounts = await context.WritingTasks
+            .AsNoTracking()
+            .Where(w => examIds.Contains(w.Section.ExamId))
+            .GroupBy(w => w.Section.ExamId)
+            .Select(g => new { ExamId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.ExamId, x => x.Count, cancellationToken);
+
+        var speakingPartCounts = await context.SpeakingParts
+            .AsNoTracking()
+            .Where(s => examIds.Contains(s.Section.ExamId))
+            .GroupBy(s => s.Section.ExamId)
+            .Select(g => new { ExamId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.ExamId, x => x.Count, cancellationToken);
+
+        var items = exams.Select(e => new PracticeExamListItemDto(
+            e.Id,
+            e.Title,
+            e.Description,
+            e.DurationMinutes,
+            e.ExamType,
+            e.CreatedAt,
+            e.ExamSections
+                .OrderBy(section => section.OrderIndex)
+                .Select(section => section.SkillType)
+                .Distinct()
+                .ToList(),
+            e.ExamSections.Count,
+            readingCounts.GetValueOrDefault(e.Id, 0),
+            listeningCounts.GetValueOrDefault(e.Id, 0),
+            writingCounts.GetValueOrDefault(e.Id, 0),
+            speakingPartCounts.GetValueOrDefault(e.Id, 0)
+        )).ToList();
+
+        return new PagedResult<PracticeExamListItemDto>(items, totalCount, pageNumber, pageSize);
     }
 
     public async Task<bool> DeleteAsync(Guid examId, CancellationToken cancellationToken = default)
@@ -363,12 +506,6 @@ public class ExamService(
                 .Include(e => e.ExamSections)
                     .ThenInclude(s => s.SpeakingParts)
                         .ThenInclude(sp => sp.SpeakingQuestions)
-                .Include(e => e.ExamSessions)
-                    .ThenInclude(s => s.UserAnswers)
-                        .ThenInclude(ua => ua.UserAudioRecords)
-                .Include(e => e.ExamSessions)
-                    .ThenInclude(s => s.UserAnswers)
-                        .ThenInclude(ua => ua.AiFeedbacks)
                 .FirstOrDefaultAsync(e => e.Id == examId, cancellationToken);
 
             if (exam is null) return false;
@@ -380,12 +517,19 @@ public class ExamService(
             exam.ExamType = dto.ExamType;
             exam.IsPublished = dto.IsPublished;
 
-            // Remove existing sessions and sections
-            context.ExamSessions.RemoveRange(exam.ExamSessions);
-            context.ExamSections.RemoveRange(exam.ExamSections);
+            var hasSessions = await context.ExamSessions
+                .AsNoTracking()
+                .AnyAsync(s => s.ExamId == examId, cancellationToken);
 
-            // Re-add sections
-            SaveSections(enrichedSections, exam.Id);
+            if (!hasSessions)
+            {
+                context.ExamSections.RemoveRange(exam.ExamSections);
+                SaveSections(enrichedSections, exam.Id);
+            }
+            else
+            {
+                UpdateExistingSectionsInPlace(exam.ExamSections.ToList(), enrichedSections);
+            }
 
             await context.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
@@ -820,6 +964,126 @@ public class ExamService(
                         IsCorrect = oDto.IsCorrect,
                         OrderIndex = oDto.OrderIndex
                     });
+                }
+            }
+        }
+    }
+
+    private static void UpdateExistingSectionsInPlace(List<ExamSection> existingSections, List<CreateSectionDto> newSections)
+    {
+        foreach (var newSection in newSections)
+        {
+            var existingSection = existingSections.FirstOrDefault(s =>
+                string.Equals(s.SkillType, newSection.SkillType, StringComparison.OrdinalIgnoreCase));
+
+            if (existingSection is null) continue;
+
+            existingSection.Title = newSection.Title;
+            existingSection.OrderIndex = newSection.OrderIndex;
+
+            // Reading
+            if (newSection.ReadingPassages is { Count: > 0 } && existingSection.ReadingPassages is { Count: > 0 })
+            {
+                foreach (var newPassage in newSection.ReadingPassages)
+                {
+                    var existingPassage = existingSection.ReadingPassages.FirstOrDefault(p => p.PassageNumber == newPassage.PassageNumber);
+                    if (existingPassage is null) continue;
+
+                    existingPassage.Title = newPassage.Title;
+                    existingPassage.ParagraphsData = newPassage.ParagraphsData;
+                    existingPassage.AssetsData = newPassage.AssetsData;
+
+                    UpdateQuestionGroupsInPlace(existingPassage.QuestionGroups.ToList(), newPassage.QuestionGroups);
+                }
+            }
+
+            // Listening
+            if (newSection.ListeningParts is { Count: > 0 } && existingSection.ListeningParts is { Count: > 0 })
+            {
+                foreach (var newPart in newSection.ListeningParts)
+                {
+                    var existingPart = existingSection.ListeningParts.FirstOrDefault(p => p.PartNumber == newPart.PartNumber);
+                    if (existingPart is null) continue;
+
+                    existingPart.AudioUrl = newPart.AudioUrl;
+                    existingPart.ContextDescription = newPart.ContextDescription;
+                    existingPart.TranscriptData = newPart.TranscriptData;
+
+                    UpdateQuestionGroupsInPlace(existingPart.QuestionGroups.ToList(), newPart.QuestionGroups);
+                }
+            }
+
+            // Writing
+            if (newSection.WritingTasks is { Count: > 0 } && existingSection.WritingTasks is { Count: > 0 })
+            {
+                foreach (var newTask in newSection.WritingTasks)
+                {
+                    var existingTask = existingSection.WritingTasks.FirstOrDefault(t => t.TaskNumber == newTask.TaskNumber);
+                    if (existingTask is null) continue;
+
+                    existingTask.PromptText = newTask.PromptText;
+                    existingTask.AssetsData = newTask.AssetsData;
+                    existingTask.MinWords = newTask.MinWords;
+                }
+            }
+
+            // Speaking
+            if (newSection.SpeakingParts is { Count: > 0 } && existingSection.SpeakingParts is { Count: > 0 })
+            {
+                foreach (var newPart in newSection.SpeakingParts)
+                {
+                    var existingPart = existingSection.SpeakingParts.FirstOrDefault(p => p.PartNumber == newPart.PartNumber);
+                    if (existingPart is null) continue;
+
+                    existingPart.Description = newPart.Description;
+
+                    if (newPart.Questions is { Count: > 0 } && existingPart.SpeakingQuestions is { Count: > 0 })
+                    {
+                        var existingQuestionsList = existingPart.SpeakingQuestions.OrderBy(q => q.OrderIndex).ToList();
+                        for (var i = 0; i < Math.Min(existingQuestionsList.Count, newPart.Questions.Count); i++)
+                        {
+                            var existingQ = existingQuestionsList[i];
+                            var newQ = newPart.Questions[i];
+                            existingQ.Content = newQ.Content;
+                            existingQ.CueCardPoints = newQ.CueCardPoints;
+                            existingQ.AudioPromptUrl = newQ.AudioPromptUrl;
+                            existingQ.OrderIndex = newQ.OrderIndex;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private static void UpdateQuestionGroupsInPlace(List<QuestionGroup> existingGroups, List<CreateQuestionGroupDto> newGroups)
+    {
+        var existingQuestionsByNumber = existingGroups
+            .SelectMany(g => g.Questions)
+            .Where(q => q.QuestionNumber.HasValue)
+            .ToDictionary(q => q.QuestionNumber!.Value);
+
+        foreach (var newGroup in newGroups)
+        {
+            foreach (var newQ in newGroup.Questions)
+            {
+                if (newQ.QuestionNumber.HasValue && existingQuestionsByNumber.TryGetValue(newQ.QuestionNumber.Value, out var existingQ))
+                {
+                    existingQ.Content = newQ.Content;
+                    existingQ.CorrectAnswer = newQ.CorrectAnswer;
+                    existingQ.Explanation = newQ.Explanation;
+                    existingQ.Points = 1;
+
+                    if (newQ.Options is { Count: > 0 } && existingQ.QuestionOptions is { Count: > 0 })
+                    {
+                        var existingOptionsList = existingQ.QuestionOptions.OrderBy(o => o.OrderIndex).ToList();
+                        for (var j = 0; j < Math.Min(existingOptionsList.Count, newQ.Options.Count); j++)
+                        {
+                            existingOptionsList[j].OptionText = newQ.Options[j].OptionText;
+                            existingOptionsList[j].ImageUrl = newQ.Options[j].ImageUrl;
+                            existingOptionsList[j].IsCorrect = newQ.Options[j].IsCorrect;
+                            existingOptionsList[j].OrderIndex = newQ.Options[j].OrderIndex;
+                        }
+                    }
                 }
             }
         }

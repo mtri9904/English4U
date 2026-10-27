@@ -1,9 +1,9 @@
 import { useEffect } from 'react';
-import { userApi } from '@/features/admin/api/user.api';
+import { studentService as userApi } from '@/features/students';
 import {
     SESSION_CONFLICT_MESSAGE,
     setForcedLogoutReason,
-} from '@/features/auth/lib/sessionSignals';
+} from '@/features/auth';
 
 const HEARTBEAT_INTERVAL_MS = 60_000;
 const MAINTENANCE_INTERVAL_MS = 10_000;

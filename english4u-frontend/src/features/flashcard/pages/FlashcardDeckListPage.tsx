@@ -30,22 +30,14 @@ import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
     useFlashcardDecksQuery,
-    flashcardApi,
     flashcardKeys,
-} from '../api/flashcard.api';
+} from '../hooks/useFlashcardQueries';
+import { flashcardService as flashcardApi } from '../services/flashcard.service';
 import type { CreateDeckRequest, AiEnrichWordResponse } from '../types/flashcard.types';
 
 const { Title, Text, Paragraph } = Typography;
 
-const DECK_COLORS = [
-    { label: 'Xanh dương', value: '#2563eb' },
-    { label: 'Xanh lá', value: '#16a34a' },
-    { label: 'Tím', value: '#9333ea' },
-    { label: 'Cam', value: '#ea580c' },
-    { label: 'Hồng', value: '#db2777' },
-    { label: 'Xanh biển', value: '#0891b2' },
-];
-
+import { DECK_COLORS } from '../constants/flashcard.constants';
 export const FlashcardDeckListPage: React.FC = () => {
     const navigate = useNavigate();
     const queryClient = useQueryClient();

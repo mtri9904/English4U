@@ -4,7 +4,6 @@ import {
     DashboardOutlined,
     UserOutlined,
     FormOutlined,
-    TrophyOutlined,
     BellOutlined,
     PlaySquareOutlined,
     LogoutOutlined,
@@ -14,7 +13,7 @@ import {
     ReloadOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { useUserProfileQuery, userApi } from '@/features/admin/api/user.api';
+import { useUserProfileQuery, studentService as userApi } from '@/features/students';
 import { isTokenExpired } from '@/apis/axios.instance';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -22,9 +21,9 @@ import {
     useClientNotificationsQuery,
     useUpdateClientNotificationReadMutation,
     useMarkAllClientNotificationsReadMutation,
-} from '@/features/client/api/notification.api';
-import { PdfGenerationProgressWidget } from '@/features/admin/components/PdfGenerationProgressWidget';
-import { pdfGenerationJobStore } from '@/features/admin/stores/pdfGenerationJob.store';
+} from '@/features/notifications';
+import { PdfGenerationProgressWidget } from '@/features/exams';
+import { pdfGenerationJobStore } from '@/features/exams';
 import { useRealtimeSync } from '@/features/realtime/hooks/useRealtimeSync';
 import { formatDateTimeToMinute } from '@/shared/lib/dateTime';
 
@@ -215,11 +214,6 @@ export const AdminLayout: React.FC = () => {
             key: '/admin/attempts',
             icon: <PlaySquareOutlined />,
             label: 'Lượt thi',
-        },
-        {
-            key: '/admin/gamification',
-            icon: <TrophyOutlined />,
-            label: 'Thành tích & Cấp độ',
         },
         {
             key: '/admin/notifications',

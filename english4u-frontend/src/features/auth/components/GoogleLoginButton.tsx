@@ -1,7 +1,7 @@
 import { useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { message } from 'antd';
-import { useGoogleLoginMutation } from '../api/auth.api';
+import { useGoogleLoginMutation } from '../hooks/useAuthQueries';
 
 const GOOGLE_CLIENT_ID = (import.meta as any).env.VITE_GOOGLE_CLIENT_ID || '';
 

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Mail, Lock, Eye, EyeOff, User, CheckCircle } from 'lucide-react'
 import { message } from 'antd'
-import { useRegisterMutation } from '../api/auth.api'
+import { useRegisterMutation } from '../hooks/useAuthQueries'
 import { SocialLogin } from './SocialLogin'
 import { AuthDivider } from './AuthDivider'
 
