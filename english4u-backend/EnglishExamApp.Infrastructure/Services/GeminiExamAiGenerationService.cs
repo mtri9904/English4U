@@ -699,20 +699,46 @@ public sealed class GeminiExamAiGenerationService(
                     finalGroupType = "MATCHING_TABLE";
                 }
 
-                var optionLabelType = finalGroupType == "MATCHING_HEADINGS" ? "roman" : "alpha";
-                var createQuestions = g.Select(q => new CreateQuestionDto(
-                    QuestionNumber: q.QuestionNumber,
-                    Content: q.Content,
-                    CorrectAnswer: q.CorrectAnswer,
-                    Explanation: q.Explanation + $"\nEvidence: {q.Evidence}",
-                    Points: 1.0d,
-                    Options: q.Options.Select((opt, idx) => new CreateQuestionOptionDto(
-                        OptionText: StripOptionLabel(opt),
-                        ImageUrl: null,
-                        IsCorrect: IsOptionCorrect(opt, q.CorrectAnswer, idx, optionLabelType),
-                        OrderIndex: idx
-                    )).ToList()
-                )).ToList();
+                var groupOptions = g.FirstOrDefault(q => q.Options is { Count: > 0 })?.Options?.ToList() ?? [];
+                if (groupOptions.Count == 0)
+                {
+                    if (finalGroupType == "TFNG")
+                    {
+                        groupOptions = ["TRUE", "FALSE", "NOT GIVEN"];
+                    }
+                    else if (finalGroupType == "YNNG")
+                    {
+                        groupOptions = ["YES", "NO", "NOT GIVEN"];
+                    }
+                    else if ((finalGroupType is "MATCHING_INFO" or "MATCHING_HEADINGS") &&
+                             g.All(q => string.IsNullOrWhiteSpace(q.CorrectAnswer) || Regex.IsMatch(q.CorrectAnswer.Trim(), @"^[A-Za-z]$")))
+                    {
+                        groupOptions = Regex.Matches(passageInfo.Content, @"(?m)^\s*(?:\*\*)?([A-Z])(?:\s*[).:\-]|\.)(?:\*\*)?(?:\s+\S.*)?$")
+                            .Select(m => m.Groups[1].Value.ToUpperInvariant())
+                            .Distinct()
+                            .OrderBy(l => l)
+                            .ToList();
+                    }
+                }
+
+                var optionLabelType = finalGroupType == "MATCHING_HEADINGS" && g.Any(q => Regex.IsMatch(q.CorrectAnswer ?? "", @"^(?i)[ivxlcdm]+$")) ? "roman" : "alpha";
+                var createQuestions = g.Select(q =>
+                {
+                    var effectiveOpts = (q.Options is { Count: > 0 }) ? q.Options : groupOptions;
+                    return new CreateQuestionDto(
+                        QuestionNumber: q.QuestionNumber,
+                        Content: q.Content,
+                        CorrectAnswer: q.CorrectAnswer,
+                        Explanation: q.Explanation + $"\nEvidence: {q.Evidence}",
+                        Points: 1.0d,
+                        Options: effectiveOpts.Select((opt, idx) => new CreateQuestionOptionDto(
+                            OptionText: StripOptionLabel(opt),
+                            ImageUrl: null,
+                            IsCorrect: IsOptionCorrect(opt, q.CorrectAnswer, idx, optionLabelType),
+                            OrderIndex: idx
+                        )).ToList()
+                    );
+                }).ToList();
 
                 var startQ = g.Min(q => q.QuestionNumber);
                 var endQ = g.Max(q => q.QuestionNumber);

@@ -53,8 +53,13 @@ export const stripOptionLeadingLabel = (
         return '';
     }
 
-    const label = getOptionLabel(index, optionLabelType).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    return trimmedText.replace(new RegExp(`^\\s*${label}\\s*[.)\\-:]\\s*`, 'i'), '').trim();
+    const label = getOptionLabel(index, optionLabelType);
+    const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const cleaned = trimmedText.replace(new RegExp('^\\s*' + escapedLabel + '(?:\\s*[.)\\-:]\\s*|\\s*$)', 'i'), '').trim();
+    if (!cleaned || cleaned.toUpperCase() === label.toUpperCase()) {
+        return '';
+    }
+    return cleaned;
 };
 
 export const isOptionLabelOnly = (optionText: string | null | undefined): boolean => {

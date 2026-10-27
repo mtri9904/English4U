@@ -204,8 +204,10 @@ public sealed partial class GemmaPdfExamGenerationService
             .ToList();
 
         if (sharedOptions.Count < 2 &&
-            string.Equals(mappedQuestionType, "MATCHING_INFO", StringComparison.OrdinalIgnoreCase) &&
-            !string.IsNullOrWhiteSpace(passageContent))
+            !string.IsNullOrWhiteSpace(passageContent) &&
+            (string.Equals(mappedQuestionType, "MATCHING_INFO", StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(mappedQuestionType, "MATCHING_HEADINGS", StringComparison.OrdinalIgnoreCase) ||
+             questions.All(q => string.IsNullOrWhiteSpace(q.CorrectAnswer) || Regex.IsMatch(q.CorrectAnswer.Trim(), @"^[A-Za-z]$"))))
         {
             sharedOptions = ExtractParagraphLabelsForOptions(passageContent);
         }
@@ -259,7 +261,7 @@ public sealed partial class GemmaPdfExamGenerationService
 
         var colonMatches = Regex.Matches(
                 normalized,
-                @"(?is)(?<![A-Za-z\-])(?<label>[A-H])\s*:\s*(?<text>.*?)(?=\s*(?<![A-Za-z\-])[A-H]\s*:\s*|\z)")
+                @"(?is)(?<![A-Za-z\-])(?<label>[A-Z])\s*:\s*(?<text>.*?)(?=\s*(?<![A-Za-z\-])[A-Z]\s*:\s*|\z)")
             .Cast<Match>()
             .Select(match => new
             {
@@ -278,7 +280,7 @@ public sealed partial class GemmaPdfExamGenerationService
 
         var matches = Regex.Matches(
                 normalized,
-                @"(?im)^\s*(?<label>[A-H])\s*[.)]\s*(?<text>.+?)(?=\s*$)")
+                @"(?im)^\s*(?<label>[A-Z])\s*[.)]\s*(?<text>.+?)(?=\s*$)")
             .Cast<Match>()
             .Select(match => new
             {

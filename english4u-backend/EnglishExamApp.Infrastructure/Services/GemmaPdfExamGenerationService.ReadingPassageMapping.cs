@@ -149,7 +149,10 @@ public sealed partial class GemmaPdfExamGenerationService
                 AssetsData: assetsData,
                 StartQuestion: startQuestion,
                 EndQuestion: endQuestion,
-                OptionLabelType: string.Equals(finalGroupType, "MATCHING_HEADINGS", StringComparison.OrdinalIgnoreCase) ? "roman" : "alpha",
+                OptionLabelType: string.Equals(finalGroupType, "MATCHING_HEADINGS", StringComparison.OrdinalIgnoreCase)
+                    && normalizedQuestions.Any(q => Regex.IsMatch(q.CorrectAnswer ?? string.Empty, @"^(?i)[ivxlcdm]+$"))
+                    ? "roman"
+                    : "alpha",
                 Questions: normalizedQuestions));
         }
 

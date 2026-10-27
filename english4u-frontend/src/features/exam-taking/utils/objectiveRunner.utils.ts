@@ -101,8 +101,61 @@ export const normalizeBlockMarkdownText = (value?: string | null) =>
 export const formatTemplateText = (value?: string | null) =>
     normalizeBlockMarkdownText(value).replace(/\[Q(\d+)\]/g, '_____ `Q$1`');
 
-export const getSharedOptions = (group: PracticeSessionQuestionGroupDto) =>
-    group.questions.find((question) => question.options.length > 0)?.options ?? [];
+export const getSharedOptions = (group: PracticeSessionQuestionGroupDto) => {
+    const existing = group.questions.find((question) => question.options.length > 0)?.options;
+    if (existing && existing.length > 0) {
+        return existing;
+    }
+
+    const optionLabelType = inferQuestionGroupOptionLabelType(group);
+    const instruction = group.instruction || '';
+
+    // Check instruction for letter range e.g. (A-G), (A-H), (A-F)
+    const rangeMatch = instruction.match(/\(?([A-Z])\s*[-–—]\s*([A-Z])\)?/i);
+    let count = 0;
+    if (rangeMatch) {
+        const startCode = rangeMatch[1].toUpperCase().charCodeAt(0);
+        const endCode = rangeMatch[2].toUpperCase().charCodeAt(0);
+        if (endCode >= startCode && endCode - startCode < 26) {
+            count = endCode - startCode + 1;
+        }
+    }
+
+    if (count === 0) {
+        let maxLetterCode = 65;
+        let hasLetterAnswer = false;
+        for (const q of group.questions) {
+            const ans = (q.correctAnswer || '').trim().toUpperCase();
+            if (/^[A-Z]$/.test(ans)) {
+                hasLetterAnswer = true;
+                const code = ans.charCodeAt(0);
+                if (code > maxLetterCode) {
+                    maxLetterCode = code;
+                }
+            }
+        }
+        if (hasLetterAnswer) {
+            count = maxLetterCode - 65 + 1;
+        }
+    }
+
+    const isMatchingType = (group.groupType ?? '').toUpperCase().includes('MATCHING');
+    if (count === 0 && isMatchingType) {
+        count = 7; // Default paragraphs A to G
+    }
+
+    if (count > 0) {
+        return Array.from({ length: count }, (_, idx) => ({
+            id: `synthetic-${group.id}-${idx}`,
+            optionText: getOptionLabel(idx, optionLabelType),
+            orderIndex: idx,
+            imageUrl: null,
+            isCorrect: false,
+        }));
+    }
+
+    return [];
+};
 
 export const getGroupOptionLabelType = (group: PracticeSessionQuestionGroupDto): OptionLabelType =>
     inferQuestionGroupOptionLabelType(group);
@@ -110,7 +163,10 @@ export const getGroupOptionLabelType = (group: PracticeSessionQuestionGroupDto):
 export const getChoiceLabel = (optionText: string | null | undefined, index: number, optionLabelType: OptionLabelType) => {
     const label = getOptionLabel(index, optionLabelType);
     const trimmedText = stripOptionLeadingLabel(optionText, index, optionLabelType);
-    return trimmedText ? `${label}. ${trimmedText}` : label;
+    if (!trimmedText || trimmedText.toUpperCase() === label.toUpperCase()) {
+        return label;
+    }
+    return `${label}. ${trimmedText}`;
 };
 
 export const isMatchingVisualsGroup = (group: Pick<PracticeSessionQuestionGroupDto, 'groupType'>) =>
