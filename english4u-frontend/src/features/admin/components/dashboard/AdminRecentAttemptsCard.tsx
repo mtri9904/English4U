@@ -42,7 +42,7 @@ export const AdminRecentAttemptsCard: React.FC<AdminRecentAttemptsCardProps> = (
                     <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 520 }}>
                         <thead>
                             <tr>
-                                {['Học viên', 'Đề thi', 'Kỹ năng', 'Trạng thái', 'Band'].map((h) => (
+                                {['Học viên', 'Đề thi', 'Kỹ năng', 'Trạng thái', 'Điểm'].map((h) => (
                                     <th key={h} style={{
                                         textAlign: 'left', padding: '8px 12px',
                                         fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8',
@@ -88,9 +88,18 @@ export const AdminRecentAttemptsCard: React.FC<AdminRecentAttemptsCardProps> = (
                                             </span>
                                         </td>
                                         <td style={{ padding: '11px 12px' }}>
-                                            <span style={{ fontWeight: 700, color: a.totalBandScore ? '#6366f1' : '#cbd5e1', fontSize: '0.9rem' }}>
-                                                {a.totalBandScore ?? '—'}
-                                            </span>
+                                            {(() => {
+                                                const score = a.totalAutoScore ?? a.readingScore ?? a.listeningScore;
+                                                const hasScore = score != null;
+                                                const displayScore = hasScore
+                                                    ? (a.totalQuestions > 0 ? `${score}/${a.totalQuestions}` : `${score}`)
+                                                    : (a.totalBandScore != null && a.totalBandScore > 0 ? `${a.totalBandScore}` : '—');
+                                                return (
+                                                    <span style={{ fontWeight: 700, color: hasScore || (a.totalBandScore != null && a.totalBandScore > 0) ? '#6366f1' : '#cbd5e1', fontSize: '0.875rem' }}>
+                                                        {displayScore}
+                                                    </span>
+                                                );
+                                            })()}
                                         </td>
                                     </motion.tr>
                                 );

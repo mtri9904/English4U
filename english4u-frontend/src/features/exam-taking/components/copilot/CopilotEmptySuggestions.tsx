@@ -17,7 +17,7 @@ export const CopilotEmptySuggestions = ({
         if (normalizedSkill === 'WRITING') {
             return [
                 'Giải thích toàn bộ lỗi sai nổi bật trong bài này.',
-                'Chỉ ra các điểm mình cần cải thiện nhất để tăng band Writing.',
+                'Chỉ ra các điểm mình cần cải thiện nhất để tăng điểm Writing.',
                 'Đánh giá bố cục, từ vựng và ngữ pháp của 2 part của bài viết.',
             ];
         }

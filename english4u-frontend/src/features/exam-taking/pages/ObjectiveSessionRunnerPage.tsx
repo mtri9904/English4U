@@ -112,7 +112,7 @@ const ObjectiveRunnerPage = ({ expectedSkill }: { expectedSkill: 'READING' | 'LI
                         type="success"
                         showIcon
                         message="Session này không còn ở trạng thái đang làm."
-                        description="Bạn có thể mở trang kết quả để xem band IELTS, raw score và thông tin đã nộp."
+                        description="Bạn có thể mở trang kết quả để xem điểm số, số câu đúng và thông tin đã nộp."
                     />
                     <Button type="primary" onClick={() => navigate(`/app/sessions/${sessionId}/submit`)}>
                         Xem trang submit

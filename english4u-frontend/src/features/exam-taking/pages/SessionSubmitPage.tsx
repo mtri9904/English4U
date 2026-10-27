@@ -68,7 +68,7 @@ const WRITING_SCORING_STAGES = [
     'Đang gửi bài viết đến AI để bắt đầu chấm điểm...',
     'AI đang đọc đề bài và bài viết của học viên...',
     'AI đang đánh giá bố cục, từ vựng và ngữ pháp...',
-    'AI đang tổng hợp band score và feedback chi tiết...',
+    'AI đang tổng hợp điểm số và feedback chi tiết...',
 ];
 
 export const ClientSessionSubmitPage = () => {
@@ -311,10 +311,10 @@ export const ClientSessionSubmitPage = () => {
     const resultColLg = isWritingSession ? 12 : (showStackedObjectiveSummary ? 24 : 9);
     const objectiveAccuracyValue = `${result?.accuracyPercent ?? 0}%`;
     const objectiveSkillLabel = getSkillLabel(session.skillType);
-    const objectiveBandValue = result?.totalBandScore != null ? result.totalBandScore.toFixed(1) : '—';
-    const objectiveRawScoreValue = result
-        ? `${result.totalAutoScore.toFixed(1)}/${result.maxAutoScore.toFixed(1)}`
-        : '0.0';
+    const totalExamQuestions = session.totalQuestions || result?.totalQuestions || 0;
+    const correctCount = result?.correctQuestions ?? 0;
+    const incorrectCount = Math.max(0, totalExamQuestions - correctCount);
+    const objectiveScoreDisplay = `${correctCount}/${totalExamQuestions}`;
 
     const summaryInfoCards = [
         { key: 'startedAt', label: 'Bắt đầu', value: formatDateTimeToMinute(session.startedAt) || 'N/A' },
@@ -324,9 +324,9 @@ export const ClientSessionSubmitPage = () => {
     ];
 
     const objectiveStatCards = [
-        { key: 'band', label: 'Band IELTS', value: objectiveBandValue, accent: '#2563eb', tone: '#eff6ff' },
-        { key: 'score', label: 'Raw score', value: objectiveRawScoreValue, accent: '#0891b2', tone: '#ecfeff' },
-        { key: 'correct', label: 'Câu đúng', value: String(result?.correctQuestions ?? 0), accent: '#16a34a', tone: '#f0fdf4' },
+        { key: 'score', label: 'Điểm số', value: objectiveScoreDisplay, accent: '#2563eb', tone: '#eff6ff' },
+        { key: 'correct', label: 'Câu đúng', value: String(correctCount), accent: '#16a34a', tone: '#f0fdf4' },
+        { key: 'incorrect', label: 'Chưa đúng', value: String(incorrectCount), accent: '#ea580c', tone: '#fff7ed' },
         { key: 'accuracy', label: 'Độ chính xác', value: objectiveAccuracyValue, accent: '#7c3aed', tone: '#f5f3ff' },
     ];
 
@@ -483,7 +483,7 @@ export const ClientSessionSubmitPage = () => {
                                             objectiveSkillLabel={objectiveSkillLabel}
                                             correctQuestions={result?.correctQuestions ?? 0}
                                             totalQuestions={result?.totalQuestions ?? session.totalQuestions}
-                                            objectiveBandValue={objectiveBandValue}
+                                            objectiveBandValue={objectiveScoreDisplay}
                                             objectiveStatCards={objectiveStatCards}
                                         />
                                     )}

@@ -198,7 +198,7 @@ export const AdminLayout: React.FC = () => {
         {
             key: '/admin/dashboard',
             icon: <DashboardOutlined />,
-            label: 'Tổng quan (Dashboard)',
+            label: 'Tổng quan',
         },
         {
             key: '/admin/users',

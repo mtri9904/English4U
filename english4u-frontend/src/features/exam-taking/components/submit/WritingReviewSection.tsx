@@ -83,7 +83,7 @@ export const WritingReviewSection: React.FC<WritingReviewSectionProps> = ({
                                                     gap: '6px',
                                                 }}
                                             >
-                                                Hỏi AI gia sư
+                                                Hỏi AI
                                             </Button>
                                         ) : null}
                                     </Space>
@@ -199,7 +199,7 @@ export const WritingReviewSection: React.FC<WritingReviewSectionProps> = ({
                                     title={`Part ${task.taskNumber}`}
                                     extra={
                                         <Tag color="orange">
-                                            Band {task.band != null ? task.band.toFixed(1) : '—'}
+                                            {task.band != null ? `${task.band.toFixed(1)} điểm` : '—'}
                                         </Tag>
                                     }
                                     style={{

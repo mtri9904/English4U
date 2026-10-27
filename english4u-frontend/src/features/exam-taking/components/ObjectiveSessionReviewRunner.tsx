@@ -152,7 +152,7 @@ export const ObjectiveSessionReviewRunner = ({
                         gap: '6px',
                     }}
                 >
-                    {compact ? 'Hỏi AI' : 'Hỏi AI Gia sư'}
+                    Hỏi AI
                 </Button>
             );
         }

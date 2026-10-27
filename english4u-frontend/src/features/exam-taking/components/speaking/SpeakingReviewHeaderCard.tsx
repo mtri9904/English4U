@@ -77,7 +77,7 @@ export const SpeakingReviewHeaderCard: React.FC<SpeakingReviewHeaderCardProps> =
                     </Col>
                     <Col xs={12} md={6}>
                         <Statistic
-                            title="Band Speaking"
+                            title="Điểm Speaking"
                             value={result?.speakingScore != null ? result.speakingScore.toFixed(1) : '—'}
                         />
                     </Col>
@@ -96,15 +96,15 @@ export const SpeakingReviewHeaderCard: React.FC<SpeakingReviewHeaderCardProps> =
                         session.status === 'InProgress'
                             ? 'Session speaking chưa khóa'
                             : result?.speakingScore != null
-                                ? 'Đã có band Speaking'
+                                ? 'Đã có điểm Speaking'
                                 : 'Speaking đã nộp'
                     }
                     description={
                         session.status === 'InProgress'
                             ? 'Bạn vẫn có thể quay lại runner để kiểm tra audio, ghi chú hoặc ghi lại prompt trước khi nộp.'
                             : result?.speakingScore != null
-                                ? 'Band Speaking và feedback theo tiêu chí đã được trả về từ backend. Bạn có thể bấm chấm lại Speaking để cập nhật scoring theo pipeline mới.'
-                                : 'Bài đã được lưu. Nếu AI chưa trả band, bạn có thể bấm chấm lại Speaking.'
+                                ? 'Điểm Speaking và feedback theo tiêu chí đã được trả về từ backend. Bạn có thể bấm chấm lại Speaking để cập nhật scoring theo pipeline mới.'
+                                : 'Bài đã được lưu. Nếu AI chưa trả điểm, bạn có thể bấm chấm lại Speaking.'
                     }
                 />
 

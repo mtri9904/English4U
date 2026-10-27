@@ -95,7 +95,7 @@ export const SpeakingSessionReview: FC<SpeakingSessionReviewProps> = ({
                     >
                         <Space size={8}>
                             <BulbOutlined />
-                            <span>AI gia sư</span>
+                            <span>Hỏi AI</span>
                         </Space>
                     </Button>
                 </div>,

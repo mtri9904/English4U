@@ -183,7 +183,7 @@ export const ReviewCopilotDrawer = ({
                     <Space direction="vertical" size={10} style={{ width: '100%' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
                             <div style={{ minWidth: 0 }}>
-                                <Title level={5} style={{ margin: 0 }}>AI gia sư</Title>
+                                <Title level={5} style={{ margin: 0 }}>Hỏi AI</Title>
                             </div>
                             <Button type="text" icon={<CloseOutlined />} onClick={onClose} aria-label="Đóng AI Copilot" />
                         </div>

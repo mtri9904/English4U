@@ -54,7 +54,7 @@ export const ObjectiveReviewHeaderBar: React.FC<ObjectiveReviewHeaderBarProps> =
             >
                 <Space size={8}>
                     <BulbOutlined />
-                    <span>AI gia sư</span>
+                    <span>Hỏi AI</span>
                 </Space>
             </Button>
         </div>,

@@ -41,8 +41,8 @@ internal static class SpeakingScoreSummaryBuilder
         var lines = new List<string>();
         var overallBand = BuildOverallBand(scoredItems);
         lines.Add(
-            $"Band Speaking tổng quan khoảng {overallBand:0.0}. "
-            + "Điểm được tổng hợp theo 4 tiêu chí IELTS và cân bằng theo từng Part trong session. "
+            $"Điểm Speaking tổng quan khoảng {overallBand:0.0}. "
+            + "Điểm được tổng hợp theo 4 tiêu chí và cân bằng theo từng Part trong session. "
             + "Nội dung, từ vựng và ngữ pháp dựa trên transcript tự động; fluency và pronunciation dùng thêm tín hiệu ASR từ audio. "
             + "Nếu audio không tạo được transcript, backend chấm no response và không suy đoán nội dung.");
 
@@ -57,7 +57,7 @@ internal static class SpeakingScoreSummaryBuilder
             if (ratableCount == 0)
             {
                 lines.Add(
-                    $"{FormatPartLabel(partGroup.Key)} · Band khoảng {partBand:0.0}. "
+                    $"{FormatPartLabel(partGroup.Key)} · Điểm khoảng {partBand:0.0}. "
                     + $"Không có prompt nào trong part này có câu trả lời đủ dữ liệu để đánh giá ({noResponseCount}/{partItems.Count} prompt no response). "
                     + "Không nêu điểm mạnh/yếu theo tiêu chí vì backend không có đủ bằng chứng ngôn ngữ từ audio/transcript. "
                     + "Cần trả lời tối thiểu 1-2 câu rõ tiếng Anh cho mỗi prompt để có thể chấm Fluency, Lexical Resource, Grammar và Pronunciation.");
@@ -82,7 +82,7 @@ internal static class SpeakingScoreSummaryBuilder
                 : string.Empty;
 
             lines.Add(
-                $"{FormatPartLabel(partGroup.Key)} · Band khoảng {partBand:0.0}.{responseCoverageText} "
+                $"{FormatPartLabel(partGroup.Key)} · Điểm khoảng {partBand:0.0}.{responseCoverageText} "
                 + $"Dựa trên {ratableCount} prompt có transcript/audio đủ dữ liệu, điểm mạnh tương đối: {string.Join(", ", strongestCriteria)}. "
                 + $"Cần ưu tiên: {string.Join(", ", weakestCriteria.Select(GetCriteriaDisplayName))}. "
                 + BuildPartImprovementSummary(partGroup.Key, weakestCriteria));

@@ -53,7 +53,7 @@ export const ExamDetailPage = () => {
     const isObjectiveSection = primarySkill === 'READING' || primarySkill === 'LISTENING';
     const scoreSummaryLabel = isObjectiveSection
         ? `Tổng số câu objective: ${exam.totalPoints ?? '—'}`
-        : 'Thang Band khi nộp: 0-9';
+        : 'Thang điểm: 0-10';
 
     return (
         <motion.div

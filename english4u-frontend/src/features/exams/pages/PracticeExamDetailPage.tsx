@@ -66,8 +66,8 @@ export const ClientPracticeExamPage: FC = () => {
     const sectionStats = getPrimarySectionStats(primarySection);
     const isListeningExam = primarySkill === 'LISTENING';
     const isObjectiveExam = primarySkill === 'READING' || primarySkill === 'LISTENING';
-    const scoreSummaryTitle = isObjectiveExam ? 'Raw score tối đa' : 'Band khi nộp';
-    const scoreSummaryValue = isObjectiveExam ? (exam?.totalPoints ?? 0) : '0-9';
+    const scoreSummaryTitle = isObjectiveExam ? 'Điểm tối đa' : 'Thang điểm';
+    const scoreSummaryValue = isObjectiveExam ? (exam?.totalPoints ?? 0) : '0-10';
 
     const launchSession = (attemptMode?: ListeningAttemptMode) => {
         if (!supportsPracticeRunner || !exam) {
@@ -413,7 +413,7 @@ export const ClientPracticeExamPage: FC = () => {
                             <div style={{ display: 'flex', gap: 10 }}>
                                 <span style={{ color: currentTheme.color, fontWeight: 'bold' }}>•</span>
                                 <Paragraph style={{ color: '#475569', margin: 0, fontSize: '0.88rem', lineHeight: 1.5 }}>
-                                    Mỗi đề trong thư viện luyện thi được chia nhỏ theo kỹ năng giúp bạn dễ dàng tập trung nâng band điểm có chủ đích.
+                                    Mỗi đề trong thư viện luyện thi được chia nhỏ theo kỹ năng giúp bạn dễ dàng tập trung nâng cao điểm số có chủ đích.
                                 </Paragraph>
                             </div>
                             <div style={{ display: 'flex', gap: 10 }}>

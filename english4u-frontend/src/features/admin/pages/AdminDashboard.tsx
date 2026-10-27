@@ -65,13 +65,6 @@ export const AdminDashboard = () => {
         [attempts]
     );
 
-    const avgBand = useMemo(() => {
-        const withScore = attempts.filter((a) => a.totalBandScore !== null);
-        if (!withScore.length) return null;
-        const avg = withScore.reduce((s, a) => s + (a.totalBandScore ?? 0), 0) / withScore.length;
-        return avg.toFixed(1);
-    }, [attempts]);
-
     const topExams = useMemo(() => {
         const map: Record<string, { title: string; type: string; count: number }> = {};
         for (const a of attempts) {
@@ -95,7 +88,6 @@ export const AdminDashboard = () => {
                 completedAttempts={completedAttempts}
                 inProgressAttempts={inProgressAttempts}
                 isAttemptsLoading={isAttemptsLoading}
-                avgBand={avgBand}
             />
 
             <AdminAnalyticsCharts

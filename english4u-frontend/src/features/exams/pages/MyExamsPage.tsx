@@ -101,7 +101,7 @@ const statsCardConfigs = [
         border: '#bbf7d0',
     },
     {
-        title: 'Band trung bình',
+        title: 'Điểm trung bình',
         icon: <TrophyOutlined />,
         accent: '#d97706',
         background: 'linear-gradient(180deg, #fffbeb 0%, #ffffff 100%)',
@@ -186,7 +186,7 @@ export const ClientMyExamsPage = () => {
                             Tiếp tục luyện thi từ đúng nơi bạn dừng lại
                         </Title>
                         <Paragraph style={{ margin: 0, color: '#475569', fontSize: 15 }}>
-                            Theo dõi lượt làm bài, band đã chấm và mở lại nhanh Reading, Listening, Writing hoặc Speaking.
+                            Theo dõi lượt làm bài, kết quả đã chấm và mở lại nhanh Reading, Listening, Writing hoặc Speaking.
                         </Paragraph>
                     </Space>
                     <Button type="primary" size="large" icon={<BookOutlined />} style={libraryButtonStyle} onClick={() => navigate('/app/practice')}>
@@ -370,7 +370,7 @@ export const ClientMyExamsPage = () => {
                                     </Col>
                                     <Col span={8}>
                                         <div style={{ padding: '10px 12px', borderRadius: 12, background: '#ffffff', border: `1px solid ${skillTheme.border}`, boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.7)' }}>
-                                            <Text type="secondary" style={{ fontSize: 12 }}>Band</Text>
+                                            <Text type="secondary" style={{ fontSize: 12 }}>Điểm</Text>
                                             <div style={{ fontWeight: 800, color: '#0f172a', marginTop: 2 }}>{scoreLabel}</div>
                                         </div>
                                     </Col>

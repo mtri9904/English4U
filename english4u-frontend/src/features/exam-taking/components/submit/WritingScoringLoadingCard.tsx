@@ -60,11 +60,11 @@ export const WritingScoringLoadingCard: React.FC<WritingScoringLoadingCardProps>
                             AI đang chấm bài Writing
                         </Text>
                         <Title level={3} style={{ margin: 0, color: '#0f172a' }}>
-                            Bài viết đã được lưu, đang chờ band score và feedback
+                            Bài viết đã được lưu, đang chờ kết quả chấm điểm và feedback
                         </Title>
                         <Paragraph style={{ margin: '10px 0 0', color: '#475569', maxWidth: 720 }}>
                             Hệ thống đang tự động chấm bài theo các tiêu chí IELTS Writing. Bạn chưa cần hỏi AI ở
-                            bước này; kết quả và nút AI gia sư sẽ xuất hiện sau khi chấm xong.
+                            bước này; kết quả và nút Hỏi AI sẽ xuất hiện sau khi chấm xong.
                         </Paragraph>
                     </div>
                     <div

@@ -110,7 +110,7 @@ export const SpeakingTranscriptAndAnalytics: React.FC<SpeakingTranscriptAndAnaly
                                 key={`${activeQuestionId}-${feedback.criteria}`}
                                 type="info"
                                 showIcon
-                                message={`${feedback.criteria} · Band ${feedback.bandScore.toFixed(1)}`}
+                                message={`${feedback.criteria} · ${feedback.bandScore.toFixed(1)} điểm`}
                                 description={feedback.comment || feedback.improvements || 'Chưa có nhận xét chi tiết.'}
                             />
                         ))}

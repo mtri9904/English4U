@@ -3,7 +3,6 @@ import { motion } from 'framer-motion';
 import { Skeleton } from 'antd';
 import {
     Activity,
-    Award,
     BarChart2,
     BookOpen,
     TrendingDown,
@@ -26,46 +25,72 @@ interface StatCardProps {
 
 function StatCard({ title, value, subtitle, icon: Icon, gradient, trend, loading }: StatCardProps) {
     return (
-        <motion.div variants={item} whileHover={{ y: -4 }} transition={{ type: 'spring', stiffness: 400 }}>
+        <motion.div variants={item} whileHover={{ y: -4 }} transition={{ type: 'spring', stiffness: 400 }} style={{ height: '100%' }}>
             <div style={{
                 background: '#fff',
                 borderRadius: 20,
-                padding: '24px',
+                padding: '22px 24px',
                 border: '1px solid #f1f5f9',
                 boxShadow: '0 1px 3px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.04)',
                 position: 'relative',
                 overflow: 'hidden',
                 cursor: 'default',
+                height: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                boxSizing: 'border-box',
             }}>
                 <div style={{
                     position: 'absolute', top: -30, right: -30,
                     width: 120, height: 120, borderRadius: '50%',
                     background: gradient, opacity: 0.08,
                 }} />
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ margin: 0, fontSize: '0.8125rem', color: '#94a3b8', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-                            {title}
-                        </p>
-                        {loading ? (
-                            <Skeleton.Input active size="large" style={{ marginTop: 8, width: 100, height: 36 }} />
-                        ) : (
-                            <p style={{ margin: '8px 0 0', fontSize: '2.25rem', fontWeight: 800, color: '#0f172a', lineHeight: 1 }}>
-                                {value}
+                <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                            <p style={{
+                                margin: 0,
+                                fontSize: '0.8125rem',
+                                color: '#94a3b8',
+                                fontWeight: 600,
+                                letterSpacing: '0.04em',
+                                textTransform: 'uppercase',
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                            }}>
+                                {title}
                             </p>
-                        )}
-                        {subtitle && !loading && (
-                            <p style={{ margin: '6px 0 0', fontSize: '0.8rem', color: '#64748b' }}>{subtitle}</p>
-                        )}
+                            {loading ? (
+                                <Skeleton.Input active size="large" style={{ marginTop: 8, width: 100, height: 36 }} />
+                            ) : (
+                                <p style={{ margin: '8px 0 0', fontSize: '2.25rem', fontWeight: 800, color: '#0f172a', lineHeight: 1 }}>
+                                    {value}
+                                </p>
+                            )}
+                        </div>
+                        <div style={{
+                            width: 50, height: 50, borderRadius: 14, flexShrink: 0,
+                            background: gradient,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            boxShadow: `0 8px 24px ${gradient.slice(gradient.indexOf('#'), gradient.indexOf('#') + 7)}33`,
+                        }}>
+                            <Icon size={24} color="#fff" strokeWidth={2} />
+                        </div>
                     </div>
-                    <div style={{
-                        width: 52, height: 52, borderRadius: 14, flexShrink: 0,
-                        background: gradient,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        boxShadow: `0 8px 24px ${gradient.slice(gradient.indexOf('#'), gradient.indexOf('#') + 7)}33`,
-                    }}>
-                        <Icon size={24} color="#fff" strokeWidth={2} />
-                    </div>
+                    {subtitle && !loading && (
+                        <p style={{
+                            margin: '8px 0 0',
+                            fontSize: '0.8rem',
+                            color: '#64748b',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                        }}>
+                            {subtitle}
+                        </p>
+                    )}
                 </div>
                 {trend && !loading && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 14 }}>
@@ -92,7 +117,6 @@ export interface AdminStatCardsProps {
     completedAttempts: number;
     inProgressAttempts: number;
     isAttemptsLoading: boolean;
-    avgBand: string | null;
 }
 
 export const AdminStatCards: React.FC<AdminStatCardsProps> = ({
@@ -105,10 +129,9 @@ export const AdminStatCards: React.FC<AdminStatCardsProps> = ({
     completedAttempts,
     inProgressAttempts,
     isAttemptsLoading,
-    avgBand,
 }) => {
     return (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 18 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 18, alignItems: 'stretch' }}>
             <StatCard
                 title="Tổng học viên"
                 value={isUserStatsLoading ? '...' : (userStats?.totalUsers ?? 0).toLocaleString()}
@@ -136,24 +159,14 @@ export const AdminStatCards: React.FC<AdminStatCardsProps> = ({
             <StatCard
                 title="Tổng lượt thi"
                 value={isAttemptsLoading ? '...' : attemptsCount.toLocaleString()}
-                subtitle={`${completedAttempts} hoàn thành · ${inProgressAttempts} đang thi`}
+                subtitle={`${completedAttempts} hoàn thành – ${inProgressAttempts} đang thi`}
                 icon={Activity}
                 gradient="linear-gradient(135deg, #f59e0b 0%, #ef4444 100%)"
                 loading={isAttemptsLoading}
             />
-            {avgBand !== null && (
-                <StatCard
-                    title="Band TB (có điểm)"
-                    value={avgBand ?? '—'}
-                    subtitle="Trung bình band score"
-                    icon={Award}
-                    gradient="linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%)"
-                    loading={isAttemptsLoading}
-                />
-            )}
             <StatCard
                 title="Điểm TB học viên"
-                value={isUserStatsLoading ? '...' : (userStats?.globalAverageScore?.toFixed(1) ?? '—')}
+                value={isUserStatsLoading ? '...' : (userStats?.globalAverageScore?.toFixed(1) ?? '–')}
                 subtitle="Điểm trung bình toàn hệ thống"
                 icon={BarChart2}
                 gradient="linear-gradient(135deg, #ec4899 0%, #f43f5e 100%)"
@@ -162,4 +175,3 @@ export const AdminStatCards: React.FC<AdminStatCardsProps> = ({
         </div>
     );
 };
-

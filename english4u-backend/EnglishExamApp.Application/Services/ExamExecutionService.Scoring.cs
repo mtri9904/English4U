@@ -382,18 +382,9 @@ public sealed partial class ExamExecutionService
             session.Exam.Title,
             session.Exam.Description);
 
-        scoringResult.ReadingScore = IeltsScoringCalculator.CalculateReadingBand(
-            readingRawScore,
-            readingMaxScore,
-            isGeneralTrainingReading);
-        scoringResult.ListeningScore = IeltsScoringCalculator.CalculateListeningBand(
-            listeningRawScore,
-            listeningMaxScore);
-        scoringResult.TotalBandScore = IeltsScoringCalculator.CalculateOverallBand(
-            scoringResult.ReadingScore,
-            scoringResult.ListeningScore,
-            scoringResult.WritingScore,
-            scoringResult.SpeakingScore);
+        scoringResult.ReadingScore = readingRawScore;
+        scoringResult.ListeningScore = listeningRawScore;
+        scoringResult.TotalBandScore = readingRawScore + listeningRawScore;
         scoringResult.ScoredAt = DateTime.UtcNow;
 
         session.Status = "Completed";
@@ -558,25 +549,10 @@ public sealed partial class ExamExecutionService
         var profile = shouldCalculateBands
             ? await GetExamScoringProfileAsync(examId, cancellationToken)
             : null;
-        var readingBandScore = scoringResult?.ReadingScore
-            ?? (shouldCalculateBands
-                ? IeltsScoringCalculator.CalculateReadingBand(
-                    readingRawScore,
-                    readingMaxScore,
-                    IsGeneralTrainingReadingExam(profile))
-                : null);
-        var listeningBandScore = scoringResult?.ListeningScore
-            ?? (shouldCalculateBands
-                ? IeltsScoringCalculator.CalculateListeningBand(listeningRawScore, listeningMaxScore)
-                : null);
+        var readingBandScore = scoringResult?.ReadingScore ?? readingRawScore;
+        var listeningBandScore = scoringResult?.ListeningScore ?? listeningRawScore;
         var totalBandScore = scoringResult?.TotalBandScore
-            ?? (shouldCalculateBands
-                ? IeltsScoringCalculator.CalculateOverallBand(
-                    readingBandScore,
-                    listeningBandScore,
-                    scoringResult?.WritingScore,
-                    scoringResult?.SpeakingScore)
-                : null);
+            ?? (scoringResult?.WritingScore ?? scoringResult?.SpeakingScore ?? totalAutoScore);
 
         return new PracticeSessionResultDto(
             sessionId,

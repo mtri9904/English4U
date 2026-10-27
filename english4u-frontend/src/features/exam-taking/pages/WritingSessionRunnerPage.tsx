@@ -241,7 +241,7 @@ export const ClientWritingSessionPage: FC = () => {
                         type="success"
                         showIcon
                         message="Session này đã được nộp."
-                        description="Bạn có thể mở trang kết quả để xem band Writing và feedback AI."
+                        description="Bạn có thể mở trang kết quả để xem điểm Writing và feedback AI."
                     />
                     <Button type="primary" onClick={() => navigate(`/app/sessions/${sessionId}/submit`)}>
                         Xem trang nộp bài

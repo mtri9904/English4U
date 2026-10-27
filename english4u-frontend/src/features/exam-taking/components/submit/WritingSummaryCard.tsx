@@ -39,7 +39,7 @@ export const WritingSummaryCard: React.FC<WritingSummaryCardProps> = ({
                     <Statistic title="Task" value={`${submittedWritingTasks}/${totalTasks}`} />
                 </Col>
                 <Col span={12}>
-                    <Statistic title="Band" value={writingScore != null ? writingScore.toFixed(1) : '—'} />
+                    <Statistic title="Điểm" value={writingScore != null ? writingScore.toFixed(1) : '—'} />
                 </Col>
             </Row>
             {writingFeedbacks.length > 0 ? (
@@ -61,7 +61,7 @@ export const WritingSummaryCard: React.FC<WritingSummaryCardProps> = ({
                                         title={`Task ${task.taskNumber}`}
                                         extra={
                                             <Tag color="orange">
-                                                Band {task.band != null ? task.band.toFixed(1) : '—'}
+                                                {task.band != null ? `${task.band.toFixed(1)} điểm` : '—'}
                                             </Tag>
                                         }
                                         style={{

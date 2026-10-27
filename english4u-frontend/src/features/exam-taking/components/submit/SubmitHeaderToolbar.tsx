@@ -297,7 +297,7 @@ export const SubmitHeaderToolbar: React.FC<SubmitHeaderToolbarProps> = ({
                 >
                     <Space size={8}>
                         <BulbOutlined />
-                        <span>AI gia sư</span>
+                        <span>Hỏi AI</span>
                     </Space>
                 </Button>
             ) : null}

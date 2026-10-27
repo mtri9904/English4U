@@ -52,7 +52,7 @@ export const SpeakingPromptCard: React.FC<SpeakingPromptCardProps> = ({
                         <Tag color={entry.question.audioPromptUrl ? 'blue' : 'default'}>
                             {entry.question.audioPromptUrl ? 'Có prompt audio' : 'Prompt dùng fallback voice'}
                         </Tag>
-                        {answer?.scoreEarned ? <Tag color="purple">Band {answer.scoreEarned.toFixed(1)}</Tag> : null}
+                        {answer?.scoreEarned ? <Tag color="purple">{answer.scoreEarned.toFixed(1)} điểm</Tag> : null}
                     </Space>
                     {hasSpeakingScore ? (
                         <Button
@@ -81,7 +81,7 @@ export const SpeakingPromptCard: React.FC<SpeakingPromptCardProps> = ({
                                 gap: '6px',
                             }}
                         >
-                            Gia sư AI
+                            Hỏi AI
                         </Button>
                     ) : null}
                 </Space>
@@ -184,7 +184,7 @@ export const SpeakingPromptCard: React.FC<SpeakingPromptCardProps> = ({
                                             {speakingAnalytics.estimatedFluencyBand != null ? (
                                                 <div>
                                                     <Text type="secondary" style={{ fontSize: '0.78rem' }}>Điểm trôi chảy ước tính: </Text>
-                                                    <Tag color="purple" style={{ borderRadius: 6, fontWeight: 700 }}>Band {speakingAnalytics.estimatedFluencyBand.toFixed(1)}</Tag>
+                                                    <Tag color="purple" style={{ borderRadius: 6, fontWeight: 700 }}>{speakingAnalytics.estimatedFluencyBand.toFixed(1)} điểm</Tag>
                                                 </div>
                                             ) : null}
                                         </Space>
@@ -269,7 +269,7 @@ export const SpeakingPromptCard: React.FC<SpeakingPromptCardProps> = ({
                                 <Space direction="vertical" size={6} style={{ width: '100%' }}>
                                     <Space wrap>
                                         <Tag color="purple">{criteriaNameMap[feedback.criteria] || feedback.criteria}</Tag>
-                                        <Tag>Band {feedback.bandScore.toFixed(1)}</Tag>
+                                        <Tag>{feedback.bandScore.toFixed(1)} điểm</Tag>
                                         {feedback.confidenceScore != null ? (
                                             <Tag color={feedback.confidenceScore >= 0.7 ? 'green' : feedback.confidenceScore >= 0.5 ? 'gold' : 'orange'}>
                                                 Độ tin cậy: {formatPercent(feedback.confidenceScore)}

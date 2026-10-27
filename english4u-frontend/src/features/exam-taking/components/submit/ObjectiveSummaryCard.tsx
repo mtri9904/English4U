@@ -68,7 +68,7 @@ export const ObjectiveSummaryCard: React.FC<ObjectiveSummaryCardProps> = ({
                     }}
                 >
                     <Text style={{ display: 'block', color: 'rgba(255,255,255,0.72)', fontSize: 13 }}>
-                        Band tổng kết
+                        Điểm số
                     </Text>
                     <Text
                         strong

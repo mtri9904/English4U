@@ -101,10 +101,10 @@ export const AttemptManagementPage = () => {
         const completed = attempts.filter(a => a.status === 'Completed').length;
         const inProgress = attempts.filter(a => a.status === 'InProgress').length;
         const abandoned = attempts.filter(a => a.status === 'Abandoned').length;
-        const withBand = attempts.filter((a): a is AdminAttemptListItemDto & { totalBandScore: number } => a.totalBandScore != null);
-        const avgBand = withBand.length ? (withBand.reduce((s, a) => s + a.totalBandScore, 0) / withBand.length) : null;
+        const withScore = attempts.filter((a) => a.totalAutoScore != null || a.totalBandScore != null);
+        const avgScore = withScore.length ? (withScore.reduce((s, a) => s + (a.totalAutoScore ?? a.totalBandScore ?? 0), 0) / withScore.length) : null;
         const uniqueUsers = new Set(attempts.map(a => a.userId)).size;
-        return { total: attempts.length, completed, inProgress, abandoned, avgBand, uniqueUsers };
+        return { total: attempts.length, completed, inProgress, abandoned, avgScore, uniqueUsers };
     }, [attempts]);
 
 
@@ -176,7 +176,7 @@ export const AttemptManagementPage = () => {
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
                                 {[
                                     { label: 'Đã trả lời', value: `${detail.answeredQuestions}/${detail.totalQuestions}`, color: '#6366f1' },
-                                    { label: 'Band score', value: detail.result.totalBandScore?.toFixed(1) ?? '—', color: '#8b5cf6' },
+                                    { label: 'Điểm số', value: detail.result.totalAutoScore != null ? `${detail.result.totalAutoScore}/${detail.result.maxAutoScore || detail.totalQuestions}` : (detail.result.totalBandScore != null && detail.result.totalBandScore > 0 ? detail.result.totalBandScore.toFixed(1) : '—'), color: '#8b5cf6' },
                                     { label: 'Câu đúng', value: detail.result.correctQuestions, color: '#10b981' },
                                     { label: 'Accuracy', value: `${detail.result.accuracyPercent ?? 0}%`, color: '#f59e0b' },
                                 ].map(({ label, value, color }) => (
@@ -286,7 +286,7 @@ export const AttemptManagementPage = () => {
                 <MiniStat label="Hoàn thành" value={stats.completed} icon={CheckCircle2} color="#10b981" />
                 <MiniStat label="Đang thi" value={stats.inProgress} icon={Clock3} color="#3b82f6" />
                 <MiniStat label="Bỏ dở" value={stats.abandoned} icon={XCircle} color="#ef4444" />
-                <MiniStat label="Band TB" value={stats.avgBand != null ? stats.avgBand.toFixed(1) : '—'} icon={Award} color="#f59e0b" />
+                <MiniStat label="Điểm TB" value={stats.avgScore != null ? stats.avgScore.toFixed(1) : '—'} icon={Award} color="#f59e0b" />
                 <MiniStat label="Học viên" value={stats.uniqueUsers} icon={Users} color="#8b5cf6" />
             </div>
 
@@ -360,7 +360,7 @@ export const AttemptManagementPage = () => {
                             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 700 }}>
                                 <thead>
                                     <tr style={{ background: '#f8fafc' }}>
-                                        {['Học viên', 'Đề thi & Kỹ năng', 'Tiến độ', 'Trạng thái', 'Band', 'Bắt đầu', ''].map(h => (
+                                        {['Học viên', 'Đề thi & Kỹ năng', 'Tiến độ', 'Trạng thái', 'Điểm', 'Bắt đầu', ''].map(h => (
                                             <th key={h} style={{
                                                 textAlign: 'left', padding: '11px 16px',
                                                 fontSize: '0.75rem', fontWeight: 700, color: '#64748b',
@@ -434,12 +434,21 @@ export const AttemptManagementPage = () => {
 
 
                                                 <td style={{ padding: '13px 16px' }}>
-                                                    <span style={{
-                                                        fontWeight: 800, fontSize: '1rem',
-                                                        color: a.totalBandScore != null ? '#6366f1' : '#cbd5e1',
-                                                    }}>
-                                                        {a.totalBandScore != null ? a.totalBandScore.toFixed(1) : '—'}
-                                                    </span>
+                                                    {(() => {
+                                                        const score = a.totalAutoScore ?? a.readingScore ?? a.listeningScore;
+                                                        const hasScore = score != null;
+                                                        const displayScore = hasScore
+                                                            ? (a.totalQuestions > 0 ? `${score}/${a.totalQuestions}` : `${score}`)
+                                                            : (a.totalBandScore != null && a.totalBandScore > 0 ? a.totalBandScore.toFixed(1) : '—');
+                                                        return (
+                                                            <span style={{
+                                                                fontWeight: 800, fontSize: '0.9375rem',
+                                                                color: hasScore || (a.totalBandScore != null && a.totalBandScore > 0) ? '#6366f1' : '#cbd5e1',
+                                                            }}>
+                                                                {displayScore}
+                                                            </span>
+                                                        );
+                                                    })()}
                                                 </td>
 
 
