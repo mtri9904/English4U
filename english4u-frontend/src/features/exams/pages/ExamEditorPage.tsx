@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { Button, Card, FloatButton, Input, InputNumber, Result, Select, Spin, Tag, message } from 'antd';
+import { Button, Card, FloatButton, Input, InputNumber, Select, Tag, message } from 'antd';
 import { ArrowLeftOutlined, SaveOutlined, VerticalAlignTopOutlined } from '@ant-design/icons';
 import { motion } from 'framer-motion';
 import { useNavigate, useParams } from 'react-router-dom';
+import { PageLoadingState, PageErrorState } from '@/components';
 import {
     useCreateExamMutation,
     useExamDetailQuery,
@@ -70,7 +71,7 @@ export const ExamEditorPage = () => {
     const isEdit = !!id;
     const activeEditorRef = useRef<TiptapQxEditorRef | null>(null);
 
-    const { data: initialData, isLoading: isLoadingData, error: loadError } = useExamDetailQuery(id || '');
+    const { data: initialData, isLoading: isLoadingData, error: loadError, refetch: refetchDetail } = useExamDetailQuery(id || '');
     const createMutation = useCreateExamMutation();
     const updateMutation = useUpdateExamMutation();
     const generateListeningTranscriptMutation = useGenerateListeningTranscriptMutation();
@@ -253,22 +254,19 @@ export const ExamEditorPage = () => {
     };
 
     if (isEdit && isLoadingData) {
-        return (
-            <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '16px' }}>
-                <Spin size="large" />
-                <span style={{ color: '#64748b' }}>Đang tải dữ liệu đề thi...</span>
-            </div>
-        );
+        return <PageLoadingState type="spin" tip="Đang tải dữ liệu đề thi..." />;
     }
 
     if (isEdit && loadError) {
         return (
-            <div style={{ padding: '48px' }}>
-                <Result
+            <div style={{ maxWidth: 640, margin: '60px auto' }}>
+                <PageErrorState
                     status="error"
-                    title="Lỗi tải dữ liệu"
-                    subTitle="Không thể tìm thấy đề thi hoặc có lỗi xảy ra khi kết nối server."
-                    extra={<Button type="primary" onClick={() => navigate('/admin/exams')}>Quay lại danh sách</Button>}
+                    title="Lỗi tải dữ liệu đề thi"
+                    error={loadError}
+                    onRetry={() => refetchDetail()}
+                    backUrl="/admin/exams"
+                    backText="Quay lại danh sách"
                 />
             </div>
         );

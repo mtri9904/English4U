@@ -27,6 +27,7 @@ import {
 import { DashboardHeroBanner } from '../components/dashboard/DashboardHeroBanner';
 import { DashboardSummaryStrip } from '../components/dashboard/DashboardSummaryStrip';
 import { DashboardRadarCard } from '../components/dashboard/DashboardRadarCard';
+import { PageErrorState } from '@/components';
 import { dashboardStyles } from '../components/dashboard/dashboard.styles';
 import { useUserProfileQuery } from '@/features/students';
 import { formatDateTimeToMinute } from '@/shared/lib/dateTime';
@@ -58,8 +59,8 @@ import {
 
 export const ClientDashboard: React.FC = () => {
     const navigate = useNavigate();
-    const { data: profile, isLoading: isProfileLoading } = useUserProfileQuery();
-    const { data: pagedSessions, isLoading: isSessionsLoading } = useMyPracticeSessionsQuery({ pageSize: 100 });
+    const { data: profile, isLoading: isProfileLoading, isError: isProfileError, refetch: refetchProfile } = useUserProfileQuery();
+    const { data: pagedSessions, isLoading: isSessionsLoading, isError: isSessionsError, refetch: refetchSessions } = useMyPracticeSessionsQuery({ pageSize: 100 });
     const sessions = pagedSessions?.items ?? [];
 
     const finishedSessions = useMemo(
@@ -275,6 +276,24 @@ export const ClientDashboard: React.FC = () => {
                             <Skeleton.Node key={index} active className="skeleton-node" />
                         ))}
                     </div>
+                </div>
+            </div>
+        );
+    }
+
+    if ((isProfileError || isSessionsError) && !profile) {
+        return (
+            <div className="dashboard-shell">
+                <style>{dashboardStyles}</style>
+                <div style={{ maxWidth: 640, margin: '60px auto' }}>
+                    <PageErrorState
+                        title="Không thể tải bảng điều khiển"
+                        subTitle="Đã có lỗi xảy ra khi nạp thông tin học viên. Vui lòng thử lại."
+                        onRetry={() => {
+                            refetchProfile();
+                            refetchSessions();
+                        }}
+                    />
                 </div>
             </div>
         );

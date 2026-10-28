@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FC } from 'react';
-import { Alert, Button, Card, Empty, Space, Spin } from 'antd';
+import { Alert, Button, Card, Empty, Space } from 'antd';
 import { useNavigate, useParams } from 'react-router-dom';
+import { PageLoadingState, PageErrorState } from '@/components';
 import {
     usePracticeSessionQuery,
     useUpdatePracticeSessionAnswersMutation,
@@ -15,7 +16,7 @@ import { WritingTaskSwitcherBar } from '../components/writing/WritingTaskSwitche
 export const ClientWritingSessionPage: FC = () => {
     const navigate = useNavigate();
     const { sessionId = '' } = useParams();
-    const { data: session, isLoading, isError } = usePracticeSessionQuery(sessionId);
+    const { data: session, isLoading, isError, refetch } = usePracticeSessionQuery(sessionId);
     const updateAnswersMutation = useUpdatePracticeSessionAnswersMutation();
 
     const [answerMap, setAnswerMap] = useState<Record<string, string>>({});
@@ -206,25 +207,19 @@ export const ClientWritingSessionPage: FC = () => {
     };
 
     if (isLoading) {
-        return (
-            <Card style={{ borderRadius: 24, minHeight: 320, display: 'grid', placeItems: 'center' }}>
-                <Spin />
-            </Card>
-        );
+        return <PageLoadingState type="spin" tip="Đang tải phiên thi Writing..." />;
     }
 
     if (isError || !session) {
         return (
-            <Card style={{ borderRadius: 24 }}>
-                <Empty
-                    description="Không tìm thấy session đang làm."
-                    image={Empty.PRESENTED_IMAGE_SIMPLE}
-                >
-                    <Button type="primary" onClick={() => navigate('/app/my-exams')}>
-                        Quay về Bài thi của tôi
-                    </Button>
-                </Empty>
-            </Card>
+            <div style={{ maxWidth: 640, margin: '60px auto' }}>
+                <PageErrorState
+                    title="Không tìm thấy phiên thi Writing"
+                    onRetry={() => refetch()}
+                    backUrl="/app/my-exams"
+                    backText="Quay về Bài thi của tôi"
+                />
+            </div>
         );
     }
 

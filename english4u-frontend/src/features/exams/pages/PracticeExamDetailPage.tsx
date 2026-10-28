@@ -17,13 +17,13 @@ import {
     Divider,
     Empty,
     Row,
-    Skeleton,
     Space,
     Tag,
     Typography,
     message,
 } from 'antd';
 import { useNavigate, useParams } from 'react-router-dom';
+import { PageLoadingState, PageErrorState } from '@/components';
 import { usePracticeExamDetailQuery } from '@/features/exams/hooks/useExamQueries';
 import { useStartPracticeSessionMutation } from '@/features/exam-taking';
 import { formatDateTimeToMinute } from '@/shared/lib/dateTime';
@@ -42,7 +42,7 @@ import {
 export const ClientPracticeExamPage: FC = () => {
     const navigate = useNavigate();
     const { examId = '' } = useParams();
-    const { data: exam, isLoading, isError } = usePracticeExamDetailQuery(examId);
+    const { data: exam, isLoading, isError, refetch } = usePracticeExamDetailQuery(examId);
     const startSessionMutation = useStartPracticeSessionMutation();
     const [attemptModeModalOpen, setAttemptModeModalOpen] = useState(false);
 
@@ -86,14 +86,21 @@ export const ClientPracticeExamPage: FC = () => {
     };
 
     if (isLoading) {
+        return <PageLoadingState type="skeleton" rows={12} />;
+    }
+
+    if (isError) {
         return (
-            <Card style={{ borderRadius: 24, border: '1px solid #f1f5f9' }}>
-                <Skeleton active paragraph={{ rows: 12 }} />
-            </Card>
+            <PageErrorState
+                title="Không thể tải chi tiết đề thi"
+                onRetry={() => refetch()}
+                backUrl="/app/practice"
+                backText="Quay lại thư viện đề"
+            />
         );
     }
 
-    if (isError || !exam) {
+    if (!exam) {
         return (
             <Card style={{ borderRadius: 24, border: '1px solid #f1f5f9' }}>
                 <Empty

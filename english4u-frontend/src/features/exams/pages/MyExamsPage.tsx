@@ -11,6 +11,7 @@ import {
     TrophyOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
+import { PageLoadingState, PageErrorState } from '@/components';
 import { useMyPracticeSessionsQuery, useStartPracticeSessionMutation } from '@/features/exam-taking';
 import { getSessionRunnerPath, getSkillLabel } from '@/features/exam-taking';
 import { formatDateTimeToMinute } from '@/shared/lib/dateTime';
@@ -132,7 +133,7 @@ export const ClientMyExamsPage = () => {
         setCurrentPage(1);
     }, [selectedSkill, selectedStatus]);
 
-    const { data: pagedData, isLoading } = useMyPracticeSessionsQuery({
+    const { data: pagedData, isLoading, isError, refetch } = useMyPracticeSessionsQuery({
         skill: selectedSkill !== 'ALL' ? selectedSkill : undefined,
         status: selectedStatus !== 'ALL' ? selectedStatus : undefined,
         pageNumber: currentPage,
@@ -199,6 +200,7 @@ export const ClientMyExamsPage = () => {
                 {statsCardConfigs.map((item) => (
                     <Col xs={12} md={6} key={item.title}>
                         <Card
+                            loading={isLoading}
                             style={{
                                 borderRadius: 18,
                                 border: `1px solid ${item.border}`,
@@ -220,7 +222,7 @@ export const ClientMyExamsPage = () => {
                             <Statistic
                                 title={<span style={{ color: '#64748b', fontSize: 14 }}>{item.title}</span>}
                                 value={item.title === 'Tổng bài đã luyện'
-                                    ? visibleSessions.length
+                                    ? totalCount
                                     : item.title === 'Đang làm'
                                         ? inProgress
                                         : item.title === 'Đã có kết quả'
@@ -258,27 +260,36 @@ export const ClientMyExamsPage = () => {
             </Card>
 
             <Row gutter={[16, 16]}>
-                {visibleSessions.length === 0 && !isLoading ? (
+                {isLoading ? (
                     <Col span={24}>
-                        <Card style={{ borderRadius: 18, border: '1px solid #e2e8f0' }}>
-                            <Empty
-                                description="Bạn chưa làm bài thi nào. Hãy vào kho đề và bắt đầu một đề Reading, Listening, Writing hoặc Speaking."
-                                image={Empty.PRESENTED_IMAGE_SIMPLE}
-                            >
-                                <Button type="primary" style={libraryButtonStyle} onClick={() => navigate('/app/practice')}>
-                                    Mở kho đề
-                                </Button>
-                            </Empty>
-                        </Card>
+                        <PageLoadingState type="cards" cardCount={4} />
                     </Col>
-                ) : visibleSessions.length === 0 && !isLoading ? (
+                ) : isError ? (
+                    <Col span={24}>
+                        <PageErrorState
+                            title="Không thể tải lịch sử bài thi"
+                            onRetry={() => refetch()}
+                        />
+                    </Col>
+                ) : visibleSessions.length === 0 ? (
                     <Col span={24}>
                         <Card style={{ borderRadius: 18, border: '1px solid #e2e8f0' }}>
-                            <Empty description="Không có bài thi nào khớp bộ lọc hiện tại." image={Empty.PRESENTED_IMAGE_SIMPLE}>
-                                <Button style={clearFilterButtonStyle} onClick={() => { setSelectedSkill('ALL'); setSelectedStatus('ALL'); }}>
-                                    Xóa bộ lọc
-                                </Button>
-                            </Empty>
+                            {selectedSkill === 'ALL' && selectedStatus === 'ALL' ? (
+                                <Empty
+                                    description="Bạn chưa làm bài thi nào. Hãy vào kho đề và bắt đầu một đề Reading, Listening, Writing hoặc Speaking."
+                                    image={Empty.PRESENTED_IMAGE_SIMPLE}
+                                >
+                                    <Button type="primary" style={libraryButtonStyle} onClick={() => navigate('/app/practice')}>
+                                        Mở kho đề
+                                    </Button>
+                                </Empty>
+                            ) : (
+                                <Empty description="Không có bài thi nào khớp bộ lọc hiện tại." image={Empty.PRESENTED_IMAGE_SIMPLE}>
+                                    <Button style={clearFilterButtonStyle} onClick={() => { setSelectedSkill('ALL'); setSelectedStatus('ALL'); }}>
+                                        Xóa bộ lọc
+                                    </Button>
+                                </Empty>
+                            )}
                         </Card>
                     </Col>
                 ) : visibleSessions.map((session) => (

@@ -5,7 +5,6 @@ import {
     Radio,
     Progress,
     message,
-    Spin,
     Empty,
 } from 'antd';
 import {
@@ -16,6 +15,7 @@ import {
     QuestionCircleOutlined,
 } from '@ant-design/icons';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { PageLoadingState, PageErrorState } from '@/components';
 import { useQueryClient } from '@tanstack/react-query';
 import {
     useFlashcardDeckDetailQuery,
@@ -41,7 +41,7 @@ export const FlashcardStudyPage: React.FC = () => {
     const queryClient = useQueryClient();
 
     const { data: deck } = useFlashcardDeckDetailQuery(deckId);
-    const { data: cards = [], isLoading } = useStudyCardsQuery(deckId, false);
+    const { data: cards = [], isLoading, isError, refetch } = useStudyCardsQuery(deckId, false);
 
     const [mode, setMode] = useState<StudyMode>('flip');
     const [currentIndex, setCurrentIndex] = useState(0);
@@ -234,10 +234,18 @@ export const FlashcardStudyPage: React.FC = () => {
     };
 
     if (isLoading) {
+        return <PageLoadingState type="spin" tip="Đang nạp dữ liệu thẻ ôn tập..." />;
+    }
+
+    if (isError) {
         return (
-            <div style={{ textAlign: 'center', padding: '100px 0' }}>
-                <Spin size="large" />
-                <div style={{ marginTop: 12, color: '#64748b' }}>Đang nạp dữ liệu thẻ ôn tập...</div>
+            <div style={{ maxWidth: 600, margin: '60px auto' }}>
+                <PageErrorState
+                    title="Không thể tải danh sách thẻ ôn tập"
+                    onRetry={() => refetch()}
+                    backUrl={`/app/flashcards/${deckId}`}
+                    backText="Quay về bộ thẻ"
+                />
             </div>
         );
     }

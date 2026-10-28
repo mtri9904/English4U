@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Button, Card, Col, Empty, Row, Space, Typography } from 'antd';
+import { Button, Card, Col, Empty, Row, Space } from 'antd';
 import { useNavigate, useParams } from 'react-router-dom';
+import { PageLoadingState, PageErrorState } from '@/components';
 import { isSpeakingSkill } from '../utils/sessionRouting.utils';
 import { getNextPromptQuestionId } from '../utils/speakingSession.utils';
 import { SpeakingAvatarCanvas } from '../components/speaking/SpeakingAvatarCanvas';
@@ -12,7 +13,6 @@ import { SpeakingResponseControls } from '../components/speaking/SpeakingRespons
 import { SpeakingTranscriptAndAnalytics } from '../components/speaking/SpeakingTranscriptAndAnalytics';
 import { useSpeakingSessionRunner } from '../hooks/useSpeakingSessionRunner';
 
-const { Paragraph } = Typography;
 
 export const ClientSpeakingSessionPage = () => {
     const navigate = useNavigate();
@@ -70,25 +70,18 @@ export const ClientSpeakingSessionPage = () => {
     } = useSpeakingSessionRunner(sessionId);
 
     if (isLoading) {
-        return (
-            <Card style={{ borderRadius: 24 }}>
-                <Paragraph style={{ margin: 0 }}>Đang tải speaking session...</Paragraph>
-            </Card>
-        );
+        return <PageLoadingState type="spin" tip="Đang tải phiên thi Speaking..." />;
     }
 
     if (isError || !session) {
         return (
-            <Card style={{ borderRadius: 24 }}>
-                <Empty
-                    description="Không tìm thấy speaking session."
-                    image={Empty.PRESENTED_IMAGE_SIMPLE}
-                >
-                    <Button type="primary" onClick={() => navigate('/app/my-exams')}>
-                        Quay về bài thi của tôi
-                    </Button>
-                </Empty>
-            </Card>
+            <div style={{ maxWidth: 640, margin: '60px auto' }}>
+                <PageErrorState
+                    title="Không tìm thấy phiên thi Speaking"
+                    backUrl="/app/my-exams"
+                    backText="Quay về Bài thi của tôi"
+                />
+            </div>
         );
     }
 

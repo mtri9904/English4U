@@ -1,6 +1,7 @@
-import { Spin, Tag, Empty, Button, FloatButton } from 'antd';
+import { Tag, Empty, Button, FloatButton } from 'antd';
 import { motion } from 'framer-motion';
 import { useParams, useNavigate } from 'react-router-dom';
+import { PageLoadingState, PageErrorState } from '@/components';
 import { useExamDetailQuery } from '@/features/exams/hooks/useExamQueries';
 import { BookOutlined, ArrowLeftOutlined, VerticalAlignTopOutlined } from '@ant-design/icons';
 import { SKILL_COLORS } from '../constants/examDetail.constants';
@@ -10,29 +11,21 @@ import { ExamDetailSectionView } from '../components/exam-detail/ExamDetailSecti
 export const ExamDetailPage = () => {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
-    const { data: exam, isLoading, error } = useExamDetailQuery(id ?? '');
+    const { data: exam, isLoading, error, refetch } = useExamDetailQuery(id ?? '');
 
     if (isLoading) {
-        return (
-            <div style={{ display: 'flex', justifyContent: 'center', padding: '100px' }}>
-                <Spin size="large" />
-            </div>
-        );
+        return <PageLoadingState type="spin" tip="Đang tải chi tiết đề thi..." />;
     }
 
     if (error) {
-        const errorMessage =
-            (error as { response?: { data?: { message?: string } }; message?: string })?.response?.data?.message ||
-            (error as { message?: string })?.message ||
-            'Không tải được chi tiết đề thi.';
-
         return (
-            <div style={{ padding: '40px' }}>
-                <Empty description={errorMessage} />
-                <Button type="primary" onClick={() => navigate('/admin/exams')} style={{ marginTop: 16 }}>
-                    Quay về danh sách
-                </Button>
-            </div>
+            <PageErrorState
+                title="Không thể tải chi tiết đề thi"
+                error={error}
+                onRetry={() => refetch()}
+                backUrl="/admin/exams"
+                backText="Quay về danh sách"
+            />
         );
     }
 

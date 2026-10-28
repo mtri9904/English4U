@@ -1,5 +1,6 @@
-import { Col, Row, Spin, message } from 'antd';
+import { Col, Row, message } from 'antd';
 import { useNavigate } from 'react-router-dom';
+import { PageLoadingState, PageErrorState } from '@/components';
 import {
     useChangePasswordMutation,
     useUpdateProfileMutation,
@@ -18,7 +19,7 @@ import {
 
 export const ClientProfilePage = () => {
     const navigate = useNavigate();
-    const { data: profile, isLoading } = useUserProfileQuery();
+    const { data: profile, isLoading, isError, refetch } = useUserProfileQuery();
     const updateProfileMutation = useUpdateProfileMutation();
     const changePasswordMutation = useChangePasswordMutation();
 
@@ -70,10 +71,17 @@ export const ClientProfilePage = () => {
         }
     };
 
-    if (isLoading || !profile) {
+    if (isLoading) {
+        return <PageLoadingState type="spin" tip="Đang tải hồ sơ học viên..." />;
+    }
+
+    if (isError || !profile) {
         return (
-            <div style={{ display: 'grid', placeItems: 'center', minHeight: 360 }}>
-                <Spin size="large" />
+            <div style={{ maxWidth: 600, margin: '60px auto' }}>
+                <PageErrorState
+                    title="Không thể tải thông tin hồ sơ"
+                    onRetry={() => refetch()}
+                />
             </div>
         );
     }

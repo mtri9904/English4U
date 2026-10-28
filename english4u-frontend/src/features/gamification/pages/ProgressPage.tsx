@@ -1,8 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Skeleton } from 'antd';
 import { useUserProfileQuery } from '@/features/students';
 import { useMyPracticeSessionsQuery } from '@/features/exam-taking';
+import { PageLoadingState, PageErrorState } from '@/components';
 import { palette, skillMeta } from '../constants/gamification.constants';
 import {
     getSkillKey,
@@ -21,8 +21,8 @@ import { ProgressHistoryTable } from '../components/progress/ProgressHistoryTabl
 
 export const ClientProgressPage: React.FC = () => {
     const navigate = useNavigate();
-    const { data: profile, isLoading: isProfileLoading } = useUserProfileQuery();
-    const { data: pagedSessions, isLoading: isSessionsLoading } = useMyPracticeSessionsQuery({ pageSize: 100 });
+    const { data: profile, isLoading: isProfileLoading, isError: isProfileError, refetch: refetchProfile } = useUserProfileQuery();
+    const { data: pagedSessions, isLoading: isSessionsLoading, isError: isSessionsError, refetch: refetchSessions } = useMyPracticeSessionsQuery({ pageSize: 100 });
     const sessions = pagedSessions?.items ?? [];
 
     const [chartSkill, setChartSkill] = useState<string>('ALL');
@@ -69,7 +69,6 @@ export const ClientProgressPage: React.FC = () => {
             .slice(-10);
     }, [finishedSessions, chartSkill]);
 
-
     const skillAnalytics = useMemo(() => {
         return (['READING', 'LISTENING', 'WRITING', 'SPEAKING'] as const).map((key) => {
             const skillSessions = finishedSessions.filter((s) => getSkillKey(s.skillType) === key);
@@ -113,19 +112,29 @@ export const ClientProgressPage: React.FC = () => {
     }, [finishedSessions, historySkill]);
 
     const isLoading = isProfileLoading || isSessionsLoading;
+    const isError = isProfileError || isSessionsError;
 
     if (isLoading) {
         return (
             <div className="progress-shell">
                 <style>{progressStyles}</style>
-                <div className="progress-skeleton">
-                    <Skeleton active paragraph={{ rows: 3 }} />
-                    <div className="skeleton-cards">
-                        {Array.from({ length: 4 }).map((_, i) => (
-                            <Skeleton.Node key={i} active style={{ width: '100%', height: 120, borderRadius: 12 }} />
-                        ))}
-                    </div>
-                </div>
+                <PageLoadingState type="skeleton" tip="Đang nạp dữ liệu tiến độ học tập..." rows={8} />
+            </div>
+        );
+    }
+
+    if (isError) {
+        return (
+            <div className="progress-shell">
+                <style>{progressStyles}</style>
+                <PageErrorState
+                    title="Không thể tải dữ liệu tiến độ"
+                    subTitle="Đã có lỗi xảy ra khi nạp lịch sử luyện thi hoặc thông tin cá nhân."
+                    onRetry={() => {
+                        refetchProfile();
+                        refetchSessions();
+                    }}
+                />
             </div>
         );
     }
@@ -148,7 +157,6 @@ export const ClientProgressPage: React.FC = () => {
             />
 
             <ProgressSkillBreakdown skillAnalytics={skillAnalytics} />
-
 
             <ProgressHistoryTable
                 historySkill={historySkill}

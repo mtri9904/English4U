@@ -9,7 +9,6 @@ import {
     Row,
     Col,
     Empty,
-    Spin,
     App,
 } from 'antd';
 import {
@@ -19,6 +18,7 @@ import {
     SearchOutlined,
 } from '@ant-design/icons';
 import { useParams, useNavigate } from 'react-router-dom';
+import { PageLoadingState, PageErrorState } from '@/components';
 import { useQueryClient } from '@tanstack/react-query';
 import {
     useFlashcardDeckDetailQuery,
@@ -39,8 +39,8 @@ export const FlashcardDeckDetailPage: React.FC = () => {
     const queryClient = useQueryClient();
     const { message } = App.useApp();
 
-    const { data: deck, isLoading: isDeckLoading } = useFlashcardDeckDetailQuery(deckId);
-    const { data: cards = [], isLoading: isCardsLoading } = useDeckCardsQuery(deckId);
+    const { data: deck, isLoading: isDeckLoading, isError: isDeckError, refetch: refetchDeck } = useFlashcardDeckDetailQuery(deckId);
+    const { data: cards = [], isLoading: isCardsLoading, isError: isCardsError, refetch: refetchCards } = useDeckCardsQuery(deckId);
     const deleteCardMutation = useDeleteCardMutation(deckId);
 
     const [searchTerm, setSearchTerm] = useState('');
@@ -80,10 +80,18 @@ export const FlashcardDeckDetailPage: React.FC = () => {
     };
 
     if (isDeckLoading || isCardsLoading) {
+        return <PageLoadingState type="spin" tip="Đang nạp chi tiết bộ thẻ..." />;
+    }
+
+    if (isDeckError || isCardsError) {
         return (
-            <div style={{ textAlign: 'center', padding: '100px 0' }}>
-                <Spin size="large" />
-                <div style={{ marginTop: 12, color: '#64748b' }}>Đang nạp chi tiết bộ thẻ...</div>
+            <div style={{ maxWidth: 640, margin: '40px auto' }}>
+                <PageErrorState
+                    title="Không thể tải chi tiết bộ thẻ"
+                    onRetry={() => { refetchDeck(); refetchCards(); }}
+                    backUrl={ROUTE_PATHS.FLASHCARDS_ROOT}
+                    backText="Quay lại danh sách"
+                />
             </div>
         );
     }

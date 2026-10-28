@@ -8,7 +8,7 @@ import {
     Hash, Target, AlignLeft,
 } from 'lucide-react';
 import { useAdminAttemptDetailQuery, useAdminAttemptsQuery } from '../hooks/useAttemptQueries';
-import type { AdminAttemptAnswerDto, AdminAttemptListItemDto } from '../types/attempt.types';
+import type { AdminAttemptAnswerDto } from '../types/attempt.types';
 import { formatDateTimeToMinute } from '@/shared/lib/dateTime';
 
 

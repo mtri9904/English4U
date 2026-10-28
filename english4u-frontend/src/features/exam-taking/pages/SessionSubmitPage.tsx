@@ -10,6 +10,7 @@ import {
     message,
 } from 'antd';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { PageLoadingState, PageErrorState } from '@/components';
 import {
     usePracticeSessionQuery,
     useRescoreSpeakingMutation,
@@ -224,25 +225,20 @@ export const ClientSessionSubmitPage = () => {
     }, [isWritingSession, session?.status, submitWritingMutation]);
 
     if (isLoading) {
-        return (
-            <Card style={{ borderRadius: 24 }}>
-                <Paragraph style={{ margin: 0 }}>Dang tai session...</Paragraph>
-            </Card>
-        );
+        return <PageLoadingState type="spin" tip="Đang tải dữ liệu kết quả bài thi..." />;
     }
 
     if (isError || !session) {
         return (
-            <Card style={{ borderRadius: 24 }}>
-                <Empty
-                    description="Khong tim thay session can nop bai."
-                    image={Empty.PRESENTED_IMAGE_SIMPLE}
-                >
-                    <Button type="primary" onClick={() => navigate('/app/my-exams')}>
-                        Quay ve Bai thi cua toi
-                    </Button>
-                </Empty>
-            </Card>
+            <div style={{ maxWidth: 640, margin: '60px auto' }}>
+                <PageErrorState
+                    title="Không tìm thấy phiên làm bài"
+                    subTitle="Không thể tải thông tin nộp bài hoặc phiên không tồn tại."
+                    onRetry={() => refetch()}
+                    backUrl="/app/my-exams"
+                    backText="Quay về Bài thi của tôi"
+                />
+            </div>
         );
     }
 

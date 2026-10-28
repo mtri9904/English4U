@@ -8,7 +8,6 @@ import {
     Pagination,
     Row,
     Select,
-    Skeleton,
     Space,
     Tag,
     Typography,
@@ -21,6 +20,7 @@ import {
 } from '@ant-design/icons';
 import { motion } from 'framer-motion';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { PageLoadingState, PageErrorState } from '@/components';
 import { usePracticeExamsQuery } from '@/features/exams/hooks/useExamQueries';
 import { useMyPracticeSessionsQuery } from '@/features/exam-taking';
 import { formatDateTimeToMinute } from '@/shared/lib/dateTime';
@@ -68,7 +68,7 @@ export const ClientPracticePage: FC = () => {
     const selectedSkill = searchParams.get('skill') ?? 'ALL';
     const selectedExamType = searchParams.get('type') ?? 'ALL';
 
-    const { data: pagedData, isLoading } = usePracticeExamsQuery({
+    const { data: pagedData, isLoading, isError, refetch } = usePracticeExamsQuery({
         search: searchText.trim() || undefined,
         skill: selectedSkill !== 'ALL' ? selectedSkill : undefined,
         examType: selectedExamType !== 'ALL' ? selectedExamType : undefined,
@@ -484,15 +484,12 @@ export const ClientPracticePage: FC = () => {
             </Card>
 
             {isLoading ? (
-                <Row gutter={[20, 20]}>
-                    {Array.from({ length: 6 }).map((_, index) => (
-                        <Col xs={24} md={12} xl={8} key={index}>
-                            <Card style={{ borderRadius: 24, border: '1px solid rgba(226, 232, 240, 0.8)' }}>
-                                <Skeleton active paragraph={{ rows: 5 }} />
-                            </Card>
-                        </Col>
-                    ))}
-                </Row>
+                <PageLoadingState type="cards" cardCount={6} />
+            ) : isError ? (
+                <PageErrorState
+                    title="Không thể tải thư viện đề thi"
+                    onRetry={() => refetch()}
+                />
             ) : exams.length === 0 ? (
                 <Card style={{ borderRadius: 24, border: '1px solid rgba(226, 232, 240, 0.8)', padding: '40px 0' }}>
                     <Empty

@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
-import { Card, Avatar, Button, Tabs, Form, Input, Row, Col, Divider, message, Tag, Typography, Spin, Upload, Modal } from 'antd';
+import { Card, Avatar, Button, Tabs, Form, Input, Row, Col, Divider, message, Tag, Typography, Upload, Modal } from 'antd';
+import { PageLoadingState, PageErrorState } from '@/components';
 import {
     UserOutlined,
     LockOutlined,
@@ -20,7 +21,7 @@ const { Title, Text } = Typography;
 const { confirm } = Modal;
 
 export const ProfilePage: React.FC = () => {
-    const { data: profile, isLoading } = useUserProfileQuery();
+    const { data: profile, isLoading, isError, refetch } = useUserProfileQuery();
     const updateProfileMutation = useUpdateProfileMutation();
     const changePasswordMutation = useChangePasswordMutation();
     const deleteSelfMutation = useDeleteSelfAccountMutation();
@@ -87,7 +88,19 @@ export const ProfilePage: React.FC = () => {
     };
 
     if (isLoading) {
-        return <div style={{ textAlign: 'center', padding: '100px' }}><Spin size="large" /></div>;
+        return <PageLoadingState type="spin" tip="Đang tải dữ liệu tài khoản..." />;
+    }
+
+    if (isError || !profile) {
+        return (
+            <div style={{ maxWidth: 600, margin: '60px auto' }}>
+                <PageErrorState
+                    title="Không thể tải thông tin tài khoản"
+                    subTitle="Đã có lỗi xảy ra khi tải dữ liệu hồ sơ quản trị viên."
+                    onRetry={() => refetch()}
+                />
+            </div>
+        );
     }
 
     return (

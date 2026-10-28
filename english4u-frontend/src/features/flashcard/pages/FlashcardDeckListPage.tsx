@@ -27,6 +27,7 @@ import {
     SoundOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
+import { PageLoadingState, PageErrorState } from '@/components';
 import { useQueryClient } from '@tanstack/react-query';
 import {
     useFlashcardDecksQuery,
@@ -41,7 +42,7 @@ import { DECK_COLORS } from '../constants/flashcard.constants';
 export const FlashcardDeckListPage: React.FC = () => {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
-    const { data: decks = [], isLoading } = useFlashcardDecksQuery();
+    const { data: decks = [], isLoading, isError, refetch } = useFlashcardDecksQuery();
 
     // Modals
     const [isCreateDeckOpen, setIsCreateDeckOpen] = useState(false);
@@ -235,10 +236,12 @@ export const FlashcardDeckListPage: React.FC = () => {
             </div>
 
             {isLoading ? (
-                <div style={{ textAlign: 'center', padding: '60px 0' }}>
-                    <Spin size="large" />
-                    <div style={{ marginTop: 12, color: '#64748b' }}>Đang nạp các bộ thẻ từ vựng...</div>
-                </div>
+                <PageLoadingState type="spin" tip="Đang nạp các bộ thẻ từ vựng..." />
+            ) : isError ? (
+                <PageErrorState
+                    title="Không thể tải danh sách bộ thẻ"
+                    onRetry={() => refetch()}
+                />
             ) : decks.length === 0 ? (
                 <Card style={{ borderRadius: 16, textAlign: 'center', padding: '40px 20px' }}>
                     <Empty
