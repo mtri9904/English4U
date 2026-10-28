@@ -154,6 +154,17 @@ export const extractPromptText = (group: PracticeSessionQuestionGroupDto) => {
         }
 
         if (parsed && typeof parsed === 'object') {
+            if ((parsed as { layout?: unknown }).layout === 'mixed_note_table') {
+                const mixed = parsed as { topText?: string; tableData?: string[][]; bottomText?: string };
+                const parts: string[] = [];
+                if (mixed.topText) parts.push(mixed.topText);
+                if (Array.isArray(mixed.tableData)) {
+                    parts.push(...mixed.tableData.map((row) => Array.isArray(row) ? row.join(' | ') : ''));
+                }
+                if (mixed.bottomText) parts.push(mixed.bottomText);
+                return normalizeInlineTokenText(parts.join('\n\n'));
+            }
+
             if (typeof (parsed as { prompt?: unknown }).prompt === 'string') {
                 return normalizeInlineTokenText((parsed as { prompt: string }).prompt);
             }

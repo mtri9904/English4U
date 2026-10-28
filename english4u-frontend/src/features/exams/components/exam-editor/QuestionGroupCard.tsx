@@ -1,4 +1,4 @@
-import React, { type MutableRefObject } from 'react';
+import React, { useState, type MutableRefObject } from 'react';
 import { Button, InputNumber, Radio, Select } from 'antd';
 import {
     AppstoreOutlined,
@@ -6,6 +6,7 @@ import {
     DownOutlined,
     MinusCircleOutlined,
     PlusOutlined,
+    TableOutlined,
 } from '@ant-design/icons';
 import type { CreateQuestionDto, CreateQuestionGroupDto } from '@/features/exams/types/exam.types';
 import {
@@ -100,6 +101,7 @@ export const QuestionGroupCard: React.FC<QuestionGroupCardProps> = ({
     const isFlowchartOptionBank = isFlowchartType && flowchartAnswerMode === 'shared_option_bank';
     const isMapLabellingType = groupType === QUESTION_TYPES.MAP_LABELLING;
     const isVisualMatchingType = groupType === QUESTION_TYPES.MATCHING_VISUALS;
+    const [isTableActive, setIsTableActive] = useState(false);
     const usesLegacySharedMultiSelectLayout =
         groupType === QUESTION_TYPES.MCQ_CHOOSE_N ||
         (groupType === QUESTION_TYPES.MCQ_MULTIPLE && hasMultiSelectLayout(group.contentData));
@@ -390,8 +392,8 @@ export const QuestionGroupCard: React.FC<QuestionGroupCardProps> = ({
 
             {isComplexLayout && !isMapLabellingType && !isFlowchartType && (
                 <div style={{ marginBottom: '10px' }}>
-                    {!isTableType && !isFlowchartType && (
-                        <div style={{ display: 'flex', gap: '8px', marginBottom: '6px', flexWrap: 'wrap' }}>
+                    {!isTableType && (
+                        <div style={{ display: 'flex', gap: '8px', marginBottom: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
                             <Button
                                 size="small"
                                 type="primary"
@@ -413,6 +415,66 @@ export const QuestionGroupCard: React.FC<QuestionGroupCardProps> = ({
                             >
                                 In đậm
                             </Button>
+                            <Button
+                                size="small"
+                                icon={<TableOutlined />}
+                                onMouseDown={(event) => {
+                                    event.preventDefault();
+                                    getActiveTemplateEditor()?.insertTable(3, 3);
+                                }}
+                            >
+                                + Chèn Bảng
+                            </Button>
+                            {isTableActive && (
+                                <>
+                                    <Button
+                                        size="small"
+                                        onMouseDown={(e) => {
+                                            e.preventDefault();
+                                            getActiveTemplateEditor()?.addRow();
+                                        }}
+                                    >
+                                        + Thêm Hàng
+                                    </Button>
+                                    <Button
+                                        size="small"
+                                        onMouseDown={(e) => {
+                                            e.preventDefault();
+                                            getActiveTemplateEditor()?.deleteRow();
+                                        }}
+                                    >
+                                        - Xoá Hàng
+                                    </Button>
+                                    <Button
+                                        size="small"
+                                        onMouseDown={(e) => {
+                                            e.preventDefault();
+                                            getActiveTemplateEditor()?.addColumn();
+                                        }}
+                                    >
+                                        + Thêm Cột
+                                    </Button>
+                                    <Button
+                                        size="small"
+                                        onMouseDown={(e) => {
+                                            e.preventDefault();
+                                            getActiveTemplateEditor()?.deleteColumn();
+                                        }}
+                                    >
+                                        - Xoá Cột
+                                    </Button>
+                                    <Button
+                                        size="small"
+                                        danger
+                                        onMouseDown={(e) => {
+                                            e.preventDefault();
+                                            getActiveTemplateEditor()?.deleteTable();
+                                        }}
+                                    >
+                                        Xoá Bảng
+                                    </Button>
+                                </>
+                            )}
                         </div>
                     )}
                     {isTableType ? (
@@ -433,6 +495,7 @@ export const QuestionGroupCard: React.FC<QuestionGroupCardProps> = ({
                             onFocus={() => {
                                 activeEditorRef.current = templateEditorRefs.current[groupIdx] ?? null;
                             }}
+                            onTableActiveChange={setIsTableActive}
                             onChange={handleContentChange}
                         />
                     )}

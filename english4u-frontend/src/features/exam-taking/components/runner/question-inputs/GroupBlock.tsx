@@ -40,6 +40,7 @@ import {
     HighlightableMarkdown,
     markdownComponents,
 } from '../highlight/HighlightableMarkdown';
+import { parseMixedNoteTableData } from '@/shared/lib/mixedNoteTable';
 import { ClassificationMatchingTable } from './ClassificationMatchingTable';
 import { InlineTemplateRenderer } from './InlineTemplateRenderer';
 import { MatchingVisualsOptionBank } from './MatchingVisualsOptionBank';
@@ -76,6 +77,7 @@ export const GroupBlock = ({
     const inputType = getQuestionInputType(group);
     const optionLabelType = getGroupOptionLabelType(group);
     const isTableLayout = TABLE_TYPES.has((group.groupType ?? '').toUpperCase());
+    const mixedNoteTableContent = parseMixedNoteTableData(group.contentData);
     const isSummaryCompletion = (group.groupType ?? '').toUpperCase() === 'SUMMARY_COMPLETION';
     const isMatchingVisuals = isMatchingVisualsGroup(group);
     const isClassificationMatching = isClassificationMatchingGroup(group);
@@ -156,7 +158,109 @@ export const GroupBlock = ({
                 ) : null}
                 <TruthValueDefinitionTable groupType={group.groupType} />
 
-                {isTableLayout && tableContent.rows.length > 0 ? (
+                {mixedNoteTableContent ? (
+                    <div
+                        style={{
+                            border: '1px solid #e2e8f0',
+                            borderRadius: 14,
+                            padding: 14,
+                            background: '#fff',
+                        }}
+                    >
+                        {mixedNoteTableContent.topText ? (
+                            <div style={{ marginBottom: 14 }}>
+                                {rendersInlineTemplateAnswers ? (
+                                    <InlineTemplateRenderer
+                                        template={mixedNoteTableContent.topText}
+                                        group={group}
+                                        answerMap={answerMap}
+                                        onAnswerChange={onAnswerChange}
+                                        readOnly={readOnly}
+                                        reviewAnswerMap={reviewAnswerMap}
+                                    />
+                                ) : (
+                                    <HighlightableMarkdown
+                                        sourceKey={`group:${group.id}:mixed-top`}
+                                        text={formatTemplateText(mixedNoteTableContent.topText)}
+                                        components={markdownComponents}
+                                        highlights={highlights}
+                                        onCreateHighlight={onCreateHighlight}
+                                        onDeleteHighlight={onDeleteHighlight}
+                                    />
+                                )}
+                            </div>
+                        ) : null}
+
+                        {mixedNoteTableContent.tableData.length > 0 ? (
+                            <div style={{ overflowX: 'auto', marginBottom: mixedNoteTableContent.bottomText ? 14 : 0 }}>
+                                <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 420 }}>
+                                    <tbody>
+                                        {mixedNoteTableContent.tableData.map((row, rowIndex) => (
+                                            <tr key={`mixed-row-${rowIndex}`} style={{ background: rowIndex === 0 ? '#f8fafc' : '#fff' }}>
+                                                {row.map((cell, cellIndex) => (
+                                                    <td
+                                                        key={`mixed-cell-${rowIndex}-${cellIndex}`}
+                                                        style={{
+                                                            border: '1px solid #cbd5e1',
+                                                            padding: '10px 12px',
+                                                            verticalAlign: 'top',
+                                                            minWidth: 110,
+                                                            fontWeight: rowIndex === 0 ? 600 : 400,
+                                                        }}
+                                                    >
+                                                        {rendersInlineTemplateAnswers ? (
+                                                            <InlineTemplateRenderer
+                                                                template={cell}
+                                                                group={group}
+                                                                answerMap={answerMap}
+                                                                onAnswerChange={onAnswerChange}
+                                                                readOnly={readOnly}
+                                                                reviewAnswerMap={reviewAnswerMap}
+                                                            />
+                                                        ) : (
+                                                            <HighlightableMarkdown
+                                                                sourceKey={`group:${group.id}:mixed-table:${rowIndex}:${cellIndex}`}
+                                                                text={formatTemplateText(cell)}
+                                                                components={compactMarkdownComponents}
+                                                                highlights={highlights}
+                                                                onCreateHighlight={onCreateHighlight}
+                                                                onDeleteHighlight={onDeleteHighlight}
+                                                            />
+                                                        )}
+                                                    </td>
+                                                ))}
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        ) : null}
+
+                        {mixedNoteTableContent.bottomText ? (
+                            <div style={{ marginTop: 14 }}>
+                                {rendersInlineTemplateAnswers ? (
+                                    <InlineTemplateRenderer
+                                        template={mixedNoteTableContent.bottomText}
+                                        group={group}
+                                        answerMap={answerMap}
+                                        onAnswerChange={onAnswerChange}
+                                        readOnly={readOnly}
+                                        reviewAnswerMap={reviewAnswerMap}
+                                    />
+                                ) : (
+                                    <HighlightableMarkdown
+                                        sourceKey={`group:${group.id}:mixed-bottom`}
+                                        text={formatTemplateText(mixedNoteTableContent.bottomText)}
+                                        components={markdownComponents}
+                                        highlights={highlights}
+                                        onCreateHighlight={onCreateHighlight}
+                                        onDeleteHighlight={onDeleteHighlight}
+                                    />
+                                )}
+                            </div>
+                        ) : null}
+                    </div>
+                ) : isTableLayout && tableContent.rows.length > 0 ? (
                     <div
                         style={{
                             border: '1px solid #e2e8f0',

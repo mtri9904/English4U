@@ -1,6 +1,7 @@
 import { useEditor, EditorContent, Node } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
+import { Table, TableRow, TableCell, TableHeader } from '@tiptap/extension-table';
 import { mergeAttributes } from '@tiptap/core';
 import { forwardRef, useImperativeHandle, useEffect } from 'react';
 
@@ -70,11 +71,19 @@ interface TiptapQxEditorProps {
     enableMarkdownBold?: boolean;
     borderless?: boolean;
     style?: React.CSSProperties;
+    onTableActiveChange?: (isActive: boolean) => void;
 }
 
 export interface TiptapQxEditorRef {
     insertQ: (qNum: number) => void;
     toggleBold: () => void;
+    insertTable: (rows?: number, cols?: number) => void;
+    addRow: () => void;
+    deleteRow: () => void;
+    addColumn: () => void;
+    deleteColumn: () => void;
+    deleteTable: () => void;
+    isTableActive: () => boolean;
 }
 
 export const TiptapQxEditor = forwardRef<TiptapQxEditorRef, TiptapQxEditorProps>(({
@@ -86,6 +95,7 @@ export const TiptapQxEditor = forwardRef<TiptapQxEditorRef, TiptapQxEditorProps>
     enableMarkdownBold = false,
     borderless = false,
     style,
+    onTableActiveChange,
 }, ref) => {
     const normalizeEditorText = (text?: string | null) => (text || '')
         .replace(/\\r\\n/g, '\n')
@@ -111,16 +121,12 @@ export const TiptapQxEditor = forwardRef<TiptapQxEditorRef, TiptapQxEditorProps>
             })
             .join('');
 
-    // Convert text [Q1] to <span data-qx data-label="Q1">[Q1]</span>.
-    // Bold markers can wrap plain text and Q tokens, e.g. **[Q14]**.
-    const parseTextToNodes = (text: string) => {
-        const normalizedText = normalizeEditorText(text);
-
+    const parseInlineTextToHtml = (text: string) => {
+        const normalized = normalizeEditorText(text);
         if (!enableMarkdownBold) {
-            return convertTextPartToHtml(normalizedText);
+            return convertTextPartToHtml(normalized);
         }
-
-        const segments = normalizedText.replace(/__(.+?)__/g, '**$1**').split(/(\*\*[\s\S]+?\*\*)/g);
+        const segments = normalized.replace(/__(.+?)__/g, '**$1**').split(/(\*\*[\s\S]+?\*\*)/g);
         return segments
             .map((segment) => {
                 const boldMatch = segment.match(/^\*\*([\s\S]+?)\*\*$/);
@@ -132,7 +138,89 @@ export const TiptapQxEditor = forwardRef<TiptapQxEditorRef, TiptapQxEditorProps>
             .join('');
     };
 
-    // Convert HTML back to text [Qx]
+    const isMarkdownTableLine = (line: string) => {
+        const trimmed = line.trim();
+        return trimmed.startsWith('|') && trimmed.endsWith('|') && trimmed.length > 2;
+    };
+
+    const convertLegacyMixedJson = (rawText: string) => {
+        if (rawText.trim().startsWith('{') && rawText.includes('mixed_note_table')) {
+            try {
+                const parsed = JSON.parse(rawText);
+                if (parsed.layout === 'mixed_note_table') {
+                    const lines: string[] = [];
+                    if (parsed.topText) lines.push(parsed.topText);
+                    if (Array.isArray(parsed.tableData) && parsed.tableData.length > 0) {
+                        parsed.tableData.forEach((row: string[], rIdx: number) => {
+                            lines.push(`| ${row.map((c) => (c || '').trim()).join(' | ')} |`);
+                            if (rIdx === 0) {
+                                lines.push(`| ${row.map(() => '---').join(' | ')} |`);
+                            }
+                        });
+                    }
+                    if (parsed.bottomText) lines.push(parsed.bottomText);
+                    return lines.join('\n');
+                }
+            } catch {}
+        }
+        return rawText;
+    };
+
+    // Convert text and markdown tables to Tiptap HTML nodes
+    const parseTextToNodes = (text: string) => {
+        const sourceText = convertLegacyMixedJson(text || '');
+        const lines = sourceText.split(/\r?\n/);
+        const htmlParts: string[] = [];
+        let currentTableLines: string[] = [];
+
+        const flushTable = () => {
+            if (currentTableLines.length === 0) return;
+            const rows: string[][] = [];
+            for (const line of currentTableLines) {
+                const trimmed = line.trim();
+                if (/^\|[\s\-:|]+\|$/.test(trimmed)) continue; // Separator row
+                const cells = trimmed.slice(1, -1).split('|').map((c) => c.trim().replace(/\\\|/g, '|'));
+                rows.push(cells);
+            }
+            if (rows.length > 0) {
+                const header = rows[0];
+                const bodyRows = rows.slice(1);
+                let tableHtml = '<table><thead><tr>';
+                for (const cell of header) {
+                    tableHtml += `<th><p>${parseInlineTextToHtml(cell)}</p></th>`;
+                }
+                tableHtml += '</tr></thead><tbody>';
+                for (const row of bodyRows) {
+                    tableHtml += '<tr>';
+                    for (const cell of row) {
+                        tableHtml += `<td><p>${parseInlineTextToHtml(cell)}</p></td>`;
+                    }
+                    tableHtml += '</tr>';
+                }
+                tableHtml += '</tbody></table>';
+                htmlParts.push(tableHtml);
+            }
+            currentTableLines = [];
+        };
+
+        for (const line of lines) {
+            if (isMarkdownTableLine(line)) {
+                currentTableLines.push(line);
+            } else {
+                flushTable();
+                if (line.trim().length === 0) {
+                    htmlParts.push('<p></p>');
+                } else {
+                    htmlParts.push(`<p>${parseInlineTextToHtml(line)}</p>`);
+                }
+            }
+        }
+        flushTable();
+
+        return htmlParts.join('') || '<p></p>';
+    };
+
+    // Convert HTML back to text with Markdown tables and [Qx]
     const serializeToText = (html: string) => {
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, 'text/html');
@@ -152,15 +240,37 @@ export const TiptapQxEditor = forwardRef<TiptapQxEditorRef, TiptapQxEditorProps>
             });
         }
 
-        // Extract text and handle block elements (like <p>)
-        const paragraphs = doc.querySelectorAll('p');
-        if (paragraphs.length === 0) {
+        const lines: string[] = [];
+        Array.from(doc.body.childNodes).forEach((child) => {
+            if (child.nodeType === 1) {
+                const el = child as HTMLElement;
+                if (el.tagName.toLowerCase() === 'table') {
+                    const trs = Array.from(el.querySelectorAll('tr'));
+                    if (trs.length > 0) {
+                        trs.forEach((tr, rIdx) => {
+                            const cells = Array.from(tr.querySelectorAll('th, td'));
+                            const cellTexts = cells.map((cell) =>
+                                (cell.textContent || '').trim().replace(/\|/g, '\\|').replace(/[\r\n]+/g, ' ')
+                            );
+                            lines.push(`| ${cellTexts.join(' | ')} |`);
+                            if (rIdx === 0) {
+                                const sep = cells.map(() => '---');
+                                lines.push(`| ${sep.join(' | ')} |`);
+                            }
+                        });
+                    }
+                } else {
+                    lines.push(el.textContent || '');
+                }
+            } else if (child.nodeType === 3) {
+                const txt = child.textContent?.trim();
+                if (txt) lines.push(txt);
+            }
+        });
+
+        if (lines.length === 0) {
             return (doc.body.textContent || '').trim();
         }
-        const lines: string[] = [];
-        paragraphs.forEach((p) => {
-            lines.push(p.textContent || '');
-        });
 
         return lines.join('\n');
     };
@@ -176,11 +286,23 @@ export const TiptapQxEditor = forwardRef<TiptapQxEditorRef, TiptapQxEditorProps>
             Placeholder.configure({
                 placeholder: placeholder || 'Nhập nội dung...',
             }),
+            Table.configure({
+                resizable: false,
+                HTMLAttributes: {
+                    class: 'tiptap-table',
+                },
+            }),
+            TableRow,
+            TableHeader,
+            TableCell,
             QxNode,
         ],
         content: parseTextToNodes(value),
         onUpdate: ({ editor }) => {
             onChange(serializeToText(editor.getHTML()));
+        },
+        onSelectionUpdate: ({ editor }) => {
+            onTableActiveChange?.(editor.isActive('table'));
         },
         onFocus: () => {
             if (onFocus) onFocus();
@@ -194,8 +316,18 @@ export const TiptapQxEditor = forwardRef<TiptapQxEditorRef, TiptapQxEditorProps>
                 const clipboardData = event.clipboardData;
                 if (!clipboardData) return false;
 
+                const htmlData = clipboardData.getData('text/html');
+                if (htmlData && /<table\b/i.test(htmlData)) {
+                    return false;
+                }
+
                 const pastedText = clipboardData.getData('text/plain') ?? '';
                 if (!pastedText) return false;
+
+                if (pastedText.includes('|') && pastedText.includes('\n')) {
+                    // Let markdown table paste work natively or insert content
+                    return false;
+                }
 
                 event.preventDefault();
                 const cleaned = pastedText.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
@@ -220,6 +352,39 @@ export const TiptapQxEditor = forwardRef<TiptapQxEditorRef, TiptapQxEditorProps>
                 editor.chain().focus().toggleBold().run();
             }
         },
+        insertTable: (rows = 3, cols = 3) => {
+            if (editor) {
+                editor.chain().focus().insertTable({ rows, cols, withHeaderRow: true }).run();
+            }
+        },
+        addRow: () => {
+            if (editor) {
+                editor.chain().focus().addRowAfter().run();
+            }
+        },
+        deleteRow: () => {
+            if (editor) {
+                editor.chain().focus().deleteRow().run();
+            }
+        },
+        addColumn: () => {
+            if (editor) {
+                editor.chain().focus().addColumnAfter().run();
+            }
+        },
+        deleteColumn: () => {
+            if (editor) {
+                editor.chain().focus().deleteColumn().run();
+            }
+        },
+        deleteTable: () => {
+            if (editor) {
+                editor.chain().focus().deleteTable().run();
+            }
+        },
+        isTableActive: () => {
+            return !!editor?.isActive('table');
+        },
     }));
 
     // Sync value from outside (only if fundamentally different)
@@ -228,7 +393,7 @@ export const TiptapQxEditor = forwardRef<TiptapQxEditorRef, TiptapQxEditorProps>
 
         const currentHtml = editor.getHTML();
         const currentSerialized = serializeToText(currentHtml);
-        const normalizedValue = normalizeEditorText(value || '');
+        const normalizedValue = normalizeEditorText(convertLegacyMixedJson(value || ''));
 
         if (editor.isFocused && normalizedValue === currentSerialized) {
             return;
@@ -238,7 +403,10 @@ export const TiptapQxEditor = forwardRef<TiptapQxEditorRef, TiptapQxEditorProps>
             && /(\*\*[^*]+\*\*|__[^_]+__)/.test(normalizedValue)
             && !/<(strong|b)\b/i.test(currentHtml);
 
-        if (normalizedValue !== currentSerialized || shouldNormalizeMarkdownBold) {
+        const hasTableInValue = isMarkdownTableLine(normalizedValue);
+        const hasTableInHtml = /<table\b/i.test(currentHtml);
+
+        if (normalizedValue !== currentSerialized || shouldNormalizeMarkdownBold || (hasTableInValue !== hasTableInHtml)) {
             editor.commands.setContent(parseTextToNodes(normalizedValue));
         }
     }, [value, editor, enableMarkdownBold]);
@@ -267,6 +435,31 @@ export const TiptapQxEditor = forwardRef<TiptapQxEditorRef, TiptapQxEditorProps>
         }
         .tiptap-content span[data-qx] {
           user-select: all;
+        }
+        .tiptap-content table {
+          border-collapse: collapse;
+          margin: 10px 0;
+          width: 100%;
+          table-layout: fixed;
+          border: 1px solid #cbd5e1;
+        }
+        .tiptap-content table td,
+        .tiptap-content table th {
+          min-width: 80px;
+          border: 1px solid #cbd5e1;
+          padding: 8px 10px;
+          vertical-align: top;
+          box-sizing: border-box;
+          position: relative;
+        }
+        .tiptap-content table th {
+          font-weight: 600;
+          background-color: #f8fafc;
+          text-align: left;
+        }
+        .tiptap-content table p {
+          margin: 0;
+          min-height: 1.25em;
         }
       `}</style>
             <EditorContent editor={editor} />

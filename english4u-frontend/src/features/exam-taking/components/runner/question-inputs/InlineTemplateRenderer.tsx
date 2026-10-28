@@ -127,14 +127,78 @@ export const InlineTemplateRenderer = ({
             .map((question) => [question.questionNumber, question]),
     );
 
+    const isTableLine = (line: string) => {
+        const trimmed = line.trim();
+        return trimmed.startsWith('|') && trimmed.endsWith('|') && trimmed.length > 2;
+    };
+
+    const lines = normalizeDisplayText(template).split('\n');
+    const blocks: Array<{ type: 'text'; line: string } | { type: 'table'; rows: string[][] }> = [];
+    let currentTableRows: string[][] = [];
+
+    lines.forEach((line) => {
+        if (isTableLine(line)) {
+            const trimmed = line.trim();
+            if (!/^\|[\s\-:|]+\|$/.test(trimmed)) {
+                const cells = trimmed.slice(1, -1).split('|').map((c) => c.trim().replace(/\\\|/g, '|'));
+                currentTableRows.push(cells);
+            }
+        } else {
+            if (currentTableRows.length > 0) {
+                blocks.push({ type: 'table', rows: currentTableRows });
+                currentTableRows = [];
+            }
+            blocks.push({ type: 'text', line });
+        }
+    });
+
+    if (currentTableRows.length > 0) {
+        blocks.push({ type: 'table', rows: currentTableRows });
+    }
+
     return (
         <div style={{ color: '#334155', lineHeight: 2 }}>
-            {normalizeDisplayText(template)
-                .split('\n')
-                .map((line, lineIndex) => (
-                    <div key={`inline-line-${lineIndex}`} style={{ minHeight: line.trim().length > 0 ? undefined : '1.25em' }}>
+            {blocks.map((block, bIdx) => {
+                if (block.type === 'table') {
+                    return (
+                        <div key={`table-block-${bIdx}`} style={{ overflowX: 'auto', margin: '14px 0' }}>
+                            <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 420, border: '1px solid #cbd5e1', background: '#fff' }}>
+                                <tbody>
+                                    {block.rows.map((row, rIdx) => (
+                                        <tr key={`table-row-${rIdx}`} style={{ background: rIdx === 0 ? '#f8fafc' : '#fff' }}>
+                                            {row.map((cellText, cIdx) => (
+                                                <td
+                                                    key={`cell-${rIdx}-${cIdx}`}
+                                                    style={{
+                                                        border: '1px solid #cbd5e1',
+                                                        padding: '10px 12px',
+                                                        verticalAlign: 'top',
+                                                        fontWeight: rIdx === 0 ? 600 : 400,
+                                                    }}
+                                                >
+                                                    {renderInlineTemplateSegments({
+                                                        text: cellText,
+                                                        group,
+                                                        answerMap,
+                                                        onAnswerChange,
+                                                        questionByNumber,
+                                                        readOnly,
+                                                        reviewAnswerMap,
+                                                    })}
+                                                </td>
+                                            ))}
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    );
+                }
+
+                return (
+                    <div key={`inline-line-${bIdx}`} style={{ minHeight: block.line.trim().length > 0 ? undefined : '1.25em' }}>
                         {renderInlineTemplateSegments({
-                            text: line,
+                            text: block.line,
                             group,
                             answerMap,
                             onAnswerChange,
@@ -143,7 +207,8 @@ export const InlineTemplateRenderer = ({
                             reviewAnswerMap,
                         })}
                     </div>
-                ))}
+                );
+            })}
         </div>
     );
 };

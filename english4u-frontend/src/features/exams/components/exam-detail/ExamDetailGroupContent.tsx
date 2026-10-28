@@ -1,6 +1,7 @@
 import React from 'react';
 import { Image } from 'antd';
 import ReactMarkdown from 'react-markdown';
+import { parseMixedNoteTableData } from '@/shared/lib/mixedNoteTable';
 import type { QuestionGroupDto } from '@/features/exams/types/exam.types';
 import {
     TABLE_TYPES,
@@ -92,6 +93,75 @@ export const ExamDetailGroupContent: React.FC<ExamDetailGroupContentProps> = ({
     const effectiveHideParsedText =
         hideParsedText ||
         (isDiagramType && hasGroupVisualImage && !isMeaningfulPrompt(parsedContentText));
+
+    const mixedData = parseMixedNoteTableData(group.contentData);
+    if (mixedData) {
+        return (
+            <div style={{ marginBottom: '15px' }}>
+                {assetImageUrl ? (
+                    Array.isArray(assetImageUrl) ? (
+                        <div style={{ display: 'grid', gap: '12px', marginBottom: '12px' }}>
+                            {assetImageUrl.map((url, index) => (
+                                <div key={`${url}-${index}`} style={{ textAlign: 'center' }}>
+                                    <Image
+                                        src={url}
+                                        alt={`Question Asset ${index + 1}`}
+                                        style={{ maxHeight: '250px', objectFit: 'contain', borderRadius: '4px' }}
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div style={{ textAlign: 'center', marginBottom: '12px' }}>
+                            <Image
+                                src={assetImageUrl}
+                                alt="Question Asset"
+                                style={{ maxHeight: '250px', objectFit: 'contain', borderRadius: '4px' }}
+                            />
+                        </div>
+                    )
+                ) : null}
+
+                {mixedData.topText && (
+                    <div style={{ marginBottom: '12px', fontSize: '0.925rem', lineHeight: 1.6, color: '#334155' }}>
+                        {renderFormattedText(mixedData.topText)}
+                    </div>
+                )}
+
+                {mixedData.tableData.length > 0 && (
+                    <div style={{ overflowX: 'auto', marginBottom: mixedData.bottomText ? '12px' : 0 }}>
+                        <table style={{ borderCollapse: 'collapse', width: '100%', background: '#fff', fontSize: '0.875rem' }}>
+                            <tbody>
+                                {mixedData.tableData.map((row, rIdx) => (
+                                    <tr key={rIdx} style={{ background: rIdx === 0 ? '#f8fafc' : '#fff' }}>
+                                        {Array.isArray(row) &&
+                                            row.map((cell, cIdx: number) => (
+                                                <td
+                                                    key={cIdx}
+                                                    style={{
+                                                        border: '1px solid #cbd5e1',
+                                                        padding: '10px',
+                                                        fontWeight: rIdx === 0 ? 600 : 400,
+                                                    }}
+                                                >
+                                                    {renderFormattedText(typeof cell === 'string' ? cell : '')}
+                                                </td>
+                                            ))}
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+
+                {mixedData.bottomText && (
+                    <div style={{ marginTop: '12px', fontSize: '0.925rem', lineHeight: 1.6, color: '#334155' }}>
+                        {renderFormattedText(mixedData.bottomText)}
+                    </div>
+                )}
+            </div>
+        );
+    }
 
     if (TABLE_TYPES.has(group.groupType || '')) {
         try {
@@ -196,9 +266,95 @@ export const ExamDetailGroupContent: React.FC<ExamDetailGroupContentProps> = ({
                         lineHeight: 1.6,
                     }}
                 >
-                    <ReactMarkdown components={markdownComponents}>
-                        {normalizeBlockMarkdownText(parsedContentText)}
-                    </ReactMarkdown>
+                    {(() => {
+                        const isTableLine = (line: string) => {
+                            const trimmed = line.trim();
+                            return trimmed.startsWith('|') && trimmed.endsWith('|') && trimmed.length > 2;
+                        };
+
+                        const lines = parsedContentText.split(/\r?\n/);
+                        const hasTable = lines.some(isTableLine);
+                        if (!hasTable) {
+                            return (
+                                <ReactMarkdown components={markdownComponents}>
+                                    {normalizeBlockMarkdownText(parsedContentText)}
+                                </ReactMarkdown>
+                            );
+                        }
+
+                        const blocks: Array<{ type: 'text'; text: string } | { type: 'table'; rows: string[][] }> = [];
+                        let currentTableRows: string[][] = [];
+                        let currentTextLines: string[] = [];
+
+                        const flushText = () => {
+                            if (currentTextLines.length > 0) {
+                                blocks.push({ type: 'text', text: currentTextLines.join('\n') });
+                                currentTextLines = [];
+                            }
+                        };
+
+                        const flushTable = () => {
+                            if (currentTableRows.length > 0) {
+                                blocks.push({ type: 'table', rows: currentTableRows });
+                                currentTableRows = [];
+                            }
+                        };
+
+                        lines.forEach((line) => {
+                            if (isTableLine(line)) {
+                                flushText();
+                                const trimmed = line.trim();
+                                if (!/^\|[\s\-:|]+\|$/.test(trimmed)) {
+                                    const cells = trimmed.slice(1, -1).split('|').map((c) => c.trim().replace(/\\\|/g, '|'));
+                                    currentTableRows.push(cells);
+                                }
+                            } else {
+                                flushTable();
+                                currentTextLines.push(line);
+                            }
+                        });
+                        flushText();
+                        flushTable();
+
+                        return (
+                            <div>
+                                {blocks.map((block, bIdx) => {
+                                    if (block.type === 'table') {
+                                        return (
+                                            <div key={`table-${bIdx}`} style={{ overflowX: 'auto', margin: '14px 0' }}>
+                                                <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 420, border: '1px solid #cbd5e1', background: '#fff', fontSize: '0.875rem' }}>
+                                                    <tbody>
+                                                        {block.rows.map((row, rIdx) => (
+                                                            <tr key={`tr-${rIdx}`} style={{ background: rIdx === 0 ? '#f8fafc' : '#fff' }}>
+                                                                {row.map((cell, cIdx) => (
+                                                                    <td
+                                                                        key={`td-${rIdx}-${cIdx}`}
+                                                                        style={{
+                                                                            border: '1px solid #cbd5e1',
+                                                                            padding: '8px 12px',
+                                                                            fontWeight: rIdx === 0 ? 600 : 400,
+                                                                        }}
+                                                                    >
+                                                                        {renderFormattedText(cell)}
+                                                                    </td>
+                                                                ))}
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        );
+                                    }
+                                    if (!block.text.trim()) return null;
+                                    return (
+                                        <ReactMarkdown key={`text-${bIdx}`} components={markdownComponents}>
+                                            {normalizeBlockMarkdownText(block.text)}
+                                        </ReactMarkdown>
+                                    );
+                                })}
+                            </div>
+                        );
+                    })()}
                 </div>
             )}
         </div>
