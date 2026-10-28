@@ -69,20 +69,26 @@ export const ClientPracticeExamPage: FC = () => {
     const scoreSummaryTitle = isObjectiveExam ? 'Điểm tối đa' : 'Thang điểm';
     const scoreSummaryValue = isObjectiveExam ? (exam?.totalPoints ?? 0) : '0-10';
 
-    const launchSession = (attemptMode?: ListeningAttemptMode) => {
+    const hasInProgress = exam?.currentUserStatus === 'InProgress' && Boolean(exam?.activeSessionId);
+    const hasCompleted = exam?.currentUserStatus === 'Completed';
+
+    const launchSession = (attemptMode?: ListeningAttemptMode, forceNew: boolean = false) => {
         if (!supportsPracticeRunner || !exam) {
             message.info('Runner hiện tại mở cho Reading, Listening, Writing và Speaking.');
             return;
         }
 
-        startSessionMutation.mutate(exam.id, {
-            onSuccess: (result) => {
-                if (isListeningExam && attemptMode) {
-                    setListeningAttemptMode(result.sessionId, attemptMode);
-                }
-                navigate(getSessionRunnerPath(result.sessionId, result.skillType));
-            },
-        });
+        startSessionMutation.mutate(
+            forceNew ? { examId: exam.id, forceNew: true } : exam.id,
+            {
+                onSuccess: (result) => {
+                    if (isListeningExam && attemptMode) {
+                        setListeningAttemptMode(result.sessionId, attemptMode);
+                    }
+                    navigate(getSessionRunnerPath(result.sessionId, result.skillType));
+                },
+            }
+        );
     };
 
     if (isLoading) {
@@ -296,39 +302,65 @@ export const ClientPracticeExamPage: FC = () => {
 
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <InfoCircleOutlined style={{ color: currentTheme.color }} />
+                            <InfoCircleOutlined style={{ color: hasInProgress ? '#d97706' : currentTheme.color }} />
                             <Text style={{ color: '#475569', fontSize: '0.88rem', fontWeight: 500 }}>
-                                {supportsPracticeRunner
+                                {hasInProgress
+                                    ? `Bạn đang có bài thi đang làm dở. Bấm "Tiếp tục làm bài" để tiếp tục.`
+                                    : supportsPracticeRunner
                                     ? `Đề thi ${primarySkillDisplay.toLowerCase()} đã sẵn sàng để bắt đầu làm bài.`
                                     : `Hệ thống làm bài thi ${primarySkillDisplay.toLowerCase()} đang được cập nhật.`}
                             </Text>
                         </div>
-                        <Button
-                            type="primary"
-                            icon={<PlayCircleOutlined />}
-                            disabled={!supportsPracticeRunner}
-                            loading={startSessionMutation.isPending}
-                            onClick={() => {
-                                if (isListeningExam) {
-                                    setAttemptModeModalOpen(true);
-                                    return;
-                                }
+                        <Space size={12} wrap>
+                            {hasInProgress && (
+                                <Button
+                                    type="primary"
+                                    icon={<PlayCircleOutlined />}
+                                    disabled={!supportsPracticeRunner}
+                                    onClick={() => {
+                                        navigate(getSessionRunnerPath(exam.activeSessionId!, primarySkill));
+                                    }}
+                                    style={{
+                                        height: 46,
+                                        paddingInline: 28,
+                                        borderRadius: 12,
+                                        fontWeight: 700,
+                                        fontSize: '0.95rem',
+                                        border: 'none',
+                                        background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+                                        boxShadow: '0 8px 20px -6px rgba(245, 158, 11, 0.45)',
+                                    }}
+                                >
+                                    Tiếp tục làm bài
+                                </Button>
+                            )}
+                            <Button
+                                type={hasInProgress ? 'default' : 'primary'}
+                                icon={hasInProgress ? undefined : <PlayCircleOutlined />}
+                                disabled={!supportsPracticeRunner}
+                                loading={startSessionMutation.isPending}
+                                onClick={() => {
+                                    if (isListeningExam) {
+                                        setAttemptModeModalOpen(true);
+                                        return;
+                                    }
 
-                                launchSession();
-                            }}
-                            style={{
-                                height: 46,
-                                paddingInline: 28,
-                                borderRadius: 12,
-                                fontWeight: 700,
-                                fontSize: '0.95rem',
-                                border: 'none',
-                                background: currentTheme.btnGradient,
-                                boxShadow: currentTheme.glowShadow,
-                            }}
-                        >
-                            Bắt đầu thi
-                        </Button>
+                                    launchSession(undefined, hasInProgress);
+                                }}
+                                style={{
+                                    height: 46,
+                                    paddingInline: hasInProgress ? 20 : 28,
+                                    borderRadius: 12,
+                                    fontWeight: hasInProgress ? 600 : 700,
+                                    fontSize: '0.95rem',
+                                    border: hasInProgress ? '1px solid #cbd5e1' : 'none',
+                                    background: hasInProgress ? '#ffffff' : currentTheme.btnGradient,
+                                    boxShadow: hasInProgress ? undefined : currentTheme.glowShadow,
+                                }}
+                            >
+                                {hasInProgress ? 'Làm bài mới' : hasCompleted ? 'Làm lại' : 'Bắt đầu thi'}
+                            </Button>
+                        </Space>
                     </div>
                 </Space>
             </Card>
@@ -446,7 +478,7 @@ export const ClientPracticeExamPage: FC = () => {
                 onCancel={() => setAttemptModeModalOpen(false)}
                 onSelectMode={(mode) => {
                     setAttemptModeModalOpen(false);
-                    launchSession(mode);
+                    launchSession(mode, hasInProgress);
                 }}
             />
         </div>

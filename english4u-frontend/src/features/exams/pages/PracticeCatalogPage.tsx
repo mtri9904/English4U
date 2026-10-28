@@ -22,7 +22,7 @@ import { motion } from 'framer-motion';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { PageLoadingState, PageErrorState } from '@/components';
 import { usePracticeExamsQuery } from '@/features/exams/hooks/useExamQueries';
-import { useMyPracticeSessionsQuery } from '@/features/exam-taking';
+import { getSessionRunnerPath } from '@/features/exam-taking';
 import { formatDateTimeToMinute } from '@/shared/lib/dateTime';
 import {
     normalizeSkillToken as normalizeToken,
@@ -75,11 +75,9 @@ export const ClientPracticePage: FC = () => {
         pageNumber: currentPage,
         pageSize,
     });
-    const { data: mySessionsResult } = useMyPracticeSessionsQuery({ pageSize: 100 });
 
     const exams = pagedData?.items ?? [];
     const totalCount = pagedData?.totalCount ?? 0;
-    const mySessions = mySessionsResult?.items ?? [];
 
     useEffect(() => {
         setCurrentPage(1);
@@ -120,9 +118,17 @@ export const ClientPracticePage: FC = () => {
         const theme = getSkillTheme(primarySkill);
         const metric = getExamVolume(exam, primarySkill);
 
-        const examSessions = mySessions.filter((s) => s.examId === exam.id);
-        const hasInProgress = examSessions.some((s) => s.status === 'InProgress');
-        const hasCompleted = examSessions.some((s) => s.status === 'Completed' || s.status === 'Submitted');
+        const hasInProgress = exam.currentUserStatus === 'InProgress';
+        const hasCompleted = !hasInProgress && exam.currentUserStatus === 'Completed';
+
+        const handleCardAction = (e?: React.MouseEvent) => {
+            e?.stopPropagation();
+            if (hasInProgress && exam.activeSessionId) {
+                navigate(getSessionRunnerPath(exam.activeSessionId, primarySkill));
+            } else {
+                navigate(`/app/practice/${exam.id}`);
+            }
+        };
 
         const getStatusRibbon = () => {
             if (!hasInProgress && !hasCompleted) return null;
@@ -174,7 +180,9 @@ export const ClientPracticePage: FC = () => {
                 >
                     <Card
                         hoverable
+                        onClick={handleCardAction}
                         style={{
+                            cursor: 'pointer',
                             borderRadius: 24,
                             height: '100%',
                             border: `1px solid ${theme.border}`,
@@ -276,21 +284,25 @@ export const ClientPracticePage: FC = () => {
                             </Text>
                             <Button
                                 type="primary"
-                                onClick={() => navigate(`/app/practice/${exam.id}`)}
+                                onClick={handleCardAction}
                                 style={{
                                     borderRadius: 12,
-                                    background: (!hasInProgress && hasCompleted)
+                                    background: hasInProgress
+                                        ? 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)'
+                                        : hasCompleted
                                         ? 'linear-gradient(135deg, #64748b 0%, #475569 100%)'
                                         : theme.gradient,
                                     borderColor: 'transparent',
                                     height: 38,
                                     fontWeight: 600,
-                                    boxShadow: (!hasInProgress && hasCompleted)
+                                    boxShadow: hasInProgress
+                                        ? '0 4px 14px rgba(245, 158, 11, 0.35)'
+                                        : hasCompleted
                                         ? '0 4px 14px rgba(71, 85, 105, 0.25)'
                                         : `0 4px 14px ${theme.shadow}`,
                                 }}
                             >
-                                {(!hasInProgress && hasCompleted) ? 'Làm lại' : 'Luyện tập'} <RightOutlined />
+                                {hasInProgress ? 'Tiếp tục' : hasCompleted ? 'Làm lại' : 'Luyện tập'} <RightOutlined />
                             </Button>
                         </div>
                     </Card>

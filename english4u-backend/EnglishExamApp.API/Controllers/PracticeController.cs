@@ -19,7 +19,8 @@ public class PracticeController(
     [AllowAnonymous]
     public async Task<IResult> GetPublishedExams([FromQuery] PracticeExamPagedRequest request, CancellationToken cancellationToken)
     {
-        var result = await examService.GetPagedPublishedPracticeExamsAsync(request, cancellationToken);
+        Guid? currentUserId = currentUser.TryGetUserId(out var userId) ? userId : null;
+        var result = await examService.GetPagedPublishedPracticeExamsAsync(request, currentUserId, cancellationToken);
         return TypedResults.Ok(result);
     }
 
@@ -27,7 +28,8 @@ public class PracticeController(
     [AllowAnonymous]
     public async Task<IResult> GetPublishedExamDetail(Guid examId, CancellationToken cancellationToken)
     {
-        var exam = await examService.GetPublishedPracticeExamDetailAsync(examId, cancellationToken);
+        Guid? currentUserId = currentUser.TryGetUserId(out var userId) ? userId : null;
+        var exam = await examService.GetPublishedPracticeExamDetailAsync(examId, currentUserId, cancellationToken);
 
         return exam is null
             ? TypedResults.NotFound(new { message = "Practice exam not found." })

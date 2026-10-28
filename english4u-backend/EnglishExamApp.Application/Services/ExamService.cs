@@ -149,7 +149,7 @@ public class ExamService(
         )).ToList();
     }
 
-    public async Task<PagedResult<PracticeExamListItemDto>> GetPagedPublishedPracticeExamsAsync(PracticeExamPagedRequest request, CancellationToken cancellationToken = default)
+    public async Task<PagedResult<PracticeExamListItemDto>> GetPagedPublishedPracticeExamsAsync(PracticeExamPagedRequest request, Guid? currentUserId = null, CancellationToken cancellationToken = default)
     {
         var pageNumber = request.PageNumber <= 0 ? 1 : request.PageNumber;
         var pageSize = request.PageSize <= 0 ? 9 : Math.Min(request.PageSize, 50);
@@ -220,24 +220,59 @@ public class ExamService(
             .Select(g => new { ExamId = g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.ExamId, x => x.Count, cancellationToken);
 
-        var items = exams.Select(e => new PracticeExamListItemDto(
-            e.Id,
-            e.Title,
-            e.Description,
-            e.DurationMinutes,
-            e.ExamType,
-            e.CreatedAt,
-            e.ExamSections
-                .OrderBy(section => section.OrderIndex)
-                .Select(section => section.SkillType)
-                .Distinct()
-                .ToList(),
-            e.ExamSections.Count,
-            readingCounts.GetValueOrDefault(e.Id, 0),
-            listeningCounts.GetValueOrDefault(e.Id, 0),
-            writingCounts.GetValueOrDefault(e.Id, 0),
-            speakingPartCounts.GetValueOrDefault(e.Id, 0)
-        )).ToList();
+        Dictionary<Guid, (string Status, Guid SessionId)> userExamStatuses = new();
+        if (currentUserId.HasValue)
+        {
+            var userSessions = await context.ExamSessions
+                .AsNoTracking()
+                .Where(s => s.UserId == currentUserId.Value && examIds.Contains(s.ExamId))
+                .OrderByDescending(s => s.StartedAt)
+                .Select(s => new { s.Id, s.ExamId, s.Status })
+                .ToListAsync(cancellationToken);
+
+            foreach (var group in userSessions.GroupBy(s => s.ExamId))
+            {
+                var inProgress = group.FirstOrDefault(s => s.Status == "InProgress");
+                if (inProgress != null)
+                {
+                    userExamStatuses[group.Key] = ("InProgress", inProgress.Id);
+                }
+                else
+                {
+                    var completed = group.FirstOrDefault(s => s.Status == "Completed" || s.Status == "Submitted");
+                    if (completed != null)
+                    {
+                        userExamStatuses[group.Key] = ("Completed", completed.Id);
+                    }
+                }
+            }
+        }
+
+        var items = exams.Select(e => {
+            var userStatus = userExamStatuses.TryGetValue(e.Id, out var statusInfo) ? statusInfo.Status : null;
+            var activeSessionId = userExamStatuses.TryGetValue(e.Id, out var sessionInfo) && sessionInfo.Status == "InProgress" ? (Guid?)sessionInfo.SessionId : null;
+
+            return new PracticeExamListItemDto(
+                e.Id,
+                e.Title,
+                e.Description,
+                e.DurationMinutes,
+                e.ExamType,
+                e.CreatedAt,
+                e.ExamSections
+                    .OrderBy(section => section.OrderIndex)
+                    .Select(section => section.SkillType)
+                    .Distinct()
+                    .ToList(),
+                e.ExamSections.Count,
+                readingCounts.GetValueOrDefault(e.Id, 0),
+                listeningCounts.GetValueOrDefault(e.Id, 0),
+                writingCounts.GetValueOrDefault(e.Id, 0),
+                speakingPartCounts.GetValueOrDefault(e.Id, 0),
+                userStatus,
+                activeSessionId
+            );
+        }).ToList();
 
         return new PagedResult<PracticeExamListItemDto>(items, totalCount, pageNumber, pageSize);
     }
@@ -357,7 +392,7 @@ public class ExamService(
         return exam;
     }
 
-    public async Task<PracticeExamDetailDto?> GetPublishedPracticeExamDetailAsync(Guid examId, CancellationToken cancellationToken = default)
+    public async Task<PracticeExamDetailDto?> GetPublishedPracticeExamDetailAsync(Guid examId, Guid? currentUserId = null, CancellationToken cancellationToken = default)
     {
         var exam = await context.Exams
             .AsNoTracking()
@@ -421,6 +456,29 @@ public class ExamService(
                 section.SpeakingParts.Sum(part => part.SpeakingQuestions.Count)))
             .ToList();
 
+        string? userStatus = null;
+        Guid? activeSessionId = null;
+        if (currentUserId.HasValue)
+        {
+            var userSessions = await context.ExamSessions
+                .AsNoTracking()
+                .Where(s => s.UserId == currentUserId.Value && s.ExamId == examId)
+                .OrderByDescending(s => s.StartedAt)
+                .Select(s => new { s.Id, s.Status })
+                .ToListAsync(cancellationToken);
+
+            var inProgress = userSessions.FirstOrDefault(s => s.Status == "InProgress");
+            if (inProgress != null)
+            {
+                userStatus = "InProgress";
+                activeSessionId = inProgress.Id;
+            }
+            else if (userSessions.Any(s => s.Status == "Completed" || s.Status == "Submitted"))
+            {
+                userStatus = "Completed";
+            }
+        }
+
         return new PracticeExamDetailDto(
             exam.Id,
             exam.Title,
@@ -439,7 +497,9 @@ public class ExamService(
             listeningQuestionCount,
             writingTaskCount,
             speakingPartCount,
-            sections);
+            sections,
+            userStatus,
+            activeSessionId);
     }
 
     public async Task<Guid> CreateExamAsync(CreateExamDto dto, Guid createdBy, CancellationToken cancellationToken = default)

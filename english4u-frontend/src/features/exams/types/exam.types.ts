@@ -391,6 +391,8 @@ export interface PracticeExamListItemDto {
     listeningQuestionCount: number;
     writingTaskCount: number;
     speakingPartCount: number;
+    currentUserStatus?: 'InProgress' | 'Completed' | null;
+    activeSessionId?: string | null;
 }
 
 export interface PracticeExamSectionSummaryDto {

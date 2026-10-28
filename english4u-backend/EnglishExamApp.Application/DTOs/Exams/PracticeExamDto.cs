@@ -12,7 +12,9 @@ public sealed record PracticeExamListItemDto(
     int ReadingQuestionCount,
     int ListeningQuestionCount,
     int WritingTaskCount,
-    int SpeakingPartCount);
+    int SpeakingPartCount,
+    string? CurrentUserStatus = null,
+    Guid? ActiveSessionId = null);
 
 public sealed record PracticeExamDetailDto(
     Guid Id,
@@ -28,7 +30,9 @@ public sealed record PracticeExamDetailDto(
     int ListeningQuestionCount,
     int WritingTaskCount,
     int SpeakingPartCount,
-    IReadOnlyList<PracticeExamSectionSummaryDto> Sections);
+    IReadOnlyList<PracticeExamSectionSummaryDto> Sections,
+    string? CurrentUserStatus = null,
+    Guid? ActiveSessionId = null);
 
 public sealed record PracticeExamSectionSummaryDto(
     Guid Id,
