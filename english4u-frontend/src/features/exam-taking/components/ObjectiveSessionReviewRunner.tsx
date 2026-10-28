@@ -127,7 +127,6 @@ export const ObjectiveSessionReviewRunner = ({
             group,
             question,
             reviewAnswer,
-            compact,
         }: {
             group: PracticeSessionQuestionGroupDto;
             question: PracticeSessionQuestionDto;

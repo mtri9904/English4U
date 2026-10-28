@@ -68,6 +68,8 @@ interface TiptapQxEditorProps {
     minHeight?: string;
     onFocus?: () => void;
     enableMarkdownBold?: boolean;
+    borderless?: boolean;
+    style?: React.CSSProperties;
 }
 
 export interface TiptapQxEditorRef {
@@ -82,8 +84,10 @@ export const TiptapQxEditor = forwardRef<TiptapQxEditorRef, TiptapQxEditorProps>
     minHeight = '120px',
     onFocus,
     enableMarkdownBold = false,
+    borderless = false,
+    style,
 }, ref) => {
-    const normalizeEditorText = (text: string) => text
+    const normalizeEditorText = (text?: string | null) => (text || '')
         .replace(/\\r\\n/g, '\n')
         .replace(/\\n/g, '\n')
         .replace(/\\r/g, '\n')
@@ -150,6 +154,9 @@ export const TiptapQxEditor = forwardRef<TiptapQxEditorRef, TiptapQxEditorProps>
 
         // Extract text and handle block elements (like <p>)
         const paragraphs = doc.querySelectorAll('p');
+        if (paragraphs.length === 0) {
+            return (doc.body.textContent || '').trim();
+        }
         const lines: string[] = [];
         paragraphs.forEach((p) => {
             lines.push(p.textContent || '');
@@ -202,7 +209,10 @@ export const TiptapQxEditor = forwardRef<TiptapQxEditorRef, TiptapQxEditorProps>
     useImperativeHandle(ref, () => ({
         insertQ: (qNum: number) => {
             if (editor) {
-                (editor.commands as any).insertQx(`Q${qNum}`);
+                editor.chain().focus().insertContent({
+                    type: 'qx',
+                    attrs: { label: `Q${qNum}` },
+                }).insertContent(' ').run();
             }
         },
         toggleBold: () => {
@@ -218,7 +228,12 @@ export const TiptapQxEditor = forwardRef<TiptapQxEditorRef, TiptapQxEditorProps>
 
         const currentHtml = editor.getHTML();
         const currentSerialized = serializeToText(currentHtml);
-        const normalizedValue = normalizeEditorText(value);
+        const normalizedValue = normalizeEditorText(value || '');
+
+        if (editor.isFocused && normalizedValue === currentSerialized) {
+            return;
+        }
+
         const shouldNormalizeMarkdownBold = enableMarkdownBold
             && /(\*\*[^*]+\*\*|__[^_]+__)/.test(normalizedValue)
             && !/<(strong|b)\b/i.test(currentHtml);
@@ -230,16 +245,21 @@ export const TiptapQxEditor = forwardRef<TiptapQxEditorRef, TiptapQxEditorProps>
 
     return (
         <div style={{
-            border: '1px solid #d9d9d9',
-            borderRadius: '8px',
+            border: borderless ? 'none' : '1px solid #d9d9d9',
+            borderRadius: borderless ? 0 : '8px',
             background: '#fff',
             transition: 'all 0.2s',
-            minHeight: minHeight
-        }} className="qx-editor-container">
+            minHeight: minHeight,
+            ...style,
+        }} className={`qx-editor-container ${borderless ? 'qx-editor-borderless' : ''}`}>
             <style>{`
         .qx-editor-container:focus-within {
           border-color: #4096ff;
           box-shadow: 0 0 0 2px rgba(5, 145, 255, 0.1);
+        }
+        .qx-editor-borderless:focus-within {
+          border-color: transparent !important;
+          box-shadow: inset 0 0 0 2px #3b82f6 !important;
         }
         .tiptap-content p {
           margin: 0;

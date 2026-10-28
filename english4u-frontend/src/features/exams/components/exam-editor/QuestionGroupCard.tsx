@@ -403,24 +403,23 @@ export const QuestionGroupCard: React.FC<QuestionGroupCardProps> = ({
                             >
                                 Thêm ô trống [Q{nextQToInsert}]
                             </Button>
-                            {skill === 'Listening' && groupType === QUESTION_TYPES.SENTENCE_COMPLETION && (
-                                <Button
-                                    size="small"
-                                    icon={<BoldOutlined />}
-                                    onMouseDown={(event) => {
-                                        event.preventDefault();
-                                        getActiveTemplateEditor()?.toggleBold();
-                                    }}
-                                >
-                                    In đậm
-                                </Button>
-                            )}
+                            <Button
+                                size="small"
+                                icon={<BoldOutlined />}
+                                onMouseDown={(event) => {
+                                    event.preventDefault();
+                                    getActiveTemplateEditor()?.toggleBold();
+                                }}
+                            >
+                                In đậm
+                            </Button>
                         </div>
                     )}
                     {isTableType ? (
                         <GenericTableEditor
                             contentData={group.contentData}
                             nextQNum={nextQToInsert}
+                            activeEditorRef={activeEditorRef}
                             onChange={handleContentChange}
                         />
                     ) : (

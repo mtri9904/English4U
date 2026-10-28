@@ -1,6 +1,6 @@
 import { useId, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import { Button, Tag } from 'antd';
-import { MinusCircleOutlined, PlusOutlined } from '@ant-design/icons';
+import { MinusCircleOutlined, PlusOutlined, BoldOutlined } from '@ant-design/icons';
 import { TiptapQxEditor, type TiptapQxEditorRef } from '@/features/exams/components/TiptapQxEditor';
 
 interface FlowchartEditorProps {
@@ -107,6 +107,15 @@ export const FlowchartEditor = ({
         editorRef?.insertQ(nextQNum);
     };
 
+    const toggleBold = () => {
+        if (!focused) return;
+
+        const key = getCellKey(focused.row, focused.col);
+        const editorRef = cellEditorRefs.current[key] ?? null;
+        activeEditorRef.current = editorRef;
+        editorRef?.toggleBold();
+    };
+
     const updateCell = (rowIdx: number, colIdx: number, value: string) => {
         const nextRows = rows.map((row) => [...row]);
         nextRows[rowIdx][colIdx] = value;
@@ -154,6 +163,17 @@ export const FlowchartEditor = ({
                 <Button size="small" onClick={addRow} icon={<PlusOutlined />}>
                     Thêm Hàng Mới
                 </Button>
+                <Button
+                    size="small"
+                    icon={<BoldOutlined />}
+                    onMouseDown={(event) => {
+                        event.preventDefault();
+                        toggleBold();
+                    }}
+                    disabled={!focused}
+                >
+                    In đậm
+                </Button>
                 {focused && (
                     <Tag color="blue" style={{ marginInlineEnd: 0 }}>
                         Đang sửa: Hàng {focused.row + 1}, Ô {focused.col + 1}
@@ -188,6 +208,7 @@ export const FlowchartEditor = ({
                                         value={cell}
                                         minHeight="58px"
                                         placeholder="Nhập nội dung ô..."
+                                        enableMarkdownBold
                                         onChange={(value) => updateCell(rowIdx, colIdx, value)}
                                         onFocus={() => {
                                             setFocused({ row: rowIdx, col: colIdx });

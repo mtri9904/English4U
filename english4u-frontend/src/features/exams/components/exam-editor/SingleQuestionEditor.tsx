@@ -1,6 +1,6 @@
 import React, { type MutableRefObject } from 'react';
 import { Button, Input, Radio, Upload } from 'antd';
-import { MinusCircleOutlined, PlusOutlined } from '@ant-design/icons';
+import { MinusCircleOutlined, PlusOutlined, BoldOutlined } from '@ant-design/icons';
 import type { CreateQuestionDto, CreateQuestionGroupDto } from '@/features/exams/types/exam.types';
 import {
     QUESTION_TYPES,
@@ -137,19 +137,31 @@ export const SingleQuestionEditor: React.FC<SingleQuestionEditorProps> = ({
                         <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#0369a1' }}>
                             Câu hỏi có ô trả lời inline
                         </span>
-                        <Button
-                            size="small"
-                            type={hasQuestionToken(question.content) ? 'default' : 'primary'}
-                            disabled={hasQuestionToken(question.content)}
-                            onMouseDown={(event) => {
-                                event.preventDefault();
-                                shortAnswerEditorRefs.current[shortAnswerEditorKey]?.insertQ(displayQuestionNumber);
-                            }}
-                        >
-                            {hasQuestionToken(question.content)
-                                ? `Đã có [Q${displayQuestionNumber}]`
-                                : `Thêm [Q${displayQuestionNumber}]`}
-                        </Button>
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                            <Button
+                                size="small"
+                                type={hasQuestionToken(question.content) ? 'default' : 'primary'}
+                                disabled={hasQuestionToken(question.content)}
+                                onMouseDown={(event) => {
+                                    event.preventDefault();
+                                    shortAnswerEditorRefs.current[shortAnswerEditorKey]?.insertQ(displayQuestionNumber);
+                                }}
+                            >
+                                {hasQuestionToken(question.content)
+                                    ? `Đã có [Q${displayQuestionNumber}]`
+                                    : `Thêm [Q${displayQuestionNumber}]`}
+                            </Button>
+                            <Button
+                                size="small"
+                                icon={<BoldOutlined />}
+                                onMouseDown={(event) => {
+                                    event.preventDefault();
+                                    shortAnswerEditorRefs.current[shortAnswerEditorKey]?.toggleBold();
+                                }}
+                            >
+                                In đậm
+                            </Button>
+                        </div>
                     </div>
                     <TiptapQxEditor
                         ref={(instance) => {

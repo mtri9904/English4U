@@ -640,7 +640,8 @@ public sealed partial class AiScoringHttpService(
                     group_type = question.GroupType,
                 }),
             },
-            JsonOptions,
+                JsonOptions,
+                cancellationToken),
             cancellationToken);
 
         if (!response.IsSuccessStatusCode)
