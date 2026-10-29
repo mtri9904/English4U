@@ -1,5 +1,5 @@
 import React from 'react';
-import { Collapse, Empty } from 'antd';
+import { Empty } from 'antd';
 import { SoundOutlined } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import type { SectionDetailDto } from '@/features/exams/types/exam.types';
@@ -8,7 +8,7 @@ import { parseWritingTaskAssetsData } from '@/shared/lib/writingTaskAssets';
 import { SKILL_COLORS } from '../../constants/examDetail.constants';
 import {
     markdownComponents,
-    normalizeReadingPassageMarkdown,
+    normalizeMarkdownText,
     renderFormattedText,
 } from '../../utils/examDetail.utils';
 import { QuestionGroupBlock } from './QuestionGroupBlock';
@@ -24,44 +24,77 @@ export const ExamDetailSectionView: React.FC<ExamDetailSectionViewProps> = ({ se
         const passages = section.readingPassages ?? [];
         if (passages.length === 0) return <Empty description="Chưa có passage" />;
         return (
-            <>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                 {passages.map((p, pIdx) => (
-                    <div key={pIdx} style={{ marginBottom: '16px' }}>
-                        <h4 style={{ fontWeight: 700, color: SKILL_COLORS.Reading, margin: '0 0 8px' }}>
-                            Passage {p.passageNumber ?? pIdx + 1}: {p.title || ''}
-                        </h4>
+                    <div
+                        key={pIdx}
+                        style={{
+                            background: '#fff',
+                            borderRadius: '12px',
+                            padding: '20px',
+                            border: '1px solid #e2e8f0',
+                            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
+                        }}
+                    >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
+                            <span
+                                style={{
+                                    fontWeight: 700,
+                                    color: SKILL_COLORS.Reading,
+                                    fontSize: '0.9375rem',
+                                    background: '#ecfdf5',
+                                    border: '1px solid #a7f3d0',
+                                    padding: '3px 12px',
+                                    borderRadius: '6px',
+                                }}
+                            >
+                                Passage {p.passageNumber ?? pIdx + 1}
+                            </span>
+                            {p.title && (
+                                <span style={{ fontWeight: 700, fontSize: '1.125rem', color: '#0f172a' }}>
+                                    {p.title}
+                                </span>
+                            )}
+                        </div>
+
                         {p.paragraphsData && (
-                            <Collapse
-                                ghost
-                                items={[
-                                    {
-                                        key: '1',
-                                        label: <span style={{ color: '#0ea5e9', fontWeight: 600 }}>Nội dung đoạn văn</span>,
-                                        children: (
-                                            <div style={{ color: '#475569', fontSize: '1rem', lineHeight: 1.8 }}>
-                                                <ReactMarkdown components={markdownComponents}>
-                                                    {normalizeReadingPassageMarkdown(p.paragraphsData, p.questionGroups)}
-                                                </ReactMarkdown>
-                                            </div>
-                                        ),
-                                    },
-                                ]}
-                                style={{ marginBottom: '12px', background: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0' }}
-                            />
+                            <div style={{ marginBottom: '20px' }}>
+                                <div style={{ fontWeight: 600, fontSize: '0.8125rem', color: '#64748b', marginBottom: '8px' }}>
+                                    Nội dung bài đọc (Paragraphs)
+                                </div>
+                                <div
+                                    style={{
+                                        background: '#f8fafc',
+                                        borderRadius: '10px',
+                                        padding: '18px 22px',
+                                        border: '1px solid #e2e8f0',
+                                        color: '#334155',
+                                        fontSize: '0.9375rem',
+                                        lineHeight: 1.8,
+                                    }}
+                                >
+                                    <ReactMarkdown components={markdownComponents}>
+                                        {normalizeMarkdownText(p.paragraphsData)}
+                                    </ReactMarkdown>
+                                </div>
+                            </div>
                         )}
-                        {p.questionGroups
-                            .slice()
-                            .sort((a, b) => {
-                                const aStart = a.startQuestion ?? (a.questions[0]?.questionNumber || 0);
-                                const bStart = b.startQuestion ?? (b.questions[0]?.questionNumber || 0);
-                                return aStart - bStart;
-                            })
-                            .map((g, gIdx) => (
-                                <QuestionGroupBlock key={gIdx} group={g} gIdx={gIdx} skillType={skill} />
-                            ))}
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                            {p.questionGroups
+                                .slice()
+                                .sort((a, b) => {
+                                    const aStart = a.startQuestion ?? (a.questions[0]?.questionNumber || 0);
+                                    const bStart = b.startQuestion ?? (b.questions[0]?.questionNumber || 0);
+                                    return aStart - bStart;
+                                })
+                                .map((g, gIdx) => (
+                                    <QuestionGroupBlock key={gIdx} group={g} gIdx={gIdx} skillType={skill} />
+                                ))}
+                        </div>
                     </div>
                 ))}
-            </>
+            </div>
         );
     }
 
@@ -70,31 +103,79 @@ export const ExamDetailSectionView: React.FC<ExamDetailSectionViewProps> = ({ se
         if (parts.length === 0) return <Empty description="Chưa có listening part" />;
         const sharedAudioUrl = parts.map((part) => (part.audioUrl ?? '').trim()).find(Boolean);
         return (
-            <>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                {sharedAudioUrl && (
+                    <div
+                        style={{
+                            padding: '14px 18px',
+                            background: '#eef2ff',
+                            borderRadius: '12px',
+                            border: '1px dashed #6366f1',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            flexWrap: 'wrap',
+                            gap: '12px',
+                        }}
+                    >
+                        <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#3730a3', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <SoundOutlined /> Audio chung cho toàn bài Listening
+                        </div>
+                        <audio controls src={sharedAudioUrl} style={{ height: '36px' }} />
+                    </div>
+                )}
                 {parts.map((lp, lpIdx) => (
-                    <div key={lpIdx} style={{ marginBottom: '16px' }}>
-                        {lpIdx === 0 && sharedAudioUrl && (
-                            <div
+                    <div
+                        key={lpIdx}
+                        style={{
+                            background: '#fff',
+                            borderRadius: '12px',
+                            padding: '20px',
+                            border: '1px solid #e2e8f0',
+                            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
+                        }}
+                    >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                            <span
                                 style={{
+                                    fontWeight: 700,
+                                    color: SKILL_COLORS.Listening,
+                                    fontSize: '0.9375rem',
                                     background: '#eef2ff',
-                                    borderRadius: '8px',
-                                    padding: '10px',
-                                    marginBottom: '10px',
-                                    border: '1px dashed #6366f1',
+                                    border: '1px solid #c7d2fe',
+                                    padding: '3px 12px',
+                                    borderRadius: '6px',
                                 }}
                             >
-                                <SoundOutlined style={{ marginRight: '6px', color: '#3730a3' }} />
-                                <audio controls src={sharedAudioUrl} style={{ verticalAlign: 'middle' }} />
+                                Part {lp.partNumber ?? lpIdx + 1}
+                            </span>
+                            {lp.audioUrl && lp.audioUrl !== sharedAudioUrl && (
+                                <audio controls src={lp.audioUrl} style={{ height: '32px' }} />
+                            )}
+                        </div>
+
+                        {lp.contextDescription && (
+                            <div style={{ marginBottom: '16px' }}>
+                                <div style={{ fontWeight: 600, fontSize: '0.8125rem', color: '#64748b', marginBottom: '6px' }}>
+                                    Mô tả ngữ cảnh
+                                </div>
+                                <div
+                                    style={{
+                                        background: '#f8fafc',
+                                        borderRadius: '8px',
+                                        padding: '12px 16px',
+                                        border: '1px solid #e2e8f0',
+                                        color: '#475569',
+                                        fontSize: '0.875rem',
+                                        lineHeight: 1.6,
+                                        whiteSpace: 'pre-wrap',
+                                    }}
+                                >
+                                    {renderFormattedText(lp.contextDescription)}
+                                </div>
                             </div>
                         )}
-                        <h4 style={{ fontWeight: 700, color: SKILL_COLORS.Listening, margin: '0 0 8px' }}>
-                            Part {lp.partNumber ?? lpIdx + 1}
-                        </h4>
-                        {lp.contextDescription && (
-                            <p style={{ color: '#64748b', fontSize: '0.875rem', marginBottom: '10px', whiteSpace: 'pre-wrap' }}>
-                                {renderFormattedText(lp.contextDescription)}
-                            </p>
-                        )}
+
                         {(() => {
                             const transcriptData = parseListeningTranscriptEnvelope(lp.transcriptData);
                             const transcriptSegments = transcriptData.segments;
@@ -107,12 +188,12 @@ export const ExamDetailSectionView: React.FC<ExamDetailSectionViewProps> = ({ se
                                     style={{
                                         background: '#f8fafc',
                                         borderRadius: '10px',
-                                        padding: '12px',
-                                        marginBottom: '10px',
+                                        padding: '14px 18px',
+                                        marginBottom: '16px',
                                         border: '1px solid #cbd5e1',
                                     }}
                                 >
-                                    <div style={{ fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                                    <div style={{ fontWeight: 700, color: '#334155', marginBottom: '8px', fontSize: '0.875rem' }}>
                                         Transcript timestamp cho AI gia sư ({transcriptSegments.length} segments)
                                     </div>
                                     <div style={{ color: '#475569', fontSize: '0.8125rem', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
@@ -134,19 +215,22 @@ export const ExamDetailSectionView: React.FC<ExamDetailSectionViewProps> = ({ se
                                 </div>
                             );
                         })()}
-                        {lp.questionGroups
-                            .slice()
-                            .sort((a, b) => {
-                                const aStart = a.startQuestion ?? (a.questions[0]?.questionNumber || 0);
-                                const bStart = b.startQuestion ?? (b.questions[0]?.questionNumber || 0);
-                                return aStart - bStart;
-                            })
-                            .map((g, gIdx) => (
-                                <QuestionGroupBlock key={gIdx} group={g} gIdx={gIdx} skillType={skill} />
-                            ))}
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                            {lp.questionGroups
+                                .slice()
+                                .sort((a, b) => {
+                                    const aStart = a.startQuestion ?? (a.questions[0]?.questionNumber || 0);
+                                    const bStart = b.startQuestion ?? (b.questions[0]?.questionNumber || 0);
+                                    return aStart - bStart;
+                                })
+                                .map((g, gIdx) => (
+                                    <QuestionGroupBlock key={gIdx} group={g} gIdx={gIdx} skillType={skill} />
+                                ))}
+                        </div>
                     </div>
                 ))}
-            </>
+            </div>
         );
     }
 
@@ -154,7 +238,7 @@ export const ExamDetailSectionView: React.FC<ExamDetailSectionViewProps> = ({ se
         const tasks = section.writingTasks ?? [];
         if (tasks.length === 0) return <Empty description="Chưa có writing task" />;
         return (
-            <>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 {tasks.map((t, tIdx) => {
                     const writingAssets = parseWritingTaskAssetsData(t.assetsData);
 
@@ -162,31 +246,68 @@ export const ExamDetailSectionView: React.FC<ExamDetailSectionViewProps> = ({ se
                         <div
                             key={tIdx}
                             style={{
-                                background: '#fffbeb',
+                                background: '#fff',
                                 borderRadius: '12px',
-                                padding: '16px',
-                                marginBottom: '12px',
-                                border: '1px solid #fde68a',
+                                padding: '20px',
+                                border: '1px solid #e2e8f0',
+                                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
                             }}
                         >
-                            <h4 style={{ fontWeight: 700, color: SKILL_COLORS.Writing, margin: '0 0 8px' }}>
-                                Task {t.taskNumber ?? tIdx + 1}
-                            </h4>
-                            <div style={{ whiteSpace: 'pre-wrap', color: '#475569', fontSize: '0.9375rem', lineHeight: 1.6, marginBottom: '8px' }}>
-                                {renderFormattedText(t.promptText)}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                                <span
+                                    style={{
+                                        fontWeight: 700,
+                                        color: SKILL_COLORS.Writing,
+                                        fontSize: '0.9375rem',
+                                        background: '#fffbeb',
+                                        border: '1px solid #fde68a',
+                                        padding: '3px 12px',
+                                        borderRadius: '6px',
+                                    }}
+                                >
+                                    Task {t.taskNumber ?? tIdx + 1}
+                                </span>
+                                <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#92400e', background: '#fef3c7', padding: '2px 8px', borderRadius: '4px' }}>
+                                    Tối thiểu {t.minWords} từ
+                                </span>
                             </div>
-                            <span style={{ fontSize: '0.8125rem', color: '#92400e' }}>Tối thiểu {t.minWords} từ</span>
+
+                            <div style={{ marginBottom: '12px' }}>
+                                <div style={{ fontWeight: 600, fontSize: '0.8125rem', color: '#64748b', marginBottom: '6px' }}>
+                                    Đề bài Writing
+                                </div>
+                                <div
+                                    style={{
+                                        background: '#f8fafc',
+                                        borderRadius: '10px',
+                                        padding: '16px 20px',
+                                        border: '1px solid #e2e8f0',
+                                        color: '#334155',
+                                        fontSize: '0.9375rem',
+                                        lineHeight: 1.7,
+                                        whiteSpace: 'pre-wrap',
+                                    }}
+                                >
+                                    {renderFormattedText(t.promptText)}
+                                </div>
+                            </div>
+
                             {writingAssets.primaryImageUrl && (
-                                <img
-                                    src={writingAssets.primaryImageUrl}
-                                    alt="Writing asset"
-                                    style={{ maxWidth: '100%', marginTop: '10px', borderRadius: '8px' }}
-                                />
+                                <div style={{ marginTop: '14px' }}>
+                                    <div style={{ fontWeight: 600, fontSize: '0.8125rem', color: '#64748b', marginBottom: '6px' }}>
+                                        Hình ảnh đính kèm:
+                                    </div>
+                                    <img
+                                        src={writingAssets.primaryImageUrl}
+                                        alt="Writing asset"
+                                        style={{ maxWidth: '100%', maxHeight: '450px', objectFit: 'contain', borderRadius: '8px', border: '1px solid #e2e8f0' }}
+                                    />
+                                </div>
                             )}
                         </div>
                     );
                 })}
-            </>
+            </div>
         );
     }
 
@@ -194,67 +315,105 @@ export const ExamDetailSectionView: React.FC<ExamDetailSectionViewProps> = ({ se
         const parts = section.speakingParts ?? [];
         if (parts.length === 0) return <Empty description="Chưa có speaking part" />;
         return (
-            <>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 {parts.map((sp, spIdx) => (
                     <div
                         key={spIdx}
                         style={{
-                            background: '#fef2f2',
+                            background: '#fff',
                             borderRadius: '12px',
-                            padding: '16px',
-                            marginBottom: '12px',
-                            border: '1px solid #fecaca',
+                            padding: '20px',
+                            border: '1px solid #e2e8f0',
+                            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
                         }}
                     >
-                        <h4 style={{ fontWeight: 700, color: SKILL_COLORS.Speaking, margin: '0 0 8px' }}>
-                            Part {sp.partNumber ?? spIdx + 1}
-                        </h4>
-                        {sp.description && (
-                            <p style={{ color: '#64748b', fontSize: '0.875rem', marginBottom: '10px', whiteSpace: 'pre-wrap' }}>
-                                {renderFormattedText(sp.description)}
-                            </p>
-                        )}
-                        {sp.questions.map((sq, sqIdx) => (
-                            <div
-                                key={sqIdx}
+                        <div style={{ marginBottom: '14px' }}>
+                            <span
                                 style={{
-                                    padding: '10px',
-                                    background: '#fff',
-                                    borderRadius: '8px',
-                                    marginBottom: '6px',
-                                    border: '1px solid #f1f5f9',
+                                    fontWeight: 700,
+                                    color: SKILL_COLORS.Speaking,
+                                    fontSize: '0.9375rem',
+                                    background: '#fef2f2',
+                                    border: '1px solid #fecaca',
+                                    padding: '3px 12px',
+                                    borderRadius: '6px',
                                 }}
                             >
-                                <span style={{ fontWeight: 600, color: '#991b1b', marginRight: '6px' }}>Q{sqIdx + 1}.</span>
-                                {renderFormattedText(sq.content)}
-                                {sq.audioPromptUrl && (
-                                    <div style={{ marginTop: '8px' }}>
-                                        <audio controls preload="metadata" src={sq.audioPromptUrl} style={{ width: '100%' }} />
-                                    </div>
-                                )}
-                                {sq.cueCardPoints && (
-                                    <div
-                                        style={{
-                                            marginTop: '6px',
-                                            padding: '8px',
-                                            background: '#fef2f2',
-                                            borderRadius: '6px',
-                                            fontSize: '0.8125rem',
-                                            color: '#991b1b',
-                                            whiteSpace: 'pre-wrap',
-                                        }}
-                                    >
-                                        Cue Card: {renderFormattedText(sq.cueCardPoints)}
-                                    </div>
-                                )}
+                                Part {sp.partNumber ?? spIdx + 1}
+                            </span>
+                        </div>
+
+                        {sp.description && (
+                            <div style={{ marginBottom: '14px' }}>
+                                <div style={{ fontWeight: 600, fontSize: '0.8125rem', color: '#64748b', marginBottom: '6px' }}>
+                                    Mô tả phần thi
+                                </div>
+                                <div
+                                    style={{
+                                        background: '#f8fafc',
+                                        borderRadius: '8px',
+                                        padding: '12px 16px',
+                                        border: '1px solid #e2e8f0',
+                                        color: '#475569',
+                                        fontSize: '0.875rem',
+                                        lineHeight: 1.6,
+                                        whiteSpace: 'pre-wrap',
+                                    }}
+                                >
+                                    {renderFormattedText(sp.description)}
+                                </div>
                             </div>
-                        ))}
+                        )}
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            {sp.questions.map((sq, sqIdx) => (
+                                <div
+                                    key={sqIdx}
+                                    style={{
+                                        padding: '12px 16px',
+                                        background: '#f8fafc',
+                                        borderRadius: '8px',
+                                        border: '1px solid #e2e8f0',
+                                    }}
+                                >
+                                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                                        <span style={{ fontWeight: 700, color: '#991b1b', whiteSpace: 'nowrap' }}>
+                                            Q{sqIdx + 1}.
+                                        </span>
+                                        <div style={{ flex: 1, color: '#334155', fontSize: '0.9375rem', lineHeight: 1.6 }}>
+                                            {renderFormattedText(sq.content)}
+                                        </div>
+                                    </div>
+                                    {sq.audioPromptUrl && (
+                                        <div style={{ marginTop: '10px' }}>
+                                            <audio controls preload="metadata" src={sq.audioPromptUrl} style={{ width: '100%', height: '36px' }} />
+                                        </div>
+                                    )}
+                                    {sq.cueCardPoints && (
+                                        <div
+                                            style={{
+                                                marginTop: '8px',
+                                                padding: '10px 14px',
+                                                background: '#fff',
+                                                borderRadius: '6px',
+                                                fontSize: '0.875rem',
+                                                color: '#991b1b',
+                                                border: '1px solid #fecaca',
+                                                whiteSpace: 'pre-wrap',
+                                            }}
+                                        >
+                                            <span style={{ fontWeight: 600 }}>Cue Card Points:</span>
+                                            <div style={{ marginTop: '4px' }}>{renderFormattedText(sq.cueCardPoints)}</div>
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
                     </div>
                 ))}
-            </>
+            </div>
         );
     }
 
     return <Empty description="Kỹ năng không xác định" />;
 };
-

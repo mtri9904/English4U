@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { useParams, useNavigate } from 'react-router-dom';
 import { PageLoadingState, PageErrorState } from '@/components';
 import { useExamDetailQuery } from '@/features/exams/hooks/useExamQueries';
-import { BookOutlined, ArrowLeftOutlined, VerticalAlignTopOutlined } from '@ant-design/icons';
+import { BookOutlined, ArrowLeftOutlined, EditOutlined, VerticalAlignTopOutlined } from '@ant-design/icons';
 import { SKILL_COLORS } from '../constants/examDetail.constants';
 import { renderFormattedText } from '../utils/examDetail.utils';
 import { ExamDetailSectionView } from '../components/exam-detail/ExamDetailSectionView';
@@ -54,11 +54,21 @@ export const ExamDetailPage = () => {
             animate={{ opacity: 1, y: 0 }}
             style={{ display: 'flex', flexDirection: 'column', gap: '20px', paddingBottom: '40px' }}
         >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => navigate('/admin/exams')}>
-                    Quay lại
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => navigate('/admin/exams')}>
+                        Quay lại
+                    </Button>
+                    <h2 style={{ fontSize: '1.75rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>Chi tiết đề thi</h2>
+                </div>
+                <Button
+                    type="primary"
+                    icon={<EditOutlined />}
+                    onClick={() => navigate(`/admin/exams/${id}/edit`)}
+                    style={{ fontWeight: 600, borderRadius: '8px', background: '#4f46e5' }}
+                >
+                    Chỉnh sửa đề thi
                 </Button>
-                <h2 style={{ fontSize: '1.75rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>Chi tiết đề thi</h2>
             </div>
 
             <div

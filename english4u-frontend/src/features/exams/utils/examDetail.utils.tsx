@@ -583,9 +583,7 @@ export const normalizeMarkdownText = (text: string) => {
                 normalizedLines.push('');
             }
 
-            normalizedLines.push(`**${label}.**`);
-            normalizedLines.push('');
-            normalizedLines.push(stripOrphanMarkdownMarkers(body));
+            normalizedLines.push(`**${label}.** ${stripOrphanMarkdownMarkers(body)}`);
             continue;
         }
 
@@ -594,6 +592,24 @@ export const normalizeMarkdownText = (text: string) => {
             : null;
         if (standaloneLabel) {
             const [, label] = standaloneLabel;
+            let nextIndex = lineIndex + 1;
+            while (nextIndex < rawLines.length && !rawLines[nextIndex].trim()) {
+                nextIndex++;
+            }
+            if (nextIndex < rawLines.length) {
+                const nextRaw = rawLines[nextIndex].trim();
+                const isNextLabel = /^(?:\*\*)?[A-H](?:\s*[).:\-]|[.])?(?:\*\*)?(\s|$)/i.test(nextRaw);
+                const isNextHeading = parseReadingSubheading(nextRaw) || parseInlineReadingSubheading(nextRaw);
+                if (!isNextLabel && !isNextHeading) {
+                    if (normalizedLines.length > 0 && normalizedLines[normalizedLines.length - 1] !== '') {
+                        normalizedLines.push('');
+                    }
+                    normalizedLines.push(`**${label}.** ${stripOrphanMarkdownMarkers(nextRaw)}`);
+                    lineIndex = nextIndex;
+                    continue;
+                }
+            }
+
             if (normalizedLines.length > 0 && normalizedLines[normalizedLines.length - 1] !== '') {
                 normalizedLines.push('');
             }
@@ -655,27 +671,7 @@ export const shouldForceReadingParagraphLabels = (questionGroups: QuestionGroupD
         return /\bparagraphs?\b/i.test(group.instruction ?? '');
     });
 
-export const normalizeReadingPassageMarkdown = (text: string, questionGroups: QuestionGroupDto[]) => {
-    const normalized = normalizeMarkdownText(text);
-    if (!normalized || hasStructuredParagraphLabels(normalized) || !shouldForceReadingParagraphLabels(questionGroups)) {
-        return normalized;
-    }
-
-    const paragraphBlocks = normalized
-        .split(/\n{2,}/)
-        .map((block) => block.trim())
-        .filter((block) => block.length > 0)
-        .filter((block) => block.length >= 25 || /[.!?]\s*$/.test(block));
-
-    if (paragraphBlocks.length < 3 || paragraphBlocks.length > 8) {
-        return normalized;
-    }
-
-    return paragraphBlocks
-        .map((block, index) => {
-            const cleanBlock = block.replace(/^\s*(?:\*\*)?[A-H](?:\.|\b)(?:\*\*)?\s*/i, '');
-            return `**${getOptionLabel(index, 'alpha')}.**\n\n${cleanBlock}`;
-        })
-        .join('\n\n');
+export const normalizeReadingPassageMarkdown = (text: string, _questionGroups?: QuestionGroupDto[]) => {
+    return normalizeMarkdownText(text);
 };
 
