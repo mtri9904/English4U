@@ -86,6 +86,8 @@ builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<IPasswordHasher, Pbkdf2PasswordHasher>();
 builder.Services.AddScoped<ISpeakingMediaStorageService, LocalSpeakingMediaStorageService>();
 builder.Services.AddHttpClient<IFlashcardService, FlashcardService>();
+builder.Services.AddHttpClient<IDictationService, DictationService>();
+builder.Services.AddSingleton<ITtsService, EdgeTtsService>();
 builder.Services.AddSingleton<IPdfGenerationProgressTracker, PdfGenerationProgressTracker>();
 builder.Services.AddSingleton<RealtimeEventDispatcher>();
 builder.Services.AddSingleton<IRealtimeEventDispatcher>(provider =>

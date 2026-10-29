@@ -43,6 +43,8 @@ export const ApiRouters = {
         START_EXAM: (examId: string | number) => `/practice/exams/${examId}/start`,
         DASHBOARD: '/practice/dashboard',
         PROGRESS: '/practice/progress',
+        DICTATION_GENERATE: '/practice/dictation/generate',
+        DICTATION_AUDIO: '/practice/dictation/audio',
     },
 
     SESSION: {

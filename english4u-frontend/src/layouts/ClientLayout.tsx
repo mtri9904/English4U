@@ -14,6 +14,7 @@ import {
     ReloadOutlined,
     RiseOutlined,
     ThunderboltOutlined,
+    CustomerServiceOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useUserProfileQuery, studentService as userApi } from '@/features/students';
@@ -210,6 +211,11 @@ export const ClientLayout: React.FC = () => {
             key: '/app/my-exams',
             icon: <BookOutlined />,
             label: 'Bài thi của tôi',
+        },
+        {
+            key: '/app/dictation',
+            icon: <CustomerServiceOutlined />,
+            label: 'Chép chính tả',
         },
         {
             key: '/app/flashcards',

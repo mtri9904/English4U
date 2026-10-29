@@ -30,7 +30,7 @@ import { PageErrorState } from '@/components';
 import { dashboardStyles } from '../components/dashboard/dashboard.styles';
 import { useUserProfileQuery } from '@/features/students';
 import { useClientDashboardQuery } from '../hooks/useDashboardQueries';
-import { getSessionRunnerPath, getSkillLabel } from '@/features/exam-taking';
+import { getSessionRunnerPath } from '@/features/exam-taking';
 import { getStreakDisplayMeta } from '@/features/gamification';
 import { formatDateTimeToMinute } from '@/shared/lib/dateTime';
 
@@ -104,7 +104,6 @@ export const ClientDashboard: React.FC = () => {
     const completedCount = summary?.completedCount ?? 0;
     const uniqueExamCount = summary?.uniqueExamCount ?? 0;
     const bestBand = summary?.bestBand ?? null;
-    const estimatedOverallBand = summary?.estimatedOverallBand ?? null;
 
     const plannerTasks = [
         {
@@ -112,7 +111,7 @@ export const ClientDashboard: React.FC = () => {
             note: activeSession
                 ? `${activeSession.answeredQuestions}/${activeSession.totalQuestions} câu đã trả lời`
                 : weakestSkill
-                    ? `Điểm hiện tại ${weakestSkill.averageBand != null ? weakestSkill.averageBand.toFixed(1) : '–'}`
+                    ? `Điểm hiện tại ${weakestSkill.averageBand != null && weakestSkill.averageBand > 0 ? weakestSkill.averageBand.toFixed(1) : '–'}`
                     : 'Tạo dữ liệu đầu tiên cho dashboard',
             action: activeSession ? 'Tiếp tục' : 'Bắt đầu',
             done: false,
@@ -148,7 +147,7 @@ export const ClientDashboard: React.FC = () => {
     const summaryItems = [
         {
             label: 'Điểm cao nhất',
-            value: bestBand != null ? bestBand.toFixed(1) : '–',
+            value: bestBand != null && bestBand > 0 ? bestBand.toFixed(1) : '–',
             detail: `${uniqueExamCount} đề đã luyện`,
             icon: <TrophyOutlined />,
             color: palette.green,
@@ -341,9 +340,31 @@ export const ClientDashboard: React.FC = () => {
                                             <small>{formatDateTimeToMinute(item.completedAt) || item.completedAt}</small>
                                         </span>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifySelf: 'end' }}>
+                                            {item.bandScore != null && item.bandScore > 0 && (
+                                                <span
+                                                    style={{
+                                                        fontWeight: 800,
+                                                        color: palette.indigo,
+                                                        fontSize: 12,
+                                                        background: 'rgba(79, 70, 229, 0.08)',
+                                                        padding: '2px 8px',
+                                                        borderRadius: 6,
+                                                    }}
+                                                >
+                                                    {item.bandScore.toFixed(1)} đ
+                                                </span>
+                                            )}
                                             {isInProgress ? (
                                                 <Tag color="warning" style={{ borderRadius: 6, fontWeight: 700, margin: 0, padding: '2px 8px' }}>
                                                     Đang làm
+                                                </Tag>
+                                            ) : item.status === 'Submitted' ? (
+                                                <Tag color="processing" style={{ borderRadius: 6, fontWeight: 600, margin: 0, padding: '2px 8px' }}>
+                                                    Đang chấm
+                                                </Tag>
+                                            ) : item.status === 'Abandoned' ? (
+                                                <Tag style={{ borderRadius: 6, fontWeight: 500, margin: 0, padding: '2px 8px' }}>
+                                                    Đã hủy
                                                 </Tag>
                                             ) : (
                                                 <Tag color="success" style={{ borderRadius: 6, fontWeight: 600, margin: 0, padding: '2px 8px' }}>

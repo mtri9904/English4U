@@ -31,7 +31,14 @@ FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
 
-# Create uploads folder and ensure permissions
-RUN mkdir -p /app/uploads && chmod -R 777 /app/uploads
+# Install python3 and edge-tts for AI Neural Voice generation
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    python3-pip \
+    && pip3 install --no-cache-dir --break-system-packages edge-tts \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Create uploads and tts-cache folders and ensure full permissions
+RUN mkdir -p /app/uploads /app/.runtime/tts-cache && chmod -R 777 /app/uploads /app/.runtime
 
 ENTRYPOINT ["dotnet", "EnglishExamApp.API.dll"]

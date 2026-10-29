@@ -44,6 +44,7 @@ import {
     FlashcardDeckDetailPage,
     FlashcardStudyPage,
 } from '@/features/flashcard';
+import { DictationPage } from '@/features/dictation';
 import { ROUTE_PATHS } from '@/constants/route-paths';
 import { RequirePolicy } from '@/components/RequirePolicy';
 
@@ -212,6 +213,10 @@ export const appRouter = createBrowserRouter([
             {
                 path: 'progress',
                 element: <ProgressPage />,
+            },
+            {
+                path: 'dictation',
+                element: <DictationPage />,
             },
             {
                 path: 'flashcards',

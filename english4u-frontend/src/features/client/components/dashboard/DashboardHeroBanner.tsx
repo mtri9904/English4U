@@ -59,7 +59,7 @@ export const DashboardHeroBanner: React.FC<DashboardHeroBannerProps> = ({
                         <div>
                             <Text className="eyebrow">Welcome back, {firstName}</Text>
                             <Title level={2} className="hero-title">
-                                Giữ nhịp luyện IELTS hôm nay
+                                Giữ nhịp học tập hôm nay
                             </Title>
                         </div>
                     </Space>
@@ -105,7 +105,7 @@ export const DashboardHeroBanner: React.FC<DashboardHeroBannerProps> = ({
                         {activeSession
                             ? `${activeSession.answeredQuestions}/${activeSession.totalQuestions} câu - ${statusLabelMap[activeSession.status] ?? activeSession.status}`
                             : weakestSkill
-                              ? `Điểm trung bình ${weakestSkill.averageBand != null ? weakestSkill.averageBand.toFixed(1) : '–'}`
+                              ? `Điểm trung bình ${weakestSkill.averageBand != null && weakestSkill.averageBand > 0 ? weakestSkill.averageBand.toFixed(1) : '–'}`
                               : 'Hoàn thành 1 task để duy trì chuỗi học streak.'}
                     </Text>
                     <Button

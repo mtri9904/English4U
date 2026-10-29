@@ -46,6 +46,7 @@ export const ROUTE_PATHS = {
     APP_SESSION_SPEAKING: '/app/sessions/:sessionId/speaking',
     APP_SESSION_SUBMIT: '/app/sessions/:sessionId/submit',
     APP_PROGRESS: '/app/progress',
+    APP_DICTATION: '/app/dictation',
     APP_FLASHCARDS: '/app/flashcards',
     APP_FLASHCARD_DECK: '/app/flashcards/:deckId',
     APP_FLASHCARD_STUDY: '/app/flashcards/:deckId/study',

@@ -82,7 +82,7 @@ export const DashboardRadarCard: React.FC<DashboardRadarCardProps> = ({
                     <div key={skill.skill} className="skill-mini">
                         <span className="skill-dot" style={{ background: skill.color }} />
                         <span>{skill.label}</span>
-                        <strong>{skill.averageBand != null ? skill.averageBand.toFixed(1) : '–'}</strong>
+                        <strong>{skill.averageBand != null && skill.averageBand > 0 ? skill.averageBand.toFixed(1) : '–'}</strong>
                     </div>
                 ))}
             </div>
