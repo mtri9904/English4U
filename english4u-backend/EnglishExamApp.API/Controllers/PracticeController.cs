@@ -295,4 +295,28 @@ public class PracticeController(
             return TypedResults.BadRequest(new { message = ex.Message });
         }
     }
+
+    [HttpGet("dashboard")]
+    public async Task<IResult> GetDashboard(CancellationToken cancellationToken)
+    {
+        if (!currentUser.TryGetUserId(out var userId))
+        {
+            return TypedResults.Unauthorized();
+        }
+
+        var result = await examExecutionService.GetClientDashboardAsync(userId, cancellationToken);
+        return TypedResults.Ok(result);
+    }
+
+    [HttpGet("progress")]
+    public async Task<IResult> GetProgress(CancellationToken cancellationToken)
+    {
+        if (!currentUser.TryGetUserId(out var userId))
+        {
+            return TypedResults.Unauthorized();
+        }
+
+        var result = await examExecutionService.GetClientProgressAsync(userId, cancellationToken);
+        return TypedResults.Ok(result);
+    }
 }

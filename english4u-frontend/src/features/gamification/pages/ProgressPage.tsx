@@ -1,18 +1,9 @@
 import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useUserProfileQuery } from '@/features/students';
-import { useMyPracticeSessionsQuery } from '@/features/exam-taking';
 import { PageLoadingState, PageErrorState } from '@/components';
+import { useClientProgressQuery } from '@/features/client/hooks/useDashboardQueries';
 import { palette, skillMeta } from '../constants/gamification.constants';
-import {
-    getSkillKey,
-    isFinished,
-    getSessionScore,
-    parseDateMs,
-    getDurationMinutes,
-    formatShortDate,
-    getAiAdvice,
-} from '../utils/gamification.utils';
+import { getSkillKey, parseDateMs } from '../utils/gamification.utils';
 import { progressStyles } from '../components/progress/progress.styles';
 import { ProgressStatsOverview } from '../components/progress/ProgressStatsOverview';
 import { ProgressPerformanceChart } from '../components/progress/ProgressPerformanceChart';
@@ -21,32 +12,21 @@ import { ProgressHistoryTable } from '../components/progress/ProgressHistoryTabl
 
 export const ClientProgressPage: React.FC = () => {
     const navigate = useNavigate();
-    const { data: profile, isLoading: isProfileLoading, isError: isProfileError, refetch: refetchProfile } = useUserProfileQuery();
-    const { data: pagedSessions, isLoading: isSessionsLoading, isError: isSessionsError, refetch: refetchSessions } = useMyPracticeSessionsQuery({ pageSize: 100 });
-    const sessions = pagedSessions?.items ?? [];
+    const { data: progress, isLoading, isError, refetch } = useClientProgressQuery();
 
     const [chartSkill, setChartSkill] = useState<string>('ALL');
     const [historySkill, setHistorySkill] = useState<string>('ALL');
 
-    const finishedSessions = useMemo(() => sessions.filter(isFinished), [sessions]);
-
-    const stats = useMemo(() => {
-        const totalMinutes = finishedSessions.reduce((sum, s) => sum + getDurationMinutes(s), 0);
-        const scores = finishedSessions.map(getSessionScore).filter((s): s is number => s !== null);
-        const bestBand = scores.length > 0 ? Math.max(...scores) : null;
-        const averageBand = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
-
-        const skillsDone = new Set(finishedSessions.map((s) => getSkillKey(s.skillType)));
-
-        return {
-            totalMinutes,
-            completedCount: finishedSessions.length,
-            bestBand,
-            averageBand,
-            skillsDoneCount: skillsDone.size,
-            allSkillsAttempted: skillsDone.size === 4,
-        };
-    }, [finishedSessions]);
+    const stats = progress?.stats ?? {
+        totalMinutes: 0,
+        completedCount: 0,
+        bestBand: null,
+        averageBand: null,
+        skillsDoneCount: 0,
+        allSkillsAttempted: false,
+        dailyStreakCount: 0,
+        longestStreakCount: 0,
+    };
 
     const activeChartColor = useMemo(() => {
         if (chartSkill === 'ALL') return palette.indigo;
@@ -55,64 +35,51 @@ export const ClientProgressPage: React.FC = () => {
     }, [chartSkill]);
 
     const chartData = useMemo(() => {
-        const filtered = finishedSessions.filter(
-            (s) => chartSkill === 'ALL' || getSkillKey(s.skillType) === chartSkill
+        const raw = progress?.chartData ?? [];
+        const filtered = raw.filter(
+            (s) => chartSkill === 'ALL' || getSkillKey(s.skill) === chartSkill
         );
         return filtered
             .map((s) => ({
-                date: formatShortDate(s.endedAt),
-                band: getSessionScore(s) ?? 0,
-                title: s.examTitle,
-                completedAt: s.endedAt ?? s.startedAt,
+                date: s.date,
+                band: s.band,
+                title: s.title,
+                completedAt: s.completedAt,
             }))
             .sort((a, b) => parseDateMs(a.completedAt) - parseDateMs(b.completedAt))
             .slice(-10);
-    }, [finishedSessions, chartSkill]);
+    }, [progress?.chartData, chartSkill]);
 
     const skillAnalytics = useMemo(() => {
+        const raw = progress?.skillAnalytics ?? [];
         return (['READING', 'LISTENING', 'WRITING', 'SPEAKING'] as const).map((key) => {
-            const skillSessions = finishedSessions.filter((s) => getSkillKey(s.skillType) === key);
-            const scores = skillSessions.map(getSessionScore).filter((s): s is number => s !== null);
-            const avg = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
-            const best = scores.length > 0 ? Math.max(...scores) : null;
-
-            let extraMetric: string | null = null;
-            if (key === 'READING' || key === 'LISTENING') {
-                const totalCorrect = skillSessions.reduce((sum, s) => sum + (s.totalAutoScore ?? 0), 0);
-                const totalQs = skillSessions.reduce((sum, s) => sum + (s.totalQuestions ?? 0), 0);
-                extraMetric = totalQs > 0
-                    ? `Độ chính xác: ${Math.round((totalCorrect / totalQs) * 100)}%`
-                    : null;
-            }
-
+            const found = raw.find((item) => getSkillKey(item.key) === key);
             return {
                 key,
                 ...skillMeta[key],
-                attempts: skillSessions.length,
-                avgScore: avg,
-                bestScore: best,
-                extraMetric,
-                advice: getAiAdvice(key, avg),
+                attempts: found?.attempts ?? 0,
+                avgScore: found?.avgScore ?? null,
+                bestScore: found?.bestScore ?? null,
+                extraMetric: found?.extraMetric ?? null,
+                advice: found?.advice ?? 'Hãy hoàn thành bài thi thử đầu tiên để nhận đánh giá chi tiết từ trợ lý học tập.',
             };
         });
-    }, [finishedSessions]);
+    }, [progress?.skillAnalytics]);
 
     const tableData = useMemo(() => {
-        return finishedSessions
-            .filter((s) => historySkill === 'ALL' || getSkillKey(s.skillType) === historySkill)
+        const raw = progress?.history ?? [];
+        return raw
+            .filter((s) => historySkill === 'ALL' || getSkillKey(s.skill) === historySkill)
             .map((s) => ({
-                key: s.sessionId,
-                title: s.examTitle,
-                skill: getSkillKey(s.skillType),
-                score: getSessionScore(s),
-                duration: getDurationMinutes(s),
-                completedAt: s.endedAt ?? s.startedAt,
+                key: s.key,
+                title: s.title,
+                skill: getSkillKey(s.skill),
+                score: s.score,
+                duration: s.duration,
+                completedAt: s.completedAt,
             }))
             .sort((a, b) => parseDateMs(b.completedAt) - parseDateMs(a.completedAt));
-    }, [finishedSessions, historySkill]);
-
-    const isLoading = isProfileLoading || isSessionsLoading;
-    const isError = isProfileError || isSessionsError;
+    }, [progress?.history, historySkill]);
 
     if (isLoading) {
         return (
@@ -123,17 +90,14 @@ export const ClientProgressPage: React.FC = () => {
         );
     }
 
-    if (isError) {
+    if (isError && !progress) {
         return (
             <div className="progress-shell">
                 <style>{progressStyles}</style>
                 <PageErrorState
                     title="Không thể tải dữ liệu tiến độ"
                     subTitle="Đã có lỗi xảy ra khi nạp lịch sử luyện thi hoặc thông tin cá nhân."
-                    onRetry={() => {
-                        refetchProfile();
-                        refetchSessions();
-                    }}
+                    onRetry={() => refetch()}
                 />
             </div>
         );
@@ -145,8 +109,8 @@ export const ClientProgressPage: React.FC = () => {
 
             <ProgressStatsOverview
                 stats={stats}
-                dailyStreakCount={profile?.gamification.dailyStreakCount ?? 0}
-                longestStreakCount={profile?.gamification.longestStreakCount ?? 0}
+                dailyStreakCount={stats.dailyStreakCount}
+                longestStreakCount={stats.longestStreakCount}
             />
 
             <ProgressPerformanceChart

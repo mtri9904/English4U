@@ -1,3 +1,4 @@
+using EnglishExamApp.Application.DTOs.AdminDashboard;
 using EnglishExamApp.Application.DTOs.Common;
 using EnglishExamApp.Application.DTOs.ExamExecution;
 using EnglishExamApp.Application.DTOs.Exams;
@@ -429,4 +430,219 @@ public sealed partial class ExamExecutionService
             .FirstAsync(cancellationToken);
     }
 
+    public async Task<AdminDashboardDto> GetAdminDashboardAsync(CancellationToken cancellationToken = default)
+    {
+        string[] managedRoles = ["Student", "Admin"];
+        var usersQuery = context.Users.Where(u => u.UserRoles.Any(ur => managedRoles.Contains(ur.Role.Name)));
+        var totalUsers = await usersQuery.CountAsync(cancellationToken);
+        var activeUsers = await usersQuery.CountAsync(u => u.IsActive, cancellationToken);
+        var onlineFrom = DateTime.UtcNow - TimeSpan.FromMinutes(5);
+        var onlineUsers = await usersQuery.CountAsync(
+            u => u.IsActive && u.IsOnline && u.LastSeenAt != null && u.LastSeenAt >= onlineFrom,
+            cancellationToken);
+
+        var premiumUsers = await context.UserSubscriptions
+            .CountAsync(s => s.Status == "Active" && s.EndDate > DateTime.UtcNow, cancellationToken);
+
+        var scoringBands = await context.ScoringResults
+            .Where(r => r.TotalBandScore.HasValue && r.TotalBandScore.Value > 0)
+            .Select(r => r.TotalBandScore!.Value)
+            .ToListAsync(cancellationToken);
+        var globalAvg = scoringBands.Count > 0 ? Math.Round(scoringBands.Average(), 1) : 0.0;
+
+        var userStats = new AdminDashboardUserStatsDto(
+            totalUsers,
+            activeUsers,
+            onlineUsers,
+            globalAvg,
+            premiumUsers);
+
+        var exams = await context.Exams
+            .AsNoTracking()
+            .Select(e => new { e.Id, e.IsPublished, e.ExamType })
+            .ToListAsync(cancellationToken);
+
+        var publishedExamsCount = exams.Count(e => e.IsPublished);
+        var draftExamsCount = exams.Count(e => !e.IsPublished);
+
+        var examByType = exams
+            .GroupBy(e => string.IsNullOrWhiteSpace(e.ExamType) ? "Khác" : e.ExamType.Trim())
+            .Select(g => new AdminExamTypeCountDto(g.Key, g.Count()))
+            .OrderByDescending(x => x.Count)
+            .ToList();
+
+        var attemptsQuery = context.ExamSessions
+            .AsNoTracking()
+            .Select(s => new
+            {
+                s.Id,
+                s.ExamId,
+                s.UserId,
+                ExamTitle = s.Exam.Title,
+                ExamType = s.Exam.ExamType,
+                SkillType = s.Exam.ExamSections
+                    .OrderBy(sec => sec.OrderIndex)
+                    .Select(sec => sec.SkillType)
+                    .FirstOrDefault(),
+                UserDisplayName = s.User.DisplayName ?? s.User.Email,
+                UserEmail = s.User.Email,
+                s.Status,
+                s.StartedAt,
+                s.EndedAt,
+                s.TimeRemaining,
+                AnsweredQuestions = s.UserAnswers
+                    .Count(answer => (answer.QuestionId != null || answer.WritingTaskId != null) && answer.AnswerText != null && answer.AnswerText != ""),
+                ResumeQuestionNumber = s.UserAnswers
+                    .Where(answer => answer.QuestionId != null && answer.AnswerText != null && answer.AnswerText != "")
+                    .Select(answer => answer.Question!.QuestionNumber)
+                    .OrderByDescending(questionNumber => questionNumber)
+                    .FirstOrDefault(),
+                ReadingScore = s.ScoringResults
+                    .OrderByDescending(result => result.ScoredAt)
+                    .Select(result => result.ReadingScore)
+                    .FirstOrDefault(),
+                ListeningScore = s.ScoringResults
+                    .OrderByDescending(result => result.ScoredAt)
+                    .Select(result => result.ListeningScore)
+                    .FirstOrDefault(),
+                TotalAutoScore = s.UserAnswers
+                    .Where(answer => answer.QuestionId != null)
+                    .Sum(answer => (double?)answer.ScoreEarned) ?? 0,
+                TotalBandScore = s.ScoringResults
+                    .OrderByDescending(result => result.ScoredAt)
+                    .Select(result => result.TotalBandScore)
+                    .FirstOrDefault()
+            });
+
+        var allSessions = await attemptsQuery
+            .OrderByDescending(s => s.StartedAt)
+            .ToListAsync(cancellationToken);
+
+        var attemptsCount = allSessions.Count;
+
+        var completedAttempts = allSessions.Count(s =>
+        {
+            var st = NormalizeSessionStatus(s.Status);
+            return st.Equals("Completed", StringComparison.OrdinalIgnoreCase) || st.Equals("Scored", StringComparison.OrdinalIgnoreCase);
+        });
+
+        var inProgressAttempts = allSessions.Count(s =>
+        {
+            var st = NormalizeSessionStatus(s.Status);
+            return st.Equals("InProgress", StringComparison.OrdinalIgnoreCase) || st.Equals("In_Progress", StringComparison.OrdinalIgnoreCase);
+        });
+
+        var abandonedAttempts = allSessions.Count(s =>
+        {
+            var st = NormalizeSessionStatus(s.Status);
+            return st.Equals("Abandoned", StringComparison.OrdinalIgnoreCase);
+        });
+
+        var attemptsBySkill = allSessions
+            .GroupBy(s =>
+            {
+                var norm = NormalizeSkillType(s.SkillType);
+                return norm switch
+                {
+                    "READING" => "Reading",
+                    "LISTENING" => "Listening",
+                    "WRITING" => "Writing",
+                    "SPEAKING" => "Speaking",
+                    "FULL" => "Full Test",
+                    _ => string.IsNullOrWhiteSpace(s.SkillType) ? "Khác" : s.SkillType
+                };
+            })
+            .Select(g => new AdminSkillAttemptCountDto(g.Key, g.Count()))
+            .OrderByDescending(x => x.Value)
+            .ToList();
+
+        var topExams = allSessions
+            .GroupBy(s => s.ExamId)
+            .Select(g =>
+            {
+                var first = g.First();
+                return new AdminTopExamDto(first.ExamTitle, first.ExamType ?? "N/A", g.Count());
+            })
+            .OrderByDescending(x => x.Count)
+            .Take(5)
+            .ToList();
+
+        var recentSessionItems = allSessions.Take(6).ToList();
+        var recentExamIds = recentSessionItems.Select(s => s.ExamId).Distinct().ToList();
+
+        var readingCounts = recentExamIds.Count > 0
+            ? await context.Questions
+                .AsNoTracking()
+                .Where(q => q.Group.Passage != null && recentExamIds.Contains(q.Group.Passage.Section.ExamId))
+                .GroupBy(q => q.Group.Passage!.Section.ExamId)
+                .Select(g => new { ExamId = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.ExamId, x => x.Count, cancellationToken)
+            : new Dictionary<Guid, int>();
+
+        var listeningCounts = recentExamIds.Count > 0
+            ? await context.Questions
+                .AsNoTracking()
+                .Where(q => q.Group.ListeningPart != null && recentExamIds.Contains(q.Group.ListeningPart.Section.ExamId))
+                .GroupBy(q => q.Group.ListeningPart!.Section.ExamId)
+                .Select(g => new { ExamId = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.ExamId, x => x.Count, cancellationToken)
+            : new Dictionary<Guid, int>();
+
+        var writingCounts = recentExamIds.Count > 0
+            ? await context.WritingTasks
+                .AsNoTracking()
+                .Where(w => recentExamIds.Contains(w.Section.ExamId))
+                .GroupBy(w => w.Section.ExamId)
+                .Select(g => new { ExamId = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.ExamId, x => x.Count, cancellationToken)
+            : new Dictionary<Guid, int>();
+
+        var speakingCounts = recentExamIds.Count > 0
+            ? await context.SpeakingQuestions
+                .AsNoTracking()
+                .Where(s => recentExamIds.Contains(s.Part.Section.ExamId))
+                .GroupBy(s => s.Part.Section.ExamId)
+                .Select(g => new { ExamId = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.ExamId, x => x.Count, cancellationToken)
+            : new Dictionary<Guid, int>();
+
+        var recentAttempts = recentSessionItems
+            .Select(item => new AdminAttemptListItemDto(
+                item.Id,
+                item.ExamId,
+                item.UserId,
+                item.ExamTitle,
+                item.ExamType,
+                NormalizeSkillType(item.SkillType),
+                item.UserDisplayName,
+                item.UserEmail,
+                NormalizeSessionStatus(item.Status),
+                item.StartedAt,
+                item.EndedAt,
+                item.TimeRemaining,
+                readingCounts.GetValueOrDefault(item.ExamId, 0)
+                    + listeningCounts.GetValueOrDefault(item.ExamId, 0)
+                    + writingCounts.GetValueOrDefault(item.ExamId, 0)
+                    + speakingCounts.GetValueOrDefault(item.ExamId, 0),
+                item.AnsweredQuestions,
+                item.ResumeQuestionNumber,
+                item.ReadingScore,
+                item.ListeningScore,
+                item.TotalAutoScore,
+                item.TotalBandScore))
+            .ToList();
+
+        return new AdminDashboardDto(
+            userStats,
+            publishedExamsCount,
+            draftExamsCount,
+            attemptsCount,
+            completedAttempts,
+            inProgressAttempts,
+            abandonedAttempts,
+            examByType,
+            attemptsBySkill,
+            topExams,
+            recentAttempts);
+    }
 }

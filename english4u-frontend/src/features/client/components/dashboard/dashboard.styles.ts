@@ -30,7 +30,7 @@ export const dashboardStyles = `
 
 .dashboard-hero {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 260px;
+    grid-template-columns: minmax(0, 1.35fr) minmax(300px, 380px);
     gap: 18px;
     border-radius: 28px;
     padding: 22px;
@@ -38,9 +38,7 @@ export const dashboardStyles = `
 }
 
 .hero-main {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(260px, 360px);
-    gap: 18px;
+    display: contents;
 }
 
 .hero-copy,
@@ -231,7 +229,7 @@ export const dashboardStyles = `
 }
 
 .bento-recent {
-    grid-column: span 6;
+    grid-column: span 9;
 }
 
 .bento-leaderboard {

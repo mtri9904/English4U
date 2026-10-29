@@ -1,3 +1,4 @@
+using EnglishExamApp.Application.DTOs.AdminDashboard;
 using EnglishExamApp.Application.DTOs.Common;
 using EnglishExamApp.Application.DTOs.ExamExecution;
 
@@ -20,4 +21,7 @@ public interface IExamExecutionService
     Task<IReadOnlyList<AdminAttemptListItemDto>> GetAdminAttemptsAsync(AdminAttemptQueryDto query, CancellationToken cancellationToken = default);
     Task<PagedResult<AdminAttemptListItemDto>> GetPagedAdminAttemptsAsync(AdminAttemptQueryDto query, CancellationToken cancellationToken = default);
     Task<AdminAttemptDetailDto?> GetAdminAttemptDetailAsync(Guid sessionId, CancellationToken cancellationToken = default);
+    Task<ClientDashboardDto> GetClientDashboardAsync(Guid userId, CancellationToken cancellationToken = default);
+    Task<ClientProgressDto> GetClientProgressAsync(Guid userId, CancellationToken cancellationToken = default);
+    Task<AdminDashboardDto> GetAdminDashboardAsync(CancellationToken cancellationToken = default);
 }

@@ -11,7 +11,7 @@ import {
     Tooltip,
 } from 'recharts';
 import { cardMotion, palette } from '../../constants/client.constants';
-import { fadeIn, formatBand } from '../../utils/client.utils';
+import { fadeIn } from '../../utils/client.utils';
 
 const { Title, Text } = Typography;
 
@@ -42,7 +42,7 @@ export const DashboardRadarCard: React.FC<DashboardRadarCardProps> = ({
                         Radar 4 kỹ năng
                     </Title>
                 </div>
-                <Tag className="soft-pill">Band / 9.0</Tag>
+                <Tag className="soft-pill">Thang điểm 10</Tag>
             </div>
 
             {scoredBands.length === 0 ? (
@@ -57,12 +57,12 @@ export const DashboardRadarCard: React.FC<DashboardRadarCardProps> = ({
                                 tick={{ fill: palette.ink, fontSize: 13, fontWeight: 700 }}
                             />
                             <PolarRadiusAxis
-                                domain={[0, 9]}
-                                tickCount={5}
+                                domain={[0, 10]}
+                                tickCount={6}
                                 tick={{ fill: palette.muted, fontSize: 11 }}
                             />
                             <Radar
-                                name="Band"
+                                name="Điểm"
                                 dataKey="band"
                                 stroke={palette.indigo}
                                 fill={palette.indigo}
@@ -82,7 +82,7 @@ export const DashboardRadarCard: React.FC<DashboardRadarCardProps> = ({
                     <div key={skill.skill} className="skill-mini">
                         <span className="skill-dot" style={{ background: skill.color }} />
                         <span>{skill.label}</span>
-                        <strong>{formatBand(skill.averageBand)}</strong>
+                        <strong>{skill.averageBand != null ? skill.averageBand.toFixed(1) : '–'}</strong>
                     </div>
                 ))}
             </div>

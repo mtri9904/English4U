@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Mail, Lock, Loader2 } from 'lucide-react';
+import { Mail, Lock, Loader2, Eye, EyeOff } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { message } from 'antd';
@@ -12,6 +12,7 @@ import { consumeForcedLogoutReason } from '@/features/auth';
 export function AdminLoginPage() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
     const navigate = useNavigate();
     const loginMutation = useLoginMutation();
 
@@ -103,15 +104,42 @@ export function AdminLoginPage() {
                         <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                             <Lock style={{ position: 'absolute', left: '16px', color: '#94a3b8' }} size={20} />
                             <input
-                                type="password"
+                                type={showPassword ? 'text' : 'password'}
                                 placeholder="Mật khẩu"
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
-                                style={{ width: '100%', padding: '14px 16px 14px 46px', border: '1px solid #e2e8f0', borderRadius: '12px', fontSize: '0.9375rem', outline: 'none', transition: 'all 0.2s', backgroundColor: '#f8fafc' }}
+                                style={{ width: '100%', padding: '14px 46px 14px 46px', border: '1px solid #e2e8f0', borderRadius: '12px', fontSize: '0.9375rem', outline: 'none', transition: 'all 0.2s', backgroundColor: '#f8fafc' }}
                                 onFocus={e => { e.target.style.borderColor = '#0ea5e9'; e.target.style.backgroundColor = '#fff'; }}
                                 onBlur={e => { e.target.style.borderColor = '#e2e8f0'; e.target.style.backgroundColor = '#f8fafc'; }}
                                 required
                             />
+                            <button
+                                type="button"
+                                onClick={() => setShowPassword(!showPassword)}
+                                style={{
+                                    position: 'absolute',
+                                    right: '14px',
+                                    background: 'none',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    padding: '4px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    color: '#94a3b8',
+                                    transition: 'color 0.2s',
+                                }}
+                                onMouseEnter={(e) => {
+                                    e.currentTarget.style.color = '#0ea5e9';
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.color = '#94a3b8';
+                                }}
+                                tabIndex={-1}
+                                title={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                            >
+                                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                            </button>
                         </div>
                     </div>
 

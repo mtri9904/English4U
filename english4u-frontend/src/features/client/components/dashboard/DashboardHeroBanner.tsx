@@ -1,11 +1,12 @@
 import React from 'react';
-import { Avatar, Button, Progress, Space, Tag, Typography } from 'antd';
+import { Avatar, Button, Space, Tag, Typography } from 'antd';
 import { PlayCircleOutlined, RocketOutlined } from '@ant-design/icons';
 import { motion } from 'framer-motion';
-import { palette, statusLabelMap } from '../../constants/client.constants';
-import { fadeIn, formatBand } from '../../utils/client.utils';
+import { statusLabelMap } from '../../constants/client.constants';
+import { fadeIn } from '../../utils/client.utils';
 import { getSessionRunnerPath } from '@/features/exam-taking';
 import type { PracticeSessionListItemDto } from '@/features/exam-taking';
+import type { ClientDashboardActiveSessionDto } from '../../types/dashboard.types';
 
 const { Title, Paragraph, Text } = Typography;
 
@@ -33,9 +34,8 @@ export interface DashboardHeroBannerProps {
     firstName: string;
     streakMeta: StreakDisplayMetaInfo;
     longestStreak: number;
-    activeSession: PracticeSessionListItemDto | null;
+    activeSession: ClientDashboardActiveSessionDto | PracticeSessionListItemDto | null;
     weakestSkill: WeakestSkillInfo | null;
-    estimatedOverallBand: number | null;
     onNavigate: (path: string) => void;
 }
 
@@ -46,7 +46,6 @@ export const DashboardHeroBanner: React.FC<DashboardHeroBannerProps> = ({
     longestStreak,
     activeSession,
     weakestSkill,
-    estimatedOverallBand,
     onNavigate,
 }) => {
     return (
@@ -106,7 +105,7 @@ export const DashboardHeroBanner: React.FC<DashboardHeroBannerProps> = ({
                         {activeSession
                             ? `${activeSession.answeredQuestions}/${activeSession.totalQuestions} câu - ${statusLabelMap[activeSession.status] ?? activeSession.status}`
                             : weakestSkill
-                              ? `Band trung bình ${formatBand(weakestSkill.averageBand)}`
+                              ? `Điểm trung bình ${weakestSkill.averageBand != null ? weakestSkill.averageBand.toFixed(1) : '–'}`
                               : 'Hoàn thành 1 task để duy trì chuỗi học streak.'}
                     </Text>
                     <Button
@@ -124,21 +123,6 @@ export const DashboardHeroBanner: React.FC<DashboardHeroBannerProps> = ({
                     >
                         {activeSession ? 'Tiếp tục bài' : 'Luyện ngay'}
                     </Button>
-                </div>
-            </div>
-
-            <div className="band-panel">
-                <Text className="eyebrow">Estimated Overall Band</Text>
-                <div className="band-number">{formatBand(estimatedOverallBand)}</div>
-                <Progress
-                    percent={estimatedOverallBand != null ? Math.round((estimatedOverallBand / 9) * 100) : 0}
-                    showInfo={false}
-                    strokeColor={palette.indigo}
-                    trailColor="rgba(79, 70, 229, 0.12)"
-                />
-                <div className="band-footer">
-                    <span>Mục tiêu IELTS</span>
-                    <span>Band 9.0</span>
                 </div>
             </div>
         </motion.section>

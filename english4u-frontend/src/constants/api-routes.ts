@@ -41,6 +41,8 @@ export const ApiRouters = {
         USER_EXAMS: '/practice/user-exams',
         EXAM_BY_ID: (examId: string | number) => `/practice/exams/${examId}`,
         START_EXAM: (examId: string | number) => `/practice/exams/${examId}/start`,
+        DASHBOARD: '/practice/dashboard',
+        PROGRESS: '/practice/progress',
     },
 
     SESSION: {
@@ -88,6 +90,10 @@ export const ApiRouters = {
         BASE: '/user',
         PROFILE: '/user/profile',
         STUDENTS: '/user/students',
+    },
+
+    ADMIN: {
+        DASHBOARD: '/admin/dashboard',
     },
 
     COPILOT: {

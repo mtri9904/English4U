@@ -1,5 +1,4 @@
 import React, { useMemo } from 'react';
-import { useQueries } from '@tanstack/react-query';
 import {
     Button,
     Empty,
@@ -30,10 +29,10 @@ import { DashboardRadarCard } from '../components/dashboard/DashboardRadarCard';
 import { PageErrorState } from '@/components';
 import { dashboardStyles } from '../components/dashboard/dashboard.styles';
 import { useUserProfileQuery } from '@/features/students';
-import { formatDateTimeToMinute } from '@/shared/lib/dateTime';
-import { sessionService as sessionApi, sessionKeys, useMyPracticeSessionsQuery } from '@/features/exam-taking';
+import { useClientDashboardQuery } from '../hooks/useDashboardQueries';
 import { getSessionRunnerPath, getSkillLabel } from '@/features/exam-taking';
 import { getStreakDisplayMeta } from '@/features/gamification';
+import { formatDateTimeToMinute } from '@/shared/lib/dateTime';
 
 const { Title, Text } = Typography;
 
@@ -42,164 +41,70 @@ import {
     palette,
     skillMeta,
     cardMotion,
-    SKILLS,
 } from '../constants/client.constants';
 import {
     fadeIn,
-    parseDateMs,
-    getSkillKey,
-    isFinishedSession,
-    getSessionBandScore,
-    formatBand,
-    formatShortDate,
     getFirstName,
-    getSessionDurationMinutes,
     formatMinutes,
+    getSkillKey,
 } from '../utils/client.utils';
 
 export const ClientDashboard: React.FC = () => {
     const navigate = useNavigate();
     const { data: profile, isLoading: isProfileLoading, isError: isProfileError, refetch: refetchProfile } = useUserProfileQuery();
-    const { data: pagedSessions, isLoading: isSessionsLoading, isError: isSessionsError, refetch: refetchSessions } = useMyPracticeSessionsQuery({ pageSize: 100 });
-    const sessions = pagedSessions?.items ?? [];
+    const { data: dashboard, isLoading: isDashboardLoading, isError: isDashboardError, refetch: refetchDashboard } = useClientDashboardQuery();
 
-    const finishedSessions = useMemo(
-        () => sessions.filter(isFinishedSession),
-        [sessions],
-    );
+    const isLoading = isProfileLoading || isDashboardLoading;
+    const isError = (isProfileError || isDashboardError) && !dashboard;
 
-    const activeSession = useMemo(
-        () => sessions
-            .filter((session) => session.status === 'InProgress')
-            .sort((left, right) => parseDateMs(right.startedAt) - parseDateMs(left.startedAt))[0] ?? null,
-        [sessions],
-    );
-
-    const speakingSessionsForAnalytics = useMemo(
-        () => finishedSessions
-            .filter((session) => getSkillKey(session.skillType) === 'SPEAKING')
-            .sort((left, right) => parseDateMs(right.endedAt) - parseDateMs(left.endedAt))
-            .slice(0, 5),
-        [finishedSessions],
-    );
-
-    const speakingDetailQueries = useQueries({
-        queries: speakingSessionsForAnalytics.map((session) => ({
-            queryKey: sessionKeys.detail(session.sessionId),
-            queryFn: () => sessionApi.getSession(session.sessionId),
-            staleTime: 5 * 60 * 1000,
-            enabled: speakingSessionsForAnalytics.length > 0,
-        })),
-    });
-
-    const skillRows = useMemo(
-        () => SKILLS.map((skill) => {
-            const all = sessions.filter((session) => getSkillKey(session.skillType) === skill);
-            const completed = all.filter(isFinishedSession);
-            const bands = completed
-                .map(getSessionBandScore)
-                .filter((score): score is number => score != null);
-            const averageBand = bands.length > 0
-                ? bands.reduce((total, score) => total + score, 0) / bands.length
-                : null;
-            const bestBand = bands.length > 0 ? Math.max(...bands) : null;
-
-            return {
-                skill,
-                ...skillMeta[skill],
-                attempts: all.length,
-                completed: completed.length,
-                averageBand,
-                bestBand,
-            };
-        }),
-        [sessions],
-    );
-
-    const scoredBands = useMemo(
-        () => finishedSessions
-            .map(getSessionBandScore)
-            .filter((score): score is number => score != null),
-        [finishedSessions],
-    );
-
-    const radarData = useMemo(
-        () => skillRows.map((item) => ({
-            skill: item.shortLabel,
-            fullSkill: item.label,
-            band: Number((item.averageBand ?? 0).toFixed(1)),
-        })),
-        [skillRows],
-    );
-
-    const fluencyTrendData = useMemo(
-        () => speakingDetailQueries
-            .map((query, index) => {
-                const detail = query.data;
-                const fallbackSession = speakingSessionsForAnalytics[index];
-                if (!detail || !fallbackSession) return null;
-
-                const wpmValues = detail.answers
-                    .map((answer) => answer.speakingAnalytics?.wordsPerMinute)
-                    .filter((value): value is number => value != null && value > 0);
-
-                if (wpmValues.length === 0) return null;
-
-                const averageWpm = wpmValues.reduce((total, value) => total + value, 0) / wpmValues.length;
-
-                return {
-                    label: formatShortDate(detail.endedAt ?? fallbackSession.endedAt),
-                    wpm: Number(averageWpm.toFixed(1)),
-                    examTitle: detail.examTitle,
-                    completedAt: detail.endedAt ?? fallbackSession.endedAt ?? detail.startedAt,
-                };
-            })
-            .filter((item): item is {
-                label: string;
-                wpm: number;
-                examTitle: string;
-                completedAt: string;
-            } => item != null)
-            .sort((left, right) => parseDateMs(left.completedAt) - parseDateMs(right.completedAt)),
-        [speakingDetailQueries, speakingSessionsForAnalytics],
-    );
-
-    const weakestSkill = useMemo(
-        () => skillRows
-            .filter((item) => item.averageBand != null)
-            .sort((left, right) => (left.averageBand ?? 0) - (right.averageBand ?? 0))[0] ?? null,
-        [skillRows],
-    );
-
-    const completedThisWeek = useMemo(() => {
-        const now = Date.now();
-        const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
-
-        return finishedSessions.filter((session) => {
-            const endedAtMs = parseDateMs(session.endedAt);
-            return endedAtMs >= sevenDaysAgo && endedAtMs <= now;
-        }).length;
-    }, [finishedSessions]);
-
-    const totalMinutes = useMemo(
-        () => finishedSessions.reduce((total, session) => total + getSessionDurationMinutes(session), 0),
-        [finishedSessions],
-    );
-
-    const isLoading = isProfileLoading || isSessionsLoading;
     const streak = profile?.gamification.dailyStreakCount ?? 0;
     const longestStreak = profile?.gamification.longestStreakCount ?? 0;
     const streakMeta = getStreakDisplayMeta(streak);
-    const completedCount = profile?.learning.completedSessionCount ?? finishedSessions.length;
-    const uniqueExamCount = profile?.learning.uniqueExamCompletedCount ?? 0;
-    const averageBand = profile?.learning.averageBandScore
-        ?? (scoredBands.length > 0 ? scoredBands.reduce((total, score) => total + score, 0) / scoredBands.length : null);
-    const estimatedOverallBand = averageBand ?? (scoredBands.length > 0 ? scoredBands[scoredBands.length - 1] : null);
-    const bestBand = profile?.learning.bestBandScore
-        ?? (scoredBands.length > 0 ? Math.max(...scoredBands) : null);
-    const weeklyProgress = Math.min(100, Math.round((completedThisWeek / WEEKLY_GOAL) * 100));
     const firstName = getFirstName(profile?.displayName);
-    const recentActivities = profile?.recentExamActivities ?? [];
+    const recentActivities = dashboard?.recentActivities ?? [];
+    const lastCompletedActivity = recentActivities.find((a) => a.status === 'Completed');
+
+    const activeSession = dashboard?.activeSession ?? null;
+    const summary = dashboard?.summary;
+
+    const weakestSkill = useMemo(() => {
+        if (!dashboard?.weakestSkill) return null;
+        const skillKey = getSkillKey(dashboard.weakestSkill);
+        const row = dashboard.skillRows.find((r) => r.skill === dashboard.weakestSkill);
+        return {
+            skill: dashboard.weakestSkill,
+            label: skillMeta[skillKey]?.label ?? dashboard.weakestSkill,
+            averageBand: row?.averageBand ?? null,
+        };
+    }, [dashboard]);
+
+    const skillRows = useMemo(() => {
+        if (!dashboard) return [];
+        return dashboard.skillRows.map((r) => {
+            const skillKey = getSkillKey(r.skill);
+            return {
+                ...r,
+                ...skillMeta[skillKey],
+            };
+        });
+    }, [dashboard]);
+
+    const radarData = dashboard?.radarData ?? [];
+    const fluencyTrendData = dashboard?.fluencyTrend ?? [];
+    const scoredBands = useMemo(() => {
+        return skillRows
+            .map((r) => r.averageBand)
+            .filter((b): b is number => b != null);
+    }, [skillRows]);
+
+    const completedThisWeek = summary?.completedThisWeek ?? 0;
+    const weeklyGoal = summary?.weeklyGoal ?? WEEKLY_GOAL;
+    const weeklyProgress = summary?.weeklyProgress ?? 0;
+    const totalMinutes = summary?.totalMinutes ?? 0;
+    const completedCount = summary?.completedCount ?? 0;
+    const uniqueExamCount = summary?.uniqueExamCount ?? 0;
+    const bestBand = summary?.bestBand ?? null;
+    const estimatedOverallBand = summary?.estimatedOverallBand ?? null;
 
     const plannerTasks = [
         {
@@ -207,7 +112,7 @@ export const ClientDashboard: React.FC = () => {
             note: activeSession
                 ? `${activeSession.answeredQuestions}/${activeSession.totalQuestions} câu đã trả lời`
                 : weakestSkill
-                    ? `Band hiện tại ${formatBand(weakestSkill.averageBand)}`
+                    ? `Điểm hiện tại ${weakestSkill.averageBand != null ? weakestSkill.averageBand.toFixed(1) : '–'}`
                     : 'Tạo dữ liệu đầu tiên cho dashboard',
             action: activeSession ? 'Tiếp tục' : 'Bắt đầu',
             done: false,
@@ -222,29 +127,28 @@ export const ClientDashboard: React.FC = () => {
         },
         {
             title: 'Xem lại feedback AI gần nhất',
-            note: recentActivities.length > 0 ? recentActivities[0].examTitle : 'Chưa có feedback để xem',
+            note: lastCompletedActivity ? lastCompletedActivity.examTitle : 'Chưa có bài thi hoàn thành',
             action: 'Xem',
-            done: recentActivities.length === 0,
+            done: !lastCompletedActivity,
             onClick: () => {
-                if (recentActivities.length > 0) {
-                    navigate(`/app/sessions/${recentActivities[0].sessionId}/submit`);
+                if (lastCompletedActivity) {
+                    navigate(`/app/sessions/${lastCompletedActivity.sessionId}/submit`);
                 }
             },
         },
         {
             title: 'Hoàn thành mục tiêu tuần',
-            note: `${completedThisWeek}/${WEEKLY_GOAL} bài đã hoàn thành (${weeklyProgress}%)`,
+            note: `${completedThisWeek}/${weeklyGoal} bài đã hoàn thành (${weeklyProgress}%)`,
             action: 'Luyện',
-            done: completedThisWeek >= WEEKLY_GOAL,
+            done: completedThisWeek >= weeklyGoal,
             onClick: () => navigate('/app/practice'),
         },
     ];
 
-
     const summaryItems = [
         {
-            label: 'Best Band',
-            value: formatBand(bestBand),
+            label: 'Điểm cao nhất',
+            value: bestBand != null ? bestBand.toFixed(1) : '–',
             detail: `${uniqueExamCount} đề đã luyện`,
             icon: <TrophyOutlined />,
             color: palette.green,
@@ -281,7 +185,7 @@ export const ClientDashboard: React.FC = () => {
         );
     }
 
-    if ((isProfileError || isSessionsError) && !profile) {
+    if (isError) {
         return (
             <div className="dashboard-shell">
                 <style>{dashboardStyles}</style>
@@ -291,7 +195,7 @@ export const ClientDashboard: React.FC = () => {
                         subTitle="Đã có lỗi xảy ra khi nạp thông tin học viên. Vui lòng thử lại."
                         onRetry={() => {
                             refetchProfile();
-                            refetchSessions();
+                            refetchDashboard();
                         }}
                     />
                 </div>
@@ -310,7 +214,6 @@ export const ClientDashboard: React.FC = () => {
                 longestStreak={longestStreak}
                 activeSession={activeSession}
                 weakestSkill={weakestSkill}
-                estimatedOverallBand={estimatedOverallBand}
                 onNavigate={navigate}
             />
 
@@ -362,7 +265,7 @@ export const ClientDashboard: React.FC = () => {
                         <Tag className="soft-pill">{fluencyTrendData.length} bài</Tag>
                     </div>
 
-                    {speakingDetailQueries.some((query) => query.isLoading) ? (
+                    {isLoading ? (
                         <Skeleton active paragraph={{ rows: 4 }} />
                     ) : fluencyTrendData.length === 0 ? (
                         <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có WPM từ bài Speaking." />
@@ -415,24 +318,39 @@ export const ClientDashboard: React.FC = () => {
                             {recentActivities.slice(0, 4).map((item) => {
                                 const skill = getSkillKey(item.skillType);
                                 const tone = skillMeta[skill];
+                                const isInProgress = item.status === 'InProgress';
 
                                 return (
                                     <button
                                         key={item.sessionId}
                                         type="button"
                                         className="recent-item"
-                                        onClick={() => navigate(`/app/sessions/${item.sessionId}/submit`)}
+                                        onClick={() => {
+                                            if (isInProgress) {
+                                                navigate(getSessionRunnerPath(item.sessionId, item.skillType));
+                                                return;
+                                            }
+                                            navigate(`/app/sessions/${item.sessionId}/submit`);
+                                        }}
                                     >
-                                        <span className="recent-icon" style={{ color: tone.color, background: tone.tint }}>
-                                            {tone.icon}
+                                        <span className="recent-icon" style={{ color: tone?.color, background: tone?.tint }}>
+                                            {tone?.icon}
                                         </span>
                                         <span className="recent-copy">
                                             <strong>{item.examTitle}</strong>
                                             <small>{formatDateTimeToMinute(item.completedAt) || item.completedAt}</small>
                                         </span>
-                                        <span className="recent-score">
-                                            {item.bandScore != null ? item.bandScore.toFixed(1) : getSkillLabel(item.skillType)}
-                                        </span>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifySelf: 'end' }}>
+                                            {isInProgress ? (
+                                                <Tag color="warning" style={{ borderRadius: 6, fontWeight: 700, margin: 0, padding: '2px 8px' }}>
+                                                    Đang làm
+                                                </Tag>
+                                            ) : (
+                                                <Tag color="success" style={{ borderRadius: 6, fontWeight: 600, margin: 0, padding: '2px 8px' }}>
+                                                    Hoàn thành
+                                                </Tag>
+                                            )}
+                                        </div>
                                         <RightOutlined className="recent-arrow" />
                                     </button>
                                 );
