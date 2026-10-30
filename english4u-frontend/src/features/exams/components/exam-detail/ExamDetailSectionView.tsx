@@ -1,10 +1,11 @@
 import React from 'react';
-import { Empty } from 'antd';
+import { Collapse, Empty } from 'antd';
 import { SoundOutlined } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import type { SectionDetailDto } from '@/features/exams/types/exam.types';
 import { formatTranscriptRangeLabel, parseListeningTranscriptEnvelope } from '@/shared/lib/listeningTranscript';
 import { parseWritingTaskAssetsData } from '@/shared/lib/writingTaskAssets';
+import { TiptapQxEditor } from '@/features/exams/components/TiptapQxEditor';
 import { SKILL_COLORS } from '../../constants/examDetail.constants';
 import {
     markdownComponents,
@@ -58,26 +59,37 @@ export const ExamDetailSectionView: React.FC<ExamDetailSectionViewProps> = ({ se
                         </div>
 
                         {p.paragraphsData && (
-                            <div style={{ marginBottom: '20px' }}>
-                                <div style={{ fontWeight: 600, fontSize: '0.8125rem', color: '#64748b', marginBottom: '8px' }}>
-                                    Nội dung bài đọc (Paragraphs)
-                                </div>
-                                <div
-                                    style={{
-                                        background: '#f8fafc',
-                                        borderRadius: '10px',
-                                        padding: '18px 22px',
-                                        border: '1px solid #e2e8f0',
-                                        color: '#334155',
-                                        fontSize: '0.9375rem',
-                                        lineHeight: 1.8,
-                                    }}
-                                >
-                                    <ReactMarkdown components={markdownComponents}>
-                                        {normalizeMarkdownText(p.paragraphsData)}
-                                    </ReactMarkdown>
-                                </div>
-                            </div>
+                            <Collapse
+                                defaultActiveKey={['1']}
+                                style={{
+                                    marginBottom: '16px',
+                                    background: '#fff',
+                                    borderRadius: '8px',
+                                    border: '1px solid #e2e8f0',
+                                }}
+                                items={[
+                                    {
+                                        key: '1',
+                                        label: (
+                                            <span style={{ color: '#0ea5e9', fontWeight: 600, fontSize: '0.9375rem' }}>
+                                                Nội dung bài đọc (Paragraphs)
+                                            </span>
+                                        ),
+                                        children: (
+                                            <div style={{ color: '#334155', fontSize: '14px', lineHeight: 1.6 }}>
+                                                <TiptapQxEditor
+                                                    value={p.paragraphsData}
+                                                    enableMarkdownBold
+                                                    editable={false}
+                                                    borderless
+                                                    minHeight="60px"
+                                                    style={{ padding: '4px 0' }}
+                                                />
+                                            </div>
+                                        ),
+                                    },
+                                ]}
+                            />
                         )}
 
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>

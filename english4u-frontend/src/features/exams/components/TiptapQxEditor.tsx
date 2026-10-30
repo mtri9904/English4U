@@ -64,7 +64,7 @@ const QxNode = Node.create({
 
 interface TiptapQxEditorProps {
     value: string;
-    onChange: (val: string) => void;
+    onChange?: (val: string) => void;
     placeholder?: string;
     minHeight?: string;
     onFocus?: () => void;
@@ -72,6 +72,7 @@ interface TiptapQxEditorProps {
     borderless?: boolean;
     style?: React.CSSProperties;
     onTableActiveChange?: (isActive: boolean) => void;
+    editable?: boolean;
 }
 
 export interface TiptapQxEditorRef {
@@ -96,6 +97,7 @@ export const TiptapQxEditor = forwardRef<TiptapQxEditorRef, TiptapQxEditorProps>
     borderless = false,
     style,
     onTableActiveChange,
+    editable = true,
 }, ref) => {
     const normalizeEditorText = (text?: string | null) => (text || '')
         .replace(/\\r\\n/g, '\n')
@@ -276,6 +278,7 @@ export const TiptapQxEditor = forwardRef<TiptapQxEditorRef, TiptapQxEditorProps>
     };
 
     const editor = useEditor({
+        editable,
         extensions: [
             StarterKit.configure({
                 heading: false,
@@ -299,7 +302,7 @@ export const TiptapQxEditor = forwardRef<TiptapQxEditorRef, TiptapQxEditorProps>
         ],
         content: parseTextToNodes(value),
         onUpdate: ({ editor }) => {
-            onChange(serializeToText(editor.getHTML()));
+            onChange?.(serializeToText(editor.getHTML()));
         },
         onSelectionUpdate: ({ editor }) => {
             onTableActiveChange?.(editor.isActive('table'));
@@ -411,15 +414,22 @@ export const TiptapQxEditor = forwardRef<TiptapQxEditorRef, TiptapQxEditorProps>
         }
     }, [value, editor, enableMarkdownBold]);
 
+    useEffect(() => {
+        if (editor && editor.isEditable !== editable) {
+            editor.setEditable(editable);
+        }
+    }, [editor, editable]);
+
     return (
         <div style={{
             border: borderless ? 'none' : '1px solid #d9d9d9',
             borderRadius: borderless ? 0 : '8px',
-            background: '#fff',
+            background: editable ? '#fff' : 'transparent',
             transition: 'all 0.2s',
             minHeight: minHeight,
+            cursor: editable ? 'text' : 'default',
             ...style,
-        }} className={`qx-editor-container ${borderless ? 'qx-editor-borderless' : ''}`}>
+        }} className={`qx-editor-container ${borderless ? 'qx-editor-borderless' : ''} ${!editable ? 'qx-editor-readonly' : ''}`}>
             <style>{`
         .qx-editor-container:focus-within {
           border-color: #4096ff;
@@ -428,6 +438,10 @@ export const TiptapQxEditor = forwardRef<TiptapQxEditorRef, TiptapQxEditorProps>
         .qx-editor-borderless:focus-within {
           border-color: transparent !important;
           box-shadow: inset 0 0 0 2px #3b82f6 !important;
+        }
+        .qx-editor-readonly:focus-within {
+          border-color: transparent !important;
+          box-shadow: none !important;
         }
         .tiptap-content p {
           margin: 0;
