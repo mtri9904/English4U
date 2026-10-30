@@ -20,6 +20,7 @@ import {
     countSectionQuestions,
     EXAM_LIMITS,
     normalizeListeningPartsToSharedAudio,
+    getSharedListeningAudioUrl,
     normalizeObjectiveQuestionPointsForSubmit,
     sanitizeSpeakingSectionsForSubmit,
     SKILL_COLORS,
@@ -78,6 +79,7 @@ export const ExamEditorPage = () => {
 
     const [uploading, setUploading] = useState(false);
     const [globalAudioUrl, setGlobalAudioUrl] = useState<string | null>(null);
+    const [isGeneratingTranscript, setIsGeneratingTranscript] = useState(false);
 
     const [form, setForm] = useState<CreateExamDto>({
         title: '',
@@ -151,9 +153,60 @@ export const ExamEditorPage = () => {
             return;
         }
 
+        let currentSections = form.sections;
+
+        // Auto-generate listening transcript for Listening sections that have audio but lack transcriptData
+        for (let sIdx = 0; sIdx < currentSections.length; sIdx++) {
+            const section = currentSections[sIdx];
+            if ((normalizeSkillType(section.skillType) || 'Reading') === 'Listening') {
+                const parts = section.listeningParts ?? [];
+                const audioUrl = (globalAudioUrl || getSharedListeningAudioUrl(parts) || '').trim();
+                const needsTranscript = !!audioUrl && parts.length > 0 && parts.some((p) => !p.transcriptData?.trim());
+
+                if (needsTranscript) {
+                    setIsGeneratingTranscript(true);
+                    const hideLoading = message.loading({
+                        content: 'Đang phân tích audio và tạo transcript timestamp cho AI gia sư...',
+                        duration: 0,
+                    });
+
+                    try {
+                        const transcriptDataByPart = await handleGenerateListeningTranscript(audioUrl, parts);
+                        const updatedParts = parts.map((part, index) => ({
+                            ...part,
+                            audioUrl,
+                            transcriptData: transcriptDataByPart[index] ?? transcriptDataByPart[0] ?? '',
+                        }));
+
+                        const updatedSection = {
+                            ...section,
+                            listeningParts: updatedParts,
+                        };
+
+                        currentSections = currentSections.map((s, idx) =>
+                            idx === sIdx ? updatedSection : s
+                        );
+
+                        setForm((prev) => ({
+                            ...prev,
+                            sections: prev.sections.map((s, idx) =>
+                                idx === sIdx ? updatedSection : s
+                            ),
+                        }));
+                    } catch (error: any) {
+                        message.error(error?.message || 'Không thể tạo transcript cho audio đề thi.');
+                        return;
+                    } finally {
+                        hideLoading();
+                        setIsGeneratingTranscript(false);
+                    }
+                }
+            }
+        }
+
         const normalizedSections = normalizeObjectiveQuestionPointsForSubmit(
             sanitizeSpeakingSectionsForSubmit(
-                form.sections
+                currentSections
                     .map(normalizeSectionQuestionTypes)
                     .map((section) => (
                         section.skillType === 'Listening'
@@ -226,7 +279,6 @@ export const ExamEditorPage = () => {
                         globalAudioUrl={globalAudioUrl}
                         setGlobalAudioUrl={setGlobalAudioUrl}
                         handleUploadFile={handleUploadFile}
-                        handleGenerateListeningTranscript={handleGenerateListeningTranscript}
                         activeEditorRef={activeEditorRef}
                     />
                 );
@@ -305,13 +357,18 @@ export const ExamEditorPage = () => {
                     </div>
                 </div>
                 <div style={{ display: 'flex', gap: '12px' }}>
-                    <Button onClick={() => navigate('/admin/exams')} style={{ height: '40px', fontWeight: 600, padding: '0 24px' }}>
+                    <Button
+                        disabled={isGeneratingTranscript || createMutation.isPending || updateMutation.isPending}
+                        onClick={() => navigate('/admin/exams')}
+                        style={{ height: '40px', fontWeight: 600, padding: '0 24px' }}
+                    >
                         Hủy
                     </Button>
                     <Button
                         type="primary"
                         icon={<SaveOutlined />}
-                        loading={createMutation.isPending || updateMutation.isPending}
+                        loading={isGeneratingTranscript || createMutation.isPending || updateMutation.isPending}
+                        disabled={isGeneratingTranscript || createMutation.isPending || updateMutation.isPending}
                         onClick={handleSubmit}
                         style={{
                             background: 'linear-gradient(135deg, #0ea5e9 0%, #6366f1 100%)',
@@ -321,7 +378,11 @@ export const ExamEditorPage = () => {
                             padding: '0 24px',
                         }}
                     >
-                        {isEdit ? 'Cập nhật đề thi' : 'Lưu đề thi'}
+                        {isGeneratingTranscript
+                            ? 'Đang tạo transcript...'
+                            : isEdit
+                                ? 'Cập nhật đề thi'
+                                : 'Lưu đề thi'}
                     </Button>
                 </div>
             </div>

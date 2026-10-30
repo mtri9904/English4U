@@ -193,35 +193,90 @@ export const ExamDetailSectionView: React.FC<ExamDetailSectionViewProps> = ({ se
                             }
 
                             return (
-                                <div
+                                <Collapse
+                                    defaultActiveKey={[]}
                                     style={{
+                                        marginBottom: '16px',
                                         background: '#f8fafc',
                                         borderRadius: '10px',
-                                        padding: '14px 18px',
-                                        marginBottom: '16px',
                                         border: '1px solid #cbd5e1',
                                     }}
-                                >
-                                    <div style={{ fontWeight: 700, color: '#334155', marginBottom: '8px', fontSize: '0.875rem' }}>
-                                        Transcript timestamp cho AI gia sư ({transcriptSegments.length} segments)
-                                    </div>
-                                    <div style={{ color: '#475569', fontSize: '0.8125rem', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
-                                        {transcriptSegments.slice(0, 4).map((segment) => (
-                                            <div key={`${segment.startTime}-${segment.text.slice(0, 24)}`}>
-                                                [{formatTranscriptRangeLabel(segment.startTime, segment.endTime)}]
-                                                {segment.targetQuestionNumbers.length > 0
-                                                    ? ` Q${segment.targetQuestionNumbers.join('/')}`
-                                                    : ''}{' '}
-                                                {segment.text}
-                                            </div>
-                                        ))}
-                                        {transcriptSegments.length > 4 ? (
-                                            <div style={{ color: '#64748b', marginTop: '4px' }}>
-                                                ... và {transcriptSegments.length - 4} segment khác
-                                            </div>
-                                        ) : null}
-                                    </div>
-                                </div>
+                                    items={[
+                                        {
+                                            key: 'transcript',
+                                            label: (
+                                                <span style={{ fontWeight: 700, color: '#334155', fontSize: '0.875rem' }}>
+                                                    Transcript timestamp cho AI gia sư ({transcriptSegments.length} segments)
+                                                </span>
+                                            ),
+                                            children: (
+                                                <div
+                                                    style={{
+                                                        maxHeight: '260px',
+                                                        overflowY: 'auto',
+                                                        paddingRight: '6px',
+                                                        color: '#475569',
+                                                        fontSize: '0.8125rem',
+                                                        lineHeight: 1.7,
+                                                        display: 'flex',
+                                                        flexDirection: 'column',
+                                                        gap: '6px',
+                                                    }}
+                                                >
+                                                    {transcriptSegments.map((segment, sIdx) => (
+                                                        <div
+                                                            key={`${segment.startTime}-${sIdx}`}
+                                                            style={{
+                                                                padding: '6px 10px',
+                                                                borderRadius: '6px',
+                                                                background: '#ffffff',
+                                                                border: '1px solid #e2e8f0',
+                                                                display: 'flex',
+                                                                alignItems: 'flex-start',
+                                                                gap: '8px',
+                                                            }}
+                                                        >
+                                                            <span
+                                                                style={{
+                                                                    fontFamily: 'monospace',
+                                                                    fontWeight: 700,
+                                                                    color: '#4f46e5',
+                                                                    background: '#eef2ff',
+                                                                    padding: '2px 6px',
+                                                                    borderRadius: '4px',
+                                                                    fontSize: '0.75rem',
+                                                                    whiteSpace: 'nowrap',
+                                                                    flexShrink: 0,
+                                                                }}
+                                                            >
+                                                                {formatTranscriptRangeLabel(segment.startTime, segment.endTime)}
+                                                            </span>
+                                                            {segment.targetQuestionNumbers.length > 0 ? (
+                                                                <span
+                                                                    style={{
+                                                                        fontWeight: 700,
+                                                                        color: '#059669',
+                                                                        background: '#ecfdf5',
+                                                                        padding: '2px 6px',
+                                                                        borderRadius: '4px',
+                                                                        fontSize: '0.75rem',
+                                                                        whiteSpace: 'nowrap',
+                                                                        flexShrink: 0,
+                                                                    }}
+                                                                >
+                                                                    Q{segment.targetQuestionNumbers.join('/')}
+                                                                </span>
+                                                            ) : null}
+                                                            <span style={{ flex: 1, wordBreak: 'break-word' }}>
+                                                                {segment.text}
+                                                            </span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            ),
+                                        },
+                                    ]}
+                                />
                             );
                         })()}
 

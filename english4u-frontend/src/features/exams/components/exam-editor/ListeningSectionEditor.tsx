@@ -1,7 +1,6 @@
-import { useState, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
-import { Button, Input, Upload, message } from 'antd';
+import { type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
+import { Button, Input, Upload } from 'antd';
 import { CloseOutlined, MinusCircleOutlined, PlusOutlined, SoundOutlined } from '@ant-design/icons';
-import type { CreateSectionDto } from '@/features/exams/types/exam.types';
 import type { TiptapQxEditorRef } from '@/features/exams/components/TiptapQxEditor';
 import {
     SKILL_COLORS,
@@ -21,7 +20,6 @@ export interface ListeningSectionEditorProps extends SharedSectionEditorProps {
     globalAudioUrl: string | null;
     setGlobalAudioUrl: Dispatch<SetStateAction<string | null>>;
     handleUploadFile: (file: File, type: 'image' | 'video' | 'raw' | 'auto') => Promise<string>;
-    handleGenerateListeningTranscript?: (audioUrl: string, listeningParts?: CreateSectionDto['listeningParts']) => Promise<string[]>;
     activeEditorRef: MutableRefObject<TiptapQxEditorRef | null>;
 }
 
@@ -33,7 +31,6 @@ export const ListeningSectionEditor = ({
     globalAudioUrl,
     setGlobalAudioUrl,
     handleUploadFile,
-    handleGenerateListeningTranscript,
     activeEditorRef,
 }: ListeningSectionEditorProps) => {
     const parts = section.listeningParts ?? [];
@@ -41,7 +38,6 @@ export const ListeningSectionEditor = ({
     let currentQNum = 1;
     const questionCount = countSectionQuestions(section, 'Listening');
     const hasQuestionCapacity = questionCount < EXAM_LIMITS.Listening.questions;
-    const [generatingTranscriptIndex, setGeneratingTranscriptIndex] = useState<number | null>(null);
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -58,7 +54,12 @@ export const ListeningSectionEditor = ({
                             const url = await handleUploadFile(file, 'video');
                             if (url) {
                                 setGlobalAudioUrl(url);
-                                updateSection(sIdx, { listeningParts: applySharedListeningAudioUrl(parts, url) });
+                                updateSection(sIdx, {
+                                    listeningParts: applySharedListeningAudioUrl(parts, url).map((part) => ({
+                                        ...part,
+                                        transcriptData: '',
+                                    })),
+                                });
                             }
                             return false;
                         }}
@@ -84,7 +85,12 @@ export const ListeningSectionEditor = ({
                                 style={{ color: '#ef4444', cursor: 'pointer' }}
                                 onClick={() => {
                                     setGlobalAudioUrl('');
-                                    updateSection(sIdx, { listeningParts: applySharedListeningAudioUrl(parts, '') });
+                                    updateSection(sIdx, {
+                                        listeningParts: applySharedListeningAudioUrl(parts, '').map((part) => ({
+                                            ...part,
+                                            transcriptData: '',
+                                        })),
+                                    });
                                 }}
                             />
                         ) : null}
@@ -95,49 +101,15 @@ export const ListeningSectionEditor = ({
                 <div key={pIdx} style={{ background: '#fff', borderRadius: '12px', padding: '16px', border: '1px solid #e2e8f0' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                         <span style={{ fontWeight: 700, color: SKILL_COLORS.Listening }}>Part {pIdx + 1}</span>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        {parts.length > 1 && (
                             <Button
+                                type="text"
+                                danger
+                                icon={<MinusCircleOutlined />}
                                 size="small"
-                                type="default"
-                                icon={<SoundOutlined />}
-                                loading={generatingTranscriptIndex === pIdx}
-                                disabled={!sharedAudioUrl || !handleGenerateListeningTranscript}
-                                onClick={async () => {
-                                    if (!sharedAudioUrl || !handleGenerateListeningTranscript) {
-                                        return;
-                                    }
-
-                                    setGeneratingTranscriptIndex(pIdx);
-                                    try {
-                                        const transcriptDataByPart = await handleGenerateListeningTranscript(sharedAudioUrl, parts);
-                                        const updatedParts = parts.map((item, index) => ({
-                                            ...item,
-                                            transcriptData: transcriptDataByPart[index] ?? transcriptDataByPart[0] ?? '',
-                                        }));
-                                        updateSection(sIdx, { listeningParts: updatedParts });
-                                    } catch (error) {
-                                        message.error(
-                                            error instanceof Error
-                                                ? error.message
-                                                : 'Không thể generate transcript cho audio này.',
-                                        );
-                                    } finally {
-                                        setGeneratingTranscriptIndex((current) => current === pIdx ? null : current);
-                                    }
-                                }}
-                            >
-                                Generate transcript
-                            </Button>
-                            {parts.length > 1 && (
-                                <Button
-                                    type="text"
-                                    danger
-                                    icon={<MinusCircleOutlined />}
-                                    size="small"
-                                    onClick={() => updateSection(sIdx, { listeningParts: parts.filter((_, index) => index !== pIdx) })}
-                                />
-                            )}
-                        </div>
+                                onClick={() => updateSection(sIdx, { listeningParts: parts.filter((_, index) => index !== pIdx) })}
+                            />
+                        )}
                     </div>
                     <Input.TextArea
                         value={part.contextDescription ?? ''}
@@ -158,28 +130,6 @@ export const ListeningSectionEditor = ({
                             updateSection(sIdx, { listeningParts: updatedParts });
                         }}
                     />
-                    <Input.TextArea
-                        value={part.transcriptData ?? ''}
-                        placeholder='Transcript JSON cho AI replay, ví dụ: {"schemaVersion":3,"segments":[{"startTime":115,"endTime":125,"text":"..."}]}'
-                        autoSize={{ minRows: 4, maxRows: 12 }}
-                        style={{ marginBottom: '12px' }}
-                        onPaste={(event) => {
-                            const nextValue = getCleanPastedInputValue(event, part.transcriptData ?? '');
-                            if (nextValue === null) return;
-
-                            const updatedParts = [...parts];
-                            updatedParts[pIdx] = { ...part, transcriptData: nextValue };
-                            updateSection(sIdx, { listeningParts: updatedParts });
-                        }}
-                        onChange={(event) => {
-                            const updatedParts = [...parts];
-                            updatedParts[pIdx] = { ...part, transcriptData: event.target.value };
-                            updateSection(sIdx, { listeningParts: updatedParts });
-                        }}
-                    />
-                    <div style={{ marginTop: '-4px', marginBottom: '12px', fontSize: '0.75rem', color: '#475569', lineHeight: 1.6 }}>
-                        Field này chỉ phục vụ AI gia sư tìm mốc audio và trích transcript. Không thay thế nội dung `contextDescription` đang hiển thị cho học viên. Schema mới chỉ cần `segments` có `startTime`, `endTime`, `text`; AI review tự suy luận evidence/replay theo part + câu hỏi + đáp án.
-                    </div>
                     {(() => {
                         const startOfPart = currentQNum;
                         const editor = (
