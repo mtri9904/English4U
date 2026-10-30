@@ -64,7 +64,7 @@ export const ExamDetailPage = () => {
                 <Button
                     type="primary"
                     icon={<EditOutlined />}
-                    onClick={() => navigate(`/admin/exams/${id}/edit`)}
+                    onClick={() => navigate(`/admin/exams/edit/${id}`)}
                     style={{ fontWeight: 600, borderRadius: '8px', background: '#4f46e5' }}
                 >
                     Chỉnh sửa đề thi

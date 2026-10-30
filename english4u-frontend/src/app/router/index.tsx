@@ -137,10 +137,6 @@ export const appRouter = createBrowserRouter([
                 element: <AttemptManagementPage />,
             },
             {
-                path: 'exams/:id',
-                element: <ExamDetailPage />,
-            },
-            {
                 path: 'exams/create',
                 element: <ExamEditorPage />,
             },
@@ -151,6 +147,14 @@ export const appRouter = createBrowserRouter([
             {
                 path: 'exams/edit/:id',
                 element: <ExamEditorPage />,
+            },
+            {
+                path: 'exams/:id/edit',
+                element: <ExamEditorPage />,
+            },
+            {
+                path: 'exams/:id',
+                element: <ExamDetailPage />,
             },
             {
                 path: 'profile',
