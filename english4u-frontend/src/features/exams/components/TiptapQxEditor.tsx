@@ -1,3 +1,4 @@
+import { normalizeMarkdownBoldText } from '@/shared/utils/markdown.utils';
 import { useEditor, EditorContent, Node } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -99,12 +100,7 @@ export const TiptapQxEditor = forwardRef<TiptapQxEditorRef, TiptapQxEditorProps>
     onTableActiveChange,
     editable = true,
 }, ref) => {
-    const normalizeEditorText = (text?: string | null) => (text || '')
-        .replace(/\\r\\n/g, '\n')
-        .replace(/\\n/g, '\n')
-        .replace(/\\r/g, '\n')
-        .replace(/\\\*\\\*/g, '**')
-        .replace(/\\_\\_/g, '__');
+    const normalizeEditorText = (text?: string | null) => normalizeMarkdownBoldText(text);
 
     const escapeHtml = (text: string) => text
         .replace(/&/g, '&amp;')

@@ -14,10 +14,12 @@ export { examService, examApi };
  */
 export const examQueryKeys = {
     all: ['exams'] as const,
-    lists: (params?: ExamPagedRequest) => [...examQueryKeys.all, 'list', params] as const,
+    lists: (params?: ExamPagedRequest) =>
+        params ? ([...examQueryKeys.all, 'list', params] as const) : ([...examQueryKeys.all, 'list'] as const),
     detail: (id: string) => ['exams', id] as const,
     practiceAll: ['client', 'practice', 'exams'] as const,
-    practiceList: (params?: PracticeExamPagedRequest) => [...examQueryKeys.practiceAll, 'list', params] as const,
+    practiceList: (params?: PracticeExamPagedRequest) =>
+        params ? ([...examQueryKeys.practiceAll, 'list', params] as const) : ([...examQueryKeys.practiceAll, 'list'] as const),
     practiceDetail: (id: string) => ['client', 'practice', 'exams', id] as const,
 };
 
@@ -70,7 +72,7 @@ export const useCreateExamMutation = () => {
     const queryClient = useQueryClient();
     return useMutation({
         mutationFn: examService.create,
-        onSuccess: () => queryClient.invalidateQueries({ queryKey: examQueryKeys.all }),
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: examQueryKeys.lists() }),
     });
 };
 
@@ -80,8 +82,12 @@ export const useUpdateExamMutation = () => {
         mutationFn: ({ id, data }: { id: string; data: CreateExamDto }) =>
             examService.update({ id, data }),
         onSuccess: (_, variables) => {
-            queryClient.invalidateQueries({ queryKey: examQueryKeys.all });
-            queryClient.invalidateQueries({ queryKey: examQueryKeys.detail(variables.id) });
+            queryClient.invalidateQueries({ queryKey: examQueryKeys.lists() });
+            queryClient.invalidateQueries({
+                queryKey: examQueryKeys.detail(variables.id),
+                exact: true,
+                refetchType: 'none',
+            });
         },
     });
 };
@@ -90,7 +96,7 @@ export const useDeleteExamMutation = () => {
     const queryClient = useQueryClient();
     return useMutation({
         mutationFn: examService.delete,
-        onSuccess: () => queryClient.invalidateQueries({ queryKey: examQueryKeys.all }),
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: examQueryKeys.lists() }),
     });
 };
 
@@ -98,7 +104,14 @@ export const useUpdateExamStatusMutation = () => {
     const queryClient = useQueryClient();
     return useMutation({
         mutationFn: examService.updateStatus,
-        onSuccess: () => queryClient.invalidateQueries({ queryKey: examQueryKeys.all }),
+        onSuccess: (_, variables) => {
+            queryClient.invalidateQueries({ queryKey: examQueryKeys.lists() });
+            queryClient.invalidateQueries({
+                queryKey: examQueryKeys.detail(variables.id),
+                exact: true,
+                refetchType: 'none',
+            });
+        },
     });
 };
 

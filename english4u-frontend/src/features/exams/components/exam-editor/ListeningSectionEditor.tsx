@@ -13,7 +13,7 @@ import {
     EXAM_LIMITS,
 } from './examEditor.helpers';
 import { QuestionGroupsEditor } from './QuestionGroupsEditor';
-import { getCleanPastedInputValue, type SharedSectionEditorProps } from './sectionEditor.utils';
+import { type SharedSectionEditorProps } from './sectionEditor.utils';
 
 export interface ListeningSectionEditorProps extends SharedSectionEditorProps {
     uploading: boolean;
@@ -111,25 +111,6 @@ export const ListeningSectionEditor = ({
                             />
                         )}
                     </div>
-                    <Input.TextArea
-                        value={part.contextDescription ?? ''}
-                        placeholder="Nội dung hiển thị của part: note/form/map/instruction..."
-                        autoSize={{ minRows: 3, maxRows: 10 }}
-                        style={{ marginBottom: '12px' }}
-                        onPaste={(event) => {
-                            const nextValue = getCleanPastedInputValue(event, part.contextDescription ?? '');
-                            if (nextValue === null) return;
-
-                            const updatedParts = [...parts];
-                            updatedParts[pIdx] = { ...part, contextDescription: nextValue };
-                            updateSection(sIdx, { listeningParts: updatedParts });
-                        }}
-                        onChange={(event) => {
-                            const updatedParts = [...parts];
-                            updatedParts[pIdx] = { ...part, contextDescription: event.target.value };
-                            updateSection(sIdx, { listeningParts: updatedParts });
-                        }}
-                    />
                     {(() => {
                         const startOfPart = currentQNum;
                         const editor = (

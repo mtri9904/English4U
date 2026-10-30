@@ -34,25 +34,32 @@ public class NotificationController(
         var pageNumber = request.PageNumber <= 0 ? 1 : request.PageNumber;
         var pageSize = request.PageSize <= 0 ? 8 : Math.Min(request.PageSize, 50);
 
-        var query = context.Notifications
-            .AsNoTracking()
-            .Where(n => n.UserId == userId);
+        try
+        {
+            var query = context.Notifications
+                .AsNoTracking()
+                .Where(n => n.UserId == userId);
 
-        var totalCount = await query.CountAsync(cancellationToken);
-        var items = await query
-            .OrderByDescending(n => n.CreatedAt)
-            .Skip((pageNumber - 1) * pageSize)
-            .Take(pageSize)
-            .Select(n => new NotificationListItemDto(
-                n.Id,
-                n.Title,
-                n.Message,
-                n.IsRead,
-                VietnamDateTimeFormatter.ToDisplay(n.CreatedAt)!
-            ))
-            .ToListAsync(cancellationToken);
+            var totalCount = await query.CountAsync(CancellationToken.None);
+            var items = await query
+                .OrderByDescending(n => n.CreatedAt)
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
+                .Select(n => new NotificationListItemDto(
+                    n.Id,
+                    n.Title,
+                    n.Message,
+                    n.IsRead,
+                    VietnamDateTimeFormatter.ToDisplay(n.CreatedAt)!
+                ))
+                .ToListAsync(CancellationToken.None);
 
-        return TypedResults.Ok(new PagedResult<NotificationListItemDto>(items, totalCount, pageNumber, pageSize));
+            return TypedResults.Ok(new PagedResult<NotificationListItemDto>(items, totalCount, pageNumber, pageSize));
+        }
+        catch (Exception) when (cancellationToken.IsCancellationRequested)
+        {
+            return TypedResults.Empty;
+        }
     }
 
     [HttpGet("my/stats")]
@@ -62,10 +69,17 @@ public class NotificationController(
         if (!currentUser.TryGetUserId(out var userId))
             return TypedResults.Unauthorized();
 
-        var total = await context.Notifications.CountAsync(n => n.UserId == userId, cancellationToken);
-        var unread = await context.Notifications.CountAsync(n => n.UserId == userId && !n.IsRead, cancellationToken);
+        try
+        {
+            var total = await context.Notifications.CountAsync(n => n.UserId == userId, CancellationToken.None);
+            var unread = await context.Notifications.CountAsync(n => n.UserId == userId && !n.IsRead, CancellationToken.None);
 
-        return TypedResults.Ok(new NotificationStatsDto(total, unread));
+            return TypedResults.Ok(new NotificationStatsDto(total, unread));
+        }
+        catch (Exception) when (cancellationToken.IsCancellationRequested)
+        {
+            return TypedResults.Empty;
+        }
     }
 
     [HttpPatch("{id:guid}/read")]

@@ -118,6 +118,7 @@ public sealed partial class GemmaPdfExamGenerationService
         }
 
         text = NormalizeExtractedSpacing(text).Trim();
+        text = NormalizeMarkdownBoldForStorage(text);
 
         if (protectedTableRows != null && originalTableRows != null)
         {
@@ -126,6 +127,21 @@ public sealed partial class GemmaPdfExamGenerationService
         }
 
         return string.IsNullOrWhiteSpace(text) ? null : text;
+    }
+
+    private static string NormalizeMarkdownBoldForStorage(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return text;
+        }
+
+        var normalized = Regex.Replace(text, @"\\+(\*)", "$1");
+        normalized = Regex.Replace(normalized, @"\\+(_)", "$1");
+        normalized = Regex.Replace(normalized, @"\*[ \t]+\*", "**");
+        normalized = Regex.Replace(normalized, @"__\s*([^\n_]+?)\s*__", "**$1**");
+        normalized = Regex.Replace(normalized, @"\*\*[ \t]*([^\*\n]+?)[ \t]*\*\*", "**$1**");
+        return normalized;
     }
 
     private static string RemoveStorageNoiseLines(string text)

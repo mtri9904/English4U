@@ -99,8 +99,8 @@ export const useRealtimeSync = (enabled = true) => {
 
             if (eventType === 'exams.changed') {
                 invalidateThrottled('exams.changed', () => {
-                    queryClient.invalidateQueries({ queryKey: ['exams'] });
-                    queryClient.invalidateQueries({ queryKey: ['client', 'practice'] });
+                    queryClient.invalidateQueries({ queryKey: ['exams', 'list'] });
+                    queryClient.invalidateQueries({ queryKey: ['client', 'practice', 'exams', 'list'] });
                 });
                 return;
             }

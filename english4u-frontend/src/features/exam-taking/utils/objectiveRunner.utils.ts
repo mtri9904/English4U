@@ -8,6 +8,11 @@ import {
     stripOptionLeadingLabel,
 } from '@/shared/utils/optionLabel.utils';
 import {
+    normalizeDisplayText,
+    normalizeMarkdownBoldText,
+    normalizeBlockMarkdownText,
+} from '@/shared/utils/markdown.utils';
+import {
     FILL_TYPES,
     MATCHING_TYPES,
     TABLE_TITLE_PLACEHOLDER,
@@ -40,63 +45,7 @@ export const getReviewAnswerBackground = (answer?: PracticeSessionAnswerDto) => 
 
 export const normalizeChoiceToken = (value?: string | null) => (value ?? '').trim().toUpperCase();
 
-export const normalizeDisplayText = (value?: string | null) =>
-    (value ?? '')
-        .replace(/\\r\\n/g, '\n')
-        .replace(/\\n/g, '\n')
-        .replace(/\\r/g, '\n')
-        .replace(/\r\n/g, '\n')
-        .replace(/\r/g, '\n');
-
-export const normalizeMarkdownBoldText = (value?: string | null) => {
-    const normalized = normalizeDisplayText(value)
-        .replace(/\\\*\\\*/g, '**')
-        .replace(/\\_\\_/g, '__')
-        .replace(/__\s*([\s\S]*?\S)\s*__/g, '**$1**')
-        .replace(/([A-Za-z0-9)\]])\*\*(?=\s*\S)/g, '$1 **')
-        .replace(/\*\*\s*([A-Za-z0-9(][^*]*?[A-Za-z0-9)\]])\s*\*\*/g, '**$1**');
-
-    let output = '';
-    let cursor = 0;
-    let isBold = false;
-
-    while (cursor < normalized.length) {
-        const markerIndex = normalized.indexOf('**', cursor);
-        if (markerIndex < 0) {
-            output += normalized.slice(cursor);
-            break;
-        }
-
-        output += normalized.slice(cursor, markerIndex);
-        if (!isBold) {
-            output += '**';
-            isBold = true;
-            cursor = markerIndex + 2;
-            continue;
-        }
-
-        const rawInner = output.slice(output.lastIndexOf('**') + 2);
-        const trimmedInner = rawInner.trimEnd();
-        if (trimmedInner.length !== rawInner.length) {
-            output = output.slice(0, output.length - rawInner.length) + trimmedInner;
-        }
-        output += '**';
-        isBold = false;
-        cursor = markerIndex + 2;
-
-        if (normalized[cursor] && !/\s|[.,;:!?()[\]{}"'“”‘’/-]/.test(normalized[cursor])) {
-            output += ' ';
-        }
-    }
-
-    return output;
-};
-
-export const normalizeBlockMarkdownText = (value?: string | null) =>
-    normalizeMarkdownBoldText(value)
-        .replace(/\n{3,}/g, '\n\n')
-        .replace(/(?<!\n)\n(?!\n)/g, '  \n')
-        .trim();
+export { normalizeDisplayText, normalizeMarkdownBoldText, normalizeBlockMarkdownText };
 
 export const formatTemplateText = (value?: string | null) =>
     normalizeBlockMarkdownText(value).replace(/\[Q(\d+)\]/g, '_____ `Q$1`');

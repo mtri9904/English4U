@@ -1,7 +1,13 @@
 import React from 'react';
 import type { QuestionGroupDto, QuestionOptionDto } from '@/features/exams/types/exam.types';
 import { getOptionLabel } from '@/shared/utils/optionLabel.utils';
+import {
+    normalizeMarkdownBoldText,
+    normalizeBlockMarkdownText as normalizeSharedBlockMarkdownText,
+} from '@/shared/utils/markdown.utils';
 import { ROMAN_LABEL_TOKENS } from '../constants/examDetail.constants';
+
+export { normalizeMarkdownBoldText };
 
 export const parseMultiSelectContent = (contentData?: string | null) => {
     if (!contentData) {
@@ -92,18 +98,11 @@ export const stripDisplayedOptionLeadingLabel = (optionText: string | null | und
     return text.replace(new RegExp(`^${escapedLabel}\\s*(?:[.)\\:-]\\s*|\\s+)`, 'i'), '').trim();
 };
 
-export const normalizeMarkdownDisplayText = (text: string) =>
-    (text ?? '')
-        .replace(/\\r\\n/g, '\n')
-        .replace(/\\n/g, '\n')
-        .replace(/\\r/g, '\n')
-        .replace(/\r\n/g, '\n')
-        .replace(/\r/g, '\n')
-        .replace(/\\\*\\\*/g, '**')
-        .replace(/\\_\\_/g, '__');
+export const normalizeMarkdownDisplayText = (text?: string | null) =>
+    normalizeMarkdownBoldText(text);
 
 export const renderFormattedText = (text: string) => {
-    const normalizedText = normalizeMarkdownDisplayText(text).replace(/__(.+?)__/g, '**$1**');
+    const normalizedText = normalizeMarkdownBoldText(text);
     if (!normalizedText) return null;
 
     const segments: Array<{ text: string; bold: boolean }> = [];
@@ -473,11 +472,8 @@ export const splitTrailingGluedBodyFromStandaloneSubheading = (line: string, nex
     };
 };
 
-export const normalizeBlockMarkdownText = (text: string) =>
-    normalizeMarkdownDisplayText(text)
-        .replace(/\n{3,}/g, '\n\n')
-        .replace(/(?<!\n)\n(?!\n)/g, '  \n')
-        .trim();
+export const normalizeBlockMarkdownText = (text?: string | null) =>
+    normalizeSharedBlockMarkdownText(text);
 
 export const repairOutOfOrderStructuredParagraphLabels = (text: string) => {
     if (!text.trim()) {

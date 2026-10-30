@@ -1,21 +1,14 @@
 import type { PracticeSessionDto } from '../../types/session.types';
 import { extractWritingTaskImageUrls } from '@/shared/lib/writingTaskAssets';
+import {
+    normalizeDisplayText,
+    normalizeMarkdownBoldText,
+    normalizeBlockMarkdownText,
+} from '@/shared/utils/markdown.utils';
 
 export const WRITING_SUBMIT_MIN_WORDS = 10;
 
-export const normalizeDisplayText = (value?: string | null) =>
-    (value ?? '')
-        .replace(/\\r\\n/g, '\n')
-        .replace(/\\n/g, '\n')
-        .replace(/\\r/g, '\n')
-        .replace(/\r\n/g, '\n')
-        .replace(/\r/g, '\n');
-
-export const normalizeBlockMarkdownText = (value?: string | null) =>
-    normalizeDisplayText(value)
-        .replace(/\n{3,}/g, '\n\n')
-        .replace(/(?<!\n)\n(?!\n)/g, '  \n')
-        .trim();
+export { normalizeDisplayText, normalizeMarkdownBoldText, normalizeBlockMarkdownText };
 
 export const markdownComponents = {
     p: ({ children }: any) => <p style={{ margin: '0 0 12px', color: '#1e293b', lineHeight: 1.78 }}>{children}</p>,
