@@ -30,6 +30,7 @@ export const ExamPdfUploadModal: React.FC<ExamPdfUploadModalProps> = ({
             onCancel={onCancel}
             okText="Bắt đầu generate"
             cancelText="Hủy"
+            centered= {true}
             onOk={onStartGenerate}
             okButtonProps={{ disabled: !selectedPdfFile || isPending || isPdfGenerationLocked }}
             cancelButtonProps={{ disabled: isPending }}

@@ -52,7 +52,7 @@ export const markdownComponents = {
 
 export const compactMarkdownComponents = {
     ...markdownComponents,
-    p: ({ children }: any) => <p style={{ margin: 0, color: '#334155', lineHeight: 1.7, fontSize: '14px' }}>{children}</p>,
+    p: ({ children }: any) => <p style={{ margin: 0, color: '#334155', lineHeight: 1.5, fontSize: '14px' }}>{children}</p>,
     ol: ({ children }: any) => (
         <ol style={{ margin: 0, paddingLeft: 24, listStyleType: 'decimal', color: '#334155', lineHeight: 1.7, fontSize: '14px' }}>
             {children}

@@ -144,11 +144,15 @@ export const GroupBlock = ({
                     <Alert
                         type="info"
                         showIcon
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                        }}
                         message={(
                             <HighlightableMarkdown
                                 sourceKey={`group:${group.id}:instruction`}
                                 text={formatTemplateText(group.instruction)}
-                                components={markdownComponents}
+                                components={compactMarkdownComponents}
                                 highlights={highlights}
                                 onCreateHighlight={onCreateHighlight}
                                 onDeleteHighlight={onDeleteHighlight}
