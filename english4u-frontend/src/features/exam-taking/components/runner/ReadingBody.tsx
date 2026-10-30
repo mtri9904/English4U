@@ -129,14 +129,14 @@ export const ReadingBody = ({
                                                 key={`passage-segment-${segmentIndex}`}
                                                 style={{
                                                     display: 'grid',
-                                                    gridTemplateColumns: segment.paragraphNumber != null ? 'auto minmax(0, 1fr)' : 'minmax(0, 1fr)',
-                                                    gap: segment.paragraphNumber != null ? 10 : 0,
+                                                    gridTemplateColumns: (segment.label || segment.paragraphNumber != null) ? 'auto minmax(0, 1fr)' : 'minmax(0, 1fr)',
+                                                    gap: (segment.label || segment.paragraphNumber != null) ? 10 : 0,
                                                     alignItems: 'start',
                                                 }}
                                             >
-                                                {segment.paragraphNumber != null ? (
-                                                    <Tag color="blue" style={{ marginInlineEnd: 0, marginTop: 2 }}>
-                                                        Đoạn {segment.paragraphNumber}
+                                                {(segment.label || segment.paragraphNumber != null) ? (
+                                                    <Tag color="blue" style={{ marginInlineEnd: 0, marginTop: 2, fontWeight: 600 }}>
+                                                        {segment.label ?? `Đoạn ${segment.paragraphNumber}`}
                                                     </Tag>
                                                 ) : null}
                                                 <div

@@ -122,10 +122,41 @@ type QuestionGroupLike = {
 };
 
 export const inferQuestionGroupOptionLabelType = (group: QuestionGroupLike): OptionLabelType => {
+    // 1. If options already exist and are all single uppercase letters (A, B, C, D...):
+    // this question group is selecting paragraphs/letters, so it MUST use 'alpha',
+    // even if groupType is MATCHING_HEADINGS (e.g. headings matched to paragraph letters).
+    const firstQuestionWithOptions = group.questions?.find((q) => (q.options?.length ?? 0) > 0);
+    const existingOptions = firstQuestionWithOptions?.options;
+    if (existingOptions && existingOptions.length > 0) {
+        const allSingleLetter = existingOptions.every((opt) => /^[A-Z]$/i.test((opt.optionText ?? '').trim()));
+        if (allSingleLetter) {
+            return 'alpha';
+        }
+        const allRoman = existingOptions.every((opt) => /^[ivxlcdm]+$/i.test((opt.optionText ?? '').trim()));
+        if (allRoman) {
+            return 'roman';
+        }
+    }
+
+    // 2. Check if the question group explicitly defines optionLabelType
     if (group.optionLabelType === 'alpha' || group.optionLabelType === 'roman') {
         return group.optionLabelType;
     }
 
+    // 3. Check correct answers of the questions if available
+    const answers = group.questions?.map((q) => (q.correctAnswer ?? '').trim()).filter(Boolean) ?? [];
+    if (answers.length > 0) {
+        const hasAlphaAnswers = answers.some((ans) => /^[A-Z]$/i.test(ans) && !/^[ivxlcdm]+$/i.test(ans));
+        if (hasAlphaAnswers) {
+            return 'alpha';
+        }
+        const hasRomanAnswers = answers.some((ans) => /^[ivxlcdm]+$/i.test(ans));
+        if (hasRomanAnswers) {
+            return 'roman';
+        }
+    }
+
+    // 4. Default fallback by group type
     const gType = (group.groupType ?? '').toUpperCase();
     if (gType === 'MATCHING_HEADINGS') {
         return 'roman';

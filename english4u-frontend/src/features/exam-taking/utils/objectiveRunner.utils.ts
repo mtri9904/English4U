@@ -180,10 +180,12 @@ export const isFlowchartLikeGroup = (group: Pick<PracticeSessionQuestionGroupDto
     || (group.groupType ?? '').toUpperCase() === 'ORDERING_INFORMATION';
 
 export const getSharedSelectOptions = (group: PracticeSessionQuestionGroupDto) => {
-    const optionLabelType = getGroupOptionLabelType(group);
+    const rawOptions = getSharedOptions(group);
+    const allLetterOptions = rawOptions.length > 0 && rawOptions.every((opt) => /^[A-Z]$/i.test((opt.optionText ?? '').trim()));
+    const optionLabelType = allLetterOptions ? 'alpha' : getGroupOptionLabelType(group);
     const visualGroup = isMatchingVisualsGroup(group);
 
-    return getSharedOptions(group).map((option, index) => {
+    return rawOptions.map((option, index) => {
         const value = getOptionLabel(index, optionLabelType);
         return {
             label: visualGroup ? value : getChoiceLabel(option.optionText, index, optionLabelType),

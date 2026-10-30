@@ -1,15 +1,12 @@
 import React from 'react';
 import { Collapse, Empty } from 'antd';
 import { SoundOutlined } from '@ant-design/icons';
-import ReactMarkdown from 'react-markdown';
 import type { SectionDetailDto } from '@/features/exams/types/exam.types';
 import { formatTranscriptRangeLabel, parseListeningTranscriptEnvelope } from '@/shared/lib/listeningTranscript';
 import { parseWritingTaskAssetsData } from '@/shared/lib/writingTaskAssets';
 import { TiptapQxEditor } from '@/features/exams/components/TiptapQxEditor';
 import { SKILL_COLORS } from '../../constants/examDetail.constants';
 import {
-    markdownComponents,
-    normalizeMarkdownText,
     renderFormattedText,
 } from '../../utils/examDetail.utils';
 import { QuestionGroupBlock } from './QuestionGroupBlock';

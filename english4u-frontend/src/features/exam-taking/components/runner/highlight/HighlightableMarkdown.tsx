@@ -20,7 +20,7 @@ import {
 } from '../../../utils/highlight.utils';
 
 export const markdownComponents = {
-    p: ({ children }: any) => <p style={{ margin: '0 0 10px', color: '#334155', lineHeight: 1.7 }}>{children}</p>,
+    p: ({ children }: any) => <p style={{ margin: '0 0 10px', color: '#334155', lineHeight: 1.7, fontSize: '14px' }}>{children}</p>,
     strong: ({ children }: any) => <strong style={{ color: '#0f172a' }}>{children}</strong>,
     code: ({ children }: any) => (
         <code
@@ -37,13 +37,33 @@ export const markdownComponents = {
             {children}
         </code>
     ),
-    li: ({ children }: any) => <li style={{ marginBottom: 6, color: '#334155' }}>{children}</li>,
+    ol: ({ children }: any) => (
+        <ol style={{ margin: '0 0 10px', paddingLeft: 24, listStyleType: 'decimal', color: '#334155', lineHeight: 1.7, fontSize: '14px' }}>
+            {children}
+        </ol>
+    ),
+    ul: ({ children }: any) => (
+        <ul style={{ margin: '0 0 10px', paddingLeft: 20, listStyleType: 'disc', color: '#334155', lineHeight: 1.7, fontSize: '14px' }}>
+            {children}
+        </ul>
+    ),
+    li: ({ children }: any) => <li style={{ marginBottom: 6, color: '#334155', lineHeight: 1.7, fontSize: '14px' }}>{children}</li>,
 };
 
 export const compactMarkdownComponents = {
     ...markdownComponents,
-    p: ({ children }: any) => <p style={{ margin: 0, color: '#334155', lineHeight: 1.7 }}>{children}</p>,
-    li: ({ children }: any) => <li style={{ marginBottom: 4, color: '#334155' }}>{children}</li>,
+    p: ({ children }: any) => <p style={{ margin: 0, color: '#334155', lineHeight: 1.7, fontSize: '14px' }}>{children}</p>,
+    ol: ({ children }: any) => (
+        <ol style={{ margin: 0, paddingLeft: 24, listStyleType: 'decimal', color: '#334155', lineHeight: 1.7, fontSize: '14px' }}>
+            {children}
+        </ol>
+    ),
+    ul: ({ children }: any) => (
+        <ul style={{ margin: 0, paddingLeft: 20, listStyleType: 'disc', color: '#334155', lineHeight: 1.7, fontSize: '14px' }}>
+            {children}
+        </ul>
+    ),
+    li: ({ children }: any) => <li style={{ marginBottom: 4, color: '#334155', lineHeight: 1.7, fontSize: '14px' }}>{children}</li>,
 };
 
 export interface HighlightableMarkdownProps extends HighlightableProps {
