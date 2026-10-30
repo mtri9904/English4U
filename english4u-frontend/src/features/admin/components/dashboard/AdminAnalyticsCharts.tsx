@@ -57,8 +57,9 @@ export const AdminAnalyticsCharts: React.FC<AdminAnalyticsChartsProps> = ({
     attemptsBySkill,
 }) => {
     return (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 20 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 340px), 1fr))', gap: 20 }}>
             <motion.div variants={item} style={{
+                minWidth: 0,
                 background: '#fff', borderRadius: 20, padding: '24px 20px',
                 border: '1px solid #f1f5f9',
                 boxShadow: '0 1px 3px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.04)',
@@ -88,6 +89,7 @@ export const AdminAnalyticsCharts: React.FC<AdminAnalyticsChartsProps> = ({
             </motion.div>
 
             <motion.div variants={item} style={{
+                minWidth: 0,
                 background: '#fff', borderRadius: 20, padding: '24px 20px',
                 border: '1px solid #f1f5f9',
                 boxShadow: '0 1px 3px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.04)',

@@ -131,7 +131,7 @@ export const AdminStatCards: React.FC<AdminStatCardsProps> = ({
     isAttemptsLoading,
 }) => {
     return (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 18, alignItems: 'stretch' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 210px), 1fr))', gap: 18, alignItems: 'stretch' }}>
             <StatCard
                 title="Tổng học viên"
                 value={isUserStatsLoading ? '...' : (userStats?.totalUsers ?? 0).toLocaleString()}

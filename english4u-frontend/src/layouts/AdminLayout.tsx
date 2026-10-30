@@ -223,12 +223,13 @@ export const AdminLayout: React.FC = () => {
     ];
 
     return (
-        <Layout style={{ minHeight: '100vh', display: 'flex' }}>
+        <Layout hasSider style={{ minHeight: '100vh' }}>
             <Sider
                 trigger={null}
                 collapsible
                 collapsed={collapsed}
                 width={260}
+                collapsedWidth={80}
                 theme="light"
                 style={{
                     borderRight: '1px solid #f0f0f0',
@@ -238,7 +239,8 @@ export const AdminLayout: React.FC = () => {
                     top: 0,
                     bottom: 0,
                     zIndex: 1001,
-                    overflow: 'auto'
+                    overflow: 'auto',
+                    background: '#fff',
                 }}
             >
                 <div style={{ height: 64, display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid #f0f0f0' }}>
@@ -254,7 +256,13 @@ export const AdminLayout: React.FC = () => {
                     style={{ borderRight: 0, marginTop: '8px' }}
                 />
             </Sider>
-            <Layout style={{ marginLeft: collapsed ? 80 : 260, transition: 'margin-left 0.2s', minHeight: '100vh' }}>
+            <Layout style={{
+                marginLeft: collapsed ? 80 : 260,
+                transition: 'margin-left 0.2s cubic-bezier(0.2, 0, 0, 1)',
+                minHeight: '100vh',
+                minWidth: 0,
+                overflowX: 'hidden',
+            }}>
                 <Header style={{
                     padding: '0 24px',
                     background: colorBgContainer,
@@ -265,13 +273,22 @@ export const AdminLayout: React.FC = () => {
                     position: 'sticky',
                     top: 0,
                     zIndex: 1000,
-                    width: '100%'
+                    height: 64,
                 }}>
                     <Button
                         type="text"
+                        aria-label={collapsed ? 'Mở thanh bên' : 'Thu gọn thanh bên'}
                         icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
                         onClick={() => setCollapsed(!collapsed)}
-                        style={{ fontSize: '16px', width: 64, height: 64, marginLeft: '-24px' }}
+                        style={{
+                            fontSize: '18px',
+                            width: 40,
+                            height: 40,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            borderRadius: 8,
+                        }}
                     />
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
@@ -303,7 +320,11 @@ export const AdminLayout: React.FC = () => {
                         </Dropdown>
                     </div>
                 </Header>
-                <Content style={{ margin: '24px', padding: 24, minHeight: 280, background: colorBgContainer, borderRadius: borderRadiusLG }}>
+                <Content style={{
+                    margin: '24px',
+                    minHeight: 280,
+                    minWidth: 0,
+                }}>
                     <Outlet />
                 </Content>
                 <PdfGenerationProgressWidget />
