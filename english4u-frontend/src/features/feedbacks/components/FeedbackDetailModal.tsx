@@ -243,13 +243,14 @@ export const FeedbackDetailModal: React.FC<FeedbackDetailModalProps> = ({
                                         {detail.attachments.map((imgUrl, index) => (
                                             <div
                                                 key={index}
-                                                className="relative aspect-video rounded-xl overflow-hidden border border-slate-700/80 bg-slate-900 group"
+                                                className="relative aspect-video rounded-xl overflow-hidden border border-slate-700/80 bg-slate-950 flex items-center justify-center p-1.5 group"
                                             >
                                                 <Image
                                                     src={formatMediaUrl(imgUrl)}
                                                     alt={`evidence-${index}`}
-                                                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                                    wrapperClassName="w-full h-full"
+                                                    className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
+                                                    wrapperClassName="w-full h-full !flex !items-center !justify-center"
+                                                    style={{ objectFit: 'contain', width: '100%', height: '100%' }}
                                                 />
                                             </div>
                                         ))}

@@ -468,12 +468,12 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({
                                         {uploadedImages.map((img, idx) => (
                                             <div
                                                 key={idx}
-                                                className="relative aspect-square rounded-lg overflow-hidden border border-slate-700 bg-slate-900 group"
+                                                className="relative aspect-square rounded-lg overflow-hidden border border-slate-700 bg-slate-950 flex items-center justify-center p-1 group"
                                             >
                                                 <img
                                                     src={img.previewUrl}
                                                     alt={`preview-${idx}`}
-                                                    className="w-full h-full object-cover"
+                                                    className="w-full h-full object-contain"
                                                 />
                                                 <button
                                                     type="button"

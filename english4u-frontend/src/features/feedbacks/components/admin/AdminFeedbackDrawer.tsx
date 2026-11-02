@@ -196,13 +196,14 @@ export const AdminFeedbackDrawer: React.FC<AdminFeedbackDrawerProps> = ({
                                     {detail.attachments.map((url, i) => (
                                         <div
                                             key={i}
-                                            className="aspect-video rounded-lg overflow-hidden border border-slate-200 bg-slate-100"
+                                            className="aspect-video rounded-lg overflow-hidden border border-slate-200 bg-slate-950 flex items-center justify-center p-1.5 group"
                                         >
                                             <Image
                                                 src={formatMediaUrl(url)}
                                                 alt={`attachment-${i}`}
-                                                className="w-full h-full object-cover"
-                                                wrapperClassName="w-full h-full"
+                                                className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
+                                                wrapperClassName="w-full h-full !flex !items-center !justify-center"
+                                                style={{ objectFit: 'contain', width: '100%', height: '100%' }}
                                             />
                                         </div>
                                     ))}
