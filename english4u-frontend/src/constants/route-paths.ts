@@ -33,6 +33,7 @@ export const ROUTE_PATHS = {
     ADMIN_GAMIFICATION: '/admin/gamification',
     ADMIN_PROFILE: '/admin/profile',
     ADMIN_NOTIFICATIONS: '/admin/notifications',
+    ADMIN_FEEDBACKS: '/admin/feedbacks',
 
     // Client Learning Application Portal
     APP_ROOT: '/app',

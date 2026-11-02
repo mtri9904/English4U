@@ -73,6 +73,12 @@ export const QuestionGroupsEditor = ({
                 const groupStartNum = runningQNum;
                 runningQNum += group.questions.length;
 
+                const maxLimit = maxQuestionCount ?? 40;
+                const otherQuestionsCount = totalQuestionCount - (group.questions?.length ?? 0);
+                const availableFromTotal = maxLimit - otherQuestionsCount;
+                const availableFromStart = maxLimit - groupStartNum + 1;
+                const maxAllowedQuestions = Math.max(0, Math.min(availableFromTotal, availableFromStart));
+
                 return (
                     <QuestionGroupCard
                         key={groupIdx}
@@ -82,7 +88,9 @@ export const QuestionGroupsEditor = ({
                         groupStartNum={groupStartNum}
                         skill={skill}
                         typeOptions={typeOptions}
-                        canAddQuestion={canAddQuestion}
+                        canAddQuestion={canAddQuestion && groupStartNum <= maxLimit}
+                        maxAllowedQuestions={maxAllowedQuestions}
+                        maxQuestionCount={maxLimit}
                         warnQuestionLimit={warnQuestionLimit}
                         wouldExceedQuestionLimit={wouldExceedQuestionLimit}
                         onUpdateGroups={onUpdate}
@@ -101,7 +109,7 @@ export const QuestionGroupsEditor = ({
                 type="default"
                 icon={<PlusOutlined />}
                 block
-                disabled={!canAddQuestion}
+                disabled={!canAddQuestion || runningQNum > (maxQuestionCount ?? 40)}
                 style={{
                     background: '#f1f5f9',
                     borderColor: '#cbd5e1',
@@ -114,7 +122,7 @@ export const QuestionGroupsEditor = ({
                     borderWidth: '2px',
                 }}
                 onClick={() => {
-                    if (!canAddQuestion) {
+                    if (!canAddQuestion || runningQNum > (maxQuestionCount ?? 40)) {
                         warnQuestionLimit();
                         return;
                     }

@@ -12,7 +12,20 @@ export const REALTIME_BROWSER_EVENT = 'english4u:realtime-event';
 const RECONNECT_BASE_DELAY_MS = 1_000;
 const RECONNECT_MAX_DELAY_MS = 15_000;
 const KEEPALIVE_INTERVAL_MS = 25_000;
-const INVALIDATE_THROTTLE_MS = 600;
+const REALTIME_ECHO_SUPPRESSION_MS = 3_500;
+
+// Tracks timestamps of invalidations performed by local mutations to prevent duplicate fetches when WebSocket echoes the change
+const globalInvalidationTimestamps: Record<string, number> = {};
+
+/**
+ * Mark a scope as recently invalidated by a local user action (e.g. mutation onSuccess).
+ * This prevents the incoming WebSocket event from triggering an immediate redundant refetch.
+ */
+export const markRealtimeScopeInvalidated = (
+    scope: 'exams.changed' | 'notifications.changed' | 'users.presence.changed'
+) => {
+    globalInvalidationTimestamps[scope] = Date.now();
+};
 
 const resolveRealtimeWsUrl = () => {
     const apiBaseUrl = (import.meta as any).env.VITE_API_BASE_URL || 'http://localhost:5237/api';
@@ -32,7 +45,6 @@ export const useRealtimeSync = (enabled = true) => {
     const reconnectTimerRef = useRef<number | null>(null);
     const keepaliveTimerRef = useRef<number | null>(null);
     const reconnectAttemptRef = useRef(0);
-    const lastInvalidateAtRef = useRef<Record<string, number>>({});
 
     useEffect(() => {
         if (!enabled) {
@@ -61,12 +73,13 @@ export const useRealtimeSync = (enabled = true) => {
 
         const invalidateThrottled = (key: string, invalidate: () => void) => {
             const now = Date.now();
-            const lastAt = lastInvalidateAtRef.current[key] ?? 0;
-            if (now - lastAt < INVALIDATE_THROTTLE_MS) {
+            const lastAt = globalInvalidationTimestamps[key] ?? 0;
+            if (now - lastAt < REALTIME_ECHO_SUPPRESSION_MS) {
+                // Suppressed: local mutation already invalidated this query or a recent event was processed
                 return;
             }
 
-            lastInvalidateAtRef.current[key] = now;
+            globalInvalidationTimestamps[key] = now;
             invalidate();
         };
 

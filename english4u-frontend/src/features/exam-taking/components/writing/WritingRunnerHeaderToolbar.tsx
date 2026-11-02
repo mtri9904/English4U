@@ -1,7 +1,7 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
 import { Button } from 'antd';
-import { ArrowLeftOutlined, ClockCircleOutlined, SaveOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, ClockCircleOutlined } from '@ant-design/icons';
 import { getSkillLabel } from '../../utils/sessionRouting.utils';
 
 interface WritingRunnerHeaderToolbarProps {
@@ -9,7 +9,7 @@ interface WritingRunnerHeaderToolbarProps {
     examTitle: string;
     skillType: string;
     timerText: string;
-    autosaveLabel: string;
+    autosaveLabel?: string;
     isPending: boolean;
     onBack: () => void;
     onFinish: () => void;
@@ -50,10 +50,6 @@ export const WritingRunnerHeaderToolbar: React.FC<WritingRunnerHeaderToolbarProp
                 <span className="writing-runner-header-chip">
                     <ClockCircleOutlined />
                     {timerText}
-                </span>
-                <span className="writing-runner-header-chip writing-runner-save-chip">
-                    <SaveOutlined />
-                    {autosaveLabel}
                 </span>
             </div>
             <Button

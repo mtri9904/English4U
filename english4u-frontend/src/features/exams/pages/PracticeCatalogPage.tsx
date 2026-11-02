@@ -1,17 +1,17 @@
-import { useMemo, useState, useEffect, type FC } from 'react';
+import { useMemo, type FC } from 'react';
 import {
     Button,
     Card,
     Col,
     Empty,
     Input,
-    Pagination,
     Row,
     Select,
     Space,
     Tag,
     Typography,
 } from 'antd';
+import { AppPagination } from '@/components/AppPagination';
 import {
     ClockCircleOutlined,
     FileSearchOutlined,
@@ -19,8 +19,10 @@ import {
     SearchOutlined,
 } from '@ant-design/icons';
 import { motion } from 'framer-motion';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
+import { useUrlFilters } from '@/shared/hooks';
 import { PageLoadingState, PageErrorState } from '@/components';
+import { APP_EMPTY_IMAGE } from '@/components/AppEmpty';
 import { usePracticeExamsQuery } from '@/features/exams/hooks/useExamQueries';
 import { getSessionRunnerPath } from '@/features/exam-taking';
 import { formatDateTimeToMinute } from '@/shared/lib/dateTime';
@@ -57,31 +59,44 @@ const cardVariants = {
     },
 };
 
+interface PracticeUrlFilters {
+    search: string;
+    skill: string;
+    type: string;
+    page: number;
+}
+
+const DEFAULT_PRACTICE_FILTERS: PracticeUrlFilters = {
+    search: '',
+    skill: 'ALL',
+    type: 'ALL',
+    page: 1,
+};
+
 export const ClientPracticePage: FC = () => {
     const navigate = useNavigate();
-    const [searchParams, setSearchParams] = useSearchParams();
+    const {
+        filters,
+        getSearchInputValue,
+        setFilter,
+        resetFilters,
+    } = useUrlFilters<PracticeUrlFilters>({
+        defaultValues: DEFAULT_PRACTICE_FILTERS,
+        pageKey: 'page',
+    });
 
-    const [currentPage, setCurrentPage] = useState(1);
     const pageSize = 9;
 
-    const searchText = searchParams.get('search') ?? '';
-    const selectedSkill = searchParams.get('skill') ?? 'ALL';
-    const selectedExamType = searchParams.get('type') ?? 'ALL';
-
     const { data: pagedData, isLoading, isError, refetch } = usePracticeExamsQuery({
-        search: searchText.trim() || undefined,
-        skill: selectedSkill !== 'ALL' ? selectedSkill : undefined,
-        examType: selectedExamType !== 'ALL' ? selectedExamType : undefined,
-        pageNumber: currentPage,
+        search: filters.search.trim() || undefined,
+        skill: filters.skill !== 'ALL' ? filters.skill : undefined,
+        examType: filters.type !== 'ALL' ? filters.type : undefined,
+        pageNumber: filters.page,
         pageSize,
     });
 
     const exams = pagedData?.items ?? [];
     const totalCount = pagedData?.totalCount ?? 0;
-
-    useEffect(() => {
-        setCurrentPage(1);
-    }, [searchText, selectedSkill, selectedExamType]);
 
     const skillOptions = useMemo(
         () => ['READING', 'LISTENING', 'WRITING', 'SPEAKING'],
@@ -92,26 +107,6 @@ export const ClientPracticePage: FC = () => {
         () => ['IELTS'],
         []
     );
-
-    const updateFilter = (key: string, value?: string) => {
-        const nextParams = new URLSearchParams(searchParams);
-        if (!value || value === 'ALL') {
-            nextParams.delete(key);
-        } else {
-            nextParams.set(key, value);
-        }
-
-        if (key !== 'search') {
-            const trimmedSearch = searchText.trim();
-            if (trimmedSearch) {
-                nextParams.set('search', trimmedSearch);
-            } else {
-                nextParams.delete('search');
-            }
-        }
-
-        setSearchParams(nextParams);
-    };
 
     const practiceCards = exams.map((exam) => {
         const primarySkill = getPrimarySkill(exam);
@@ -382,7 +377,7 @@ export const ClientPracticePage: FC = () => {
                             <Space size={[8, 8]} wrap style={{ marginTop: 8 }}>
                                 {(['READING', 'LISTENING', 'WRITING', 'SPEAKING'] as const).map((skill) => {
                                     const theme = getSkillTheme(skill);
-                                    const selected = normalizeToken(selectedSkill) === skill;
+                                    const selected = normalizeToken(filters.skill) === skill;
                                     return (
                                         <motion.div
                                             key={skill}
@@ -391,7 +386,7 @@ export const ClientPracticePage: FC = () => {
                                         >
                                             <Button
                                                 type={selected ? 'primary' : 'default'}
-                                                onClick={() => updateFilter('skill', selected ? 'ALL' : skill)}
+                                                onClick={() => setFilter('skill', selected ? 'ALL' : skill)}
                                                 icon={theme.icon}
                                                 style={selected ? {
                                                     borderRadius: 999,
@@ -443,8 +438,8 @@ export const ClientPracticePage: FC = () => {
                     <Col xs={24} md={12} lg={10}>
                         <Input
                             allowClear
-                            value={searchText}
-                            onChange={(event) => updateFilter('search', event.target.value)}
+                            value={getSearchInputValue('search')}
+                            onChange={(event) => setFilter('search', event.target.value)}
                             prefix={<SearchOutlined style={{ color: '#94a3b8' }} />}
                             placeholder="Tìm kiếm theo tên đề thi hoặc mô tả..."
                             size="large"
@@ -454,8 +449,8 @@ export const ClientPracticePage: FC = () => {
                     <Col xs={24} md={6} lg={5}>
                         <Select
                             size="large"
-                            value={selectedSkill}
-                            onChange={(value) => updateFilter('skill', value)}
+                            value={filters.skill}
+                            onChange={(value) => setFilter('skill', value)}
                             style={{ width: '100%' }}
                             dropdownStyle={{ borderRadius: 12 }}
                             options={[
@@ -470,8 +465,8 @@ export const ClientPracticePage: FC = () => {
                     <Col xs={24} md={6} lg={5}>
                         <Select
                             size="large"
-                            value={selectedExamType}
-                            onChange={(value) => updateFilter('type', value)}
+                            value={filters.type}
+                            onChange={(value) => setFilter('type', value)}
                             style={{ width: '100%' }}
                             dropdownStyle={{ borderRadius: 12 }}
                             options={[
@@ -487,7 +482,7 @@ export const ClientPracticePage: FC = () => {
                         <Button
                             size="large"
                             style={{ width: '100%', borderRadius: 14, fontWeight: 600, color: '#475569' }}
-                            onClick={() => setSearchParams(new URLSearchParams())}
+                            onClick={resetFilters}
                         >
                             Xóa bộ lọc
                         </Button>
@@ -505,7 +500,8 @@ export const ClientPracticePage: FC = () => {
             ) : exams.length === 0 ? (
                 <Card style={{ borderRadius: 24, border: '1px solid rgba(226, 232, 240, 0.8)', padding: '40px 0' }}>
                     <Empty
-                        image={Empty.PRESENTED_IMAGE_SIMPLE}
+                        image={APP_EMPTY_IMAGE}
+                        imageStyle={{ height: 96 }}
                         description="Chưa có đề phù hợp với bộ lọc hiện tại."
                     />
                 </Card>
@@ -522,22 +518,15 @@ export const ClientPracticePage: FC = () => {
                     </motion.div>
 
                     {totalCount > pageSize && (
-                        <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12 }}>
-                            <Pagination
-                                current={currentPage}
-                                pageSize={pageSize}
-                                total={totalCount}
-                                onChange={(page) => setCurrentPage(page)}
-                                showSizeChanger={false}
-                                style={{
-                                    background: 'rgba(255, 255, 255, 0.6)',
-                                    padding: '8px 16px',
-                                    borderRadius: 16,
-                                    border: '1px solid rgba(226, 232, 240, 0.8)',
-                                    boxShadow: '0 4px 12px rgba(148, 163, 184, 0.05)',
-                                }}
-                            />
-                        </div>
+                        <AppPagination
+                            current={filters.page}
+                            pageSize={pageSize}
+                            total={totalCount}
+                            onChange={(page) => setFilter('page', page)}
+                            entityLabel="đề luyện tập"
+                            align="center"
+                            showSizeChanger={false}
+                        />
                     )}
                 </div>
             )}

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Select, Typography, Empty } from 'antd';
+import { APP_EMPTY_IMAGE } from '@/components/AppEmpty';
 import { motion } from 'framer-motion';
 import {
     AreaChart,
@@ -61,7 +62,7 @@ export const ProgressPerformanceChart: React.FC<ProgressPerformanceChartProps> =
             </div>
 
             {chartData.length === 0 ? (
-                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Không có dữ liệu điểm số cho kỹ năng này." />
+                <Empty image={APP_EMPTY_IMAGE} imageStyle={{ height: 88 }} description="Không có dữ liệu điểm số cho kỹ năng này." />
             ) : (
                 <div className="chart-wrap">
                     <ResponsiveContainer width="100%" height={280}>

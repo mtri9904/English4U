@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type FC } from 'react';
 import { Alert, Button, Card, Empty, Space } from 'antd';
 import { useNavigate, useParams } from 'react-router-dom';
 import { PageLoadingState, PageErrorState } from '@/components';
+import { APP_EMPTY_IMAGE } from '@/components/AppEmpty';
 import {
     usePracticeSessionQuery,
     useUpdatePracticeSessionAnswersMutation,
@@ -276,8 +277,8 @@ export const ClientWritingSessionPage: FC = () => {
                         onChange={(nextValue) => handleAnswerChange(activeTask.id, nextValue)}
                     />
                 ) : (
-                    <Card style={{ borderRadius: 22 }}>
-                        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Đề này chưa có Writing Task." />
+                    <Card style={{ borderRadius: 22, textAlign: 'center' }}>
+                        <Empty image={APP_EMPTY_IMAGE} imageStyle={{ height: 88 }} description="Đề này chưa có Writing Task." />
                     </Card>
                 )}
 

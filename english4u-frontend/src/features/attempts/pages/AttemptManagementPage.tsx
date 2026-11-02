@@ -1,12 +1,15 @@
 import { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Drawer, Skeleton, Empty } from 'antd';
+import { useUrlFilters } from '@/shared/hooks';
 import {
     Search, RefreshCw, Eye, CheckCircle2, Clock3,
     XCircle, Activity, Award, Users, BookOpen,
-    ChevronLeft, ChevronRight, Calendar, Timer,
+    Calendar, Timer,
     Hash, Target, AlignLeft,
 } from 'lucide-react';
+import { AppPagination } from '@/components/AppPagination';
+import { APP_EMPTY_IMAGE } from '@/components/AppEmpty';
 import { useAdminAttemptDetailQuery, useAdminAttemptsQuery } from '../hooks/useAttemptQueries';
 import type { AdminAttemptAnswerDto } from '../types/attempt.types';
 import { formatDateTimeToMinute } from '@/shared/lib/dateTime';
@@ -78,18 +81,40 @@ function MiniStat({ label, value, icon: Icon, color }: MiniStatProps) {
 }
 
 
+interface AttemptUrlFilters {
+    search: string;
+    status: string;
+    page: number;
+    pageSize: number;
+}
+
+const DEFAULT_ATTEMPT_FILTERS: AttemptUrlFilters = {
+    search: '',
+    status: 'ALL',
+    page: 1,
+    pageSize: 10,
+};
+
 export const AttemptManagementPage = () => {
-    const [search, setSearch] = useState('');
-    const [selectedStatus, setStatus] = useState('ALL');
+    const {
+        filters,
+        getSearchInputValue,
+        setFilter,
+        setFilters,
+    } = useUrlFilters<AttemptUrlFilters>({
+        defaultValues: DEFAULT_ATTEMPT_FILTERS,
+        pageKey: 'page',
+    });
+
     const [selectedSessionId, setSession] = useState('');
-    const [page, setPage] = useState(1);
 
     const queryParams = useMemo(() => ({
-        search: search.trim() || undefined,
-        status: selectedStatus === 'ALL' ? undefined : selectedStatus,
-        pageNumber: page,
-        pageSize: PAGE_SIZE,
-    }), [search, selectedStatus, page]);
+        search: filters.search.trim() || undefined,
+        searchTerm: filters.search.trim() || undefined,
+        status: filters.status === 'ALL' ? undefined : filters.status,
+        pageNumber: filters.page,
+        pageSize: filters.pageSize,
+    }), [filters.search, filters.status, filters.page, filters.pageSize]);
 
     const { data: pagedData, isLoading, refetch, isFetching } = useAdminAttemptsQuery(queryParams);
     const attempts = pagedData?.items ?? [];
@@ -110,9 +135,6 @@ export const AttemptManagementPage = () => {
 
     const totalPages = Math.ceil(totalCount / PAGE_SIZE);
     const paginated = attempts;
-
-    const handleSearch = (v: string) => { setSearch(v); setPage(1); };
-    const handleStatus = (v: string) => { setStatus(v); setPage(1); };
 
 
     const DetailDrawer = () => {
@@ -198,7 +220,12 @@ export const AttemptManagementPage = () => {
                             </div>
                             <div style={{ maxHeight: 420, overflowY: 'auto', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                                 {detail.answers.length === 0 ? (
-                                    <Empty description="Chưa có câu trả lời nào" image={Empty.PRESENTED_IMAGE_SIMPLE} style={{ margin: '24px 0' }} />
+                                    <Empty
+                                        description="Chưa có câu trả lời nào"
+                                        image={APP_EMPTY_IMAGE}
+                                        imageStyle={{ height: 80 }}
+                                        style={{ margin: '24px 0' }}
+                                    />
                                 ) : detail.answers.map((ans: AdminAttemptAnswerDto) => (
                                     <div key={ans.questionId} style={{
                                         background: '#f8fafc', borderRadius: 12, padding: '12px 14px',
@@ -300,8 +327,8 @@ export const AttemptManagementPage = () => {
                         <div style={{ position: 'relative' }}>
                             <Search size={15} color="#94a3b8" style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
                             <input
-                                value={search}
-                                onChange={e => handleSearch(e.target.value)}
+                                value={getSearchInputValue('search')}
+                                onChange={e => setFilter('search', e.target.value)}
                                 placeholder="Tìm học viên, email, đề thi..."
                                 style={{
                                     paddingLeft: 34, paddingRight: 12, height: 38,
@@ -317,8 +344,8 @@ export const AttemptManagementPage = () => {
 
 
                         <select
-                            value={selectedStatus}
-                            onChange={e => handleStatus(e.target.value)}
+                            value={filters.status}
+                            onChange={e => setFilter('status', e.target.value)}
                             style={{
                                 height: 38, padding: '0 12px', borderRadius: 10,
                                 border: '1px solid #e2e8f0', background: '#f8fafc',
@@ -353,7 +380,12 @@ export const AttemptManagementPage = () => {
                         <Skeleton active paragraph={{ rows: 8 }} />
                     </div>
                 ) : attempts.length === 0 ? (
-                    <Empty description="Không có lượt thi nào khớp bộ lọc hiện tại" image={Empty.PRESENTED_IMAGE_SIMPLE} style={{ padding: '48px 0' }} />
+                    <Empty
+                        description="Không có lượt thi nào khớp bộ lọc hiện tại"
+                        image={APP_EMPTY_IMAGE}
+                        imageStyle={{ height: 96 }}
+                        style={{ padding: '48px 0' }}
+                    />
                 ) : (
                     <>
                         <div style={{ overflowX: 'auto' }}>
@@ -485,62 +517,17 @@ export const AttemptManagementPage = () => {
                         </div>
 
 
-                        {totalPages > 1 && (
-                            <div style={{ padding: '14px 24px', borderTop: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
-                                    Hiển thị {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, totalCount)} / {totalCount} lượt thi
-                                </span>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                    <motion.button
-                                        whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
-                                        onClick={() => setPage(p => Math.max(1, p - 1))}
-                                        disabled={page === 1}
-                                        style={{
-                                            width: 32, height: 32, borderRadius: 8, border: '1px solid #e2e8f0',
-                                            background: page === 1 ? '#f8fafc' : '#fff',
-                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                            cursor: page === 1 ? 'not-allowed' : 'pointer',
-                                            opacity: page === 1 ? 0.4 : 1,
-                                        }}
-                                    >
-                                        <ChevronLeft size={14} color="#475569" />
-                                    </motion.button>
-                                    {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
-                                        const p = totalPages <= 5 ? i + 1 : Math.max(1, Math.min(page - 2, totalPages - 4)) + i;
-                                        return (
-                                            <motion.button
-                                                key={p}
-                                                whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
-                                                onClick={() => setPage(p)}
-                                                style={{
-                                                    width: 32, height: 32, borderRadius: 8,
-                                                    border: p === page ? 'none' : '1px solid #e2e8f0',
-                                                    background: p === page ? 'linear-gradient(135deg,#6366f1,#8b5cf6)' : '#fff',
-                                                    color: p === page ? '#fff' : '#475569',
-                                                    fontWeight: p === page ? 800 : 500,
-                                                    fontSize: '0.8rem', cursor: 'pointer',
-                                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                }}
-                                            >
-                                                {p}
-                                            </motion.button>
-                                        );
-                                    })}
-                                    <motion.button
-                                        whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
-                                        onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                                        disabled={page === totalPages}
-                                        style={{
-                                            width: 32, height: 32, borderRadius: 8, border: '1px solid #e2e8f0',
-                                            background: page === totalPages ? '#f8fafc' : '#fff',
-                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                            cursor: page === totalPages ? 'not-allowed' : 'pointer',
-                                            opacity: page === totalPages ? 0.4 : 1,
-                                        }}
-                                    >
-                                        <ChevronRight size={14} color="#475569" />
-                                    </motion.button>
-                                </div>
+                        {totalCount > 0 && (
+                            <div style={{ borderTop: '1px solid #f1f5f9' }}>
+                                <AppPagination
+                                    current={filters.page}
+                                    pageSize={filters.pageSize}
+                                    total={totalCount}
+                                    onChange={(p, s) => setFilters({ page: p, pageSize: s })}
+                                    entityLabel="lượt thi"
+                                    align="right"
+                                    showSizeChanger={true}
+                                />
                             </div>
                         )}
                     </>

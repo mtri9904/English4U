@@ -4,6 +4,9 @@ export * from './types/exam.types';
 // Constants
 export * from './constants/exam.constants';
 
+// Configs
+export * from './configs/exam.columns';
+
 // Utils
 export * from './utils/exam.utils';
 export * from './utils/examEditor.utils';

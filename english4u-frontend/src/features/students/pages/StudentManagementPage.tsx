@@ -11,21 +11,17 @@ import {
     Space,
     Table,
     Tag,
-    Tooltip,
     message,
     Spin,
 } from 'antd';
-import type { ColumnsType } from 'antd/es/table';
 import {
-    DeleteOutlined,
-    EyeOutlined,
     SearchOutlined,
-    SafetyCertificateOutlined,
     SyncOutlined,
     TrophyOutlined,
     UserOutlined,
 } from '@ant-design/icons';
 import { Activity, Crown, Sparkles, Users } from 'lucide-react';
+import { createTablePagination } from '@/components/AppPagination';
 import {
     useAdminStatsQuery,
     useAdminUsersQuery,
@@ -33,34 +29,15 @@ import {
     useToggleUserStatusMutation,
     useDeleteAdminUserMutation,
     useUpdateUserRoleMutation,
-    type UserOverviewDto
 } from '@/features/students';
 import { Modal } from 'antd';
 import { formatDateTimeToMinute } from '@/shared/lib/dateTime';
+import { useUrlFilters } from '@/shared/hooks';
 
 const { confirm } = Modal;
 
 import { scoreColor, getRoleVisual } from '../utils/student.utils';
-const roleOptions = ['Student', 'Admin', 'Teacher', 'ContentCreator'].map((role) => {
-    const visual = getRoleVisual(role);
-    return {
-        value: role,
-        label: (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                <span
-                    style={{
-                        width: 8,
-                        height: 8,
-                        borderRadius: 999,
-                        background: visual.color,
-                        flexShrink: 0,
-                    }}
-                />
-                <span style={{ color: '#0f172a', fontWeight: 600 }}>{visual.label}</span>
-            </span>
-        ),
-    };
-});
+import { createStudentColumns } from '../configs/student.columns';
 
 const containerVariants = {
     hidden: { opacity: 0 },
@@ -75,19 +52,41 @@ const itemVariants = {
     visible: { opacity: 1, y: 0 },
 };
 
+interface StudentUrlFilters {
+    search: string;
+    status: 'ALL' | 'ACTIVE' | 'LOCKED';
+    page: number;
+    pageSize: number;
+}
+
+const DEFAULT_STUDENT_FILTERS: StudentUrlFilters = {
+    search: '',
+    status: 'ALL',
+    page: 1,
+    pageSize: 10,
+};
+
 export const StudentManagementPage = () => {
-    const [searchText, setSearchText] = useState('');
-    const [statusFilter, setStatusFilter] = useState<boolean | 'ALL'>('ALL');
-    const [page, setPage] = useState(1);
-    const [pageSize, setPageSize] = useState(10);
+    const {
+        filters,
+        getSearchInputValue,
+        setFilter,
+        setFilters,
+        resetFilters,
+    } = useUrlFilters<StudentUrlFilters>({
+        defaultValues: DEFAULT_STUDENT_FILTERS,
+        pageKey: 'page',
+    });
+
     const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
 
     const queryParams = useMemo(() => ({
-        pageNumber: page,
-        pageSize,
-        searchTerm: searchText,
-        isActive: statusFilter === 'ALL' ? undefined : statusFilter,
-    }), [page, pageSize, searchText, statusFilter]);
+        pageNumber: filters.page,
+        pageSize: filters.pageSize,
+        searchTerm: filters.search.trim() || undefined,
+        search: filters.search.trim() || undefined,
+        isActive: filters.status === 'ALL' ? undefined : filters.status === 'ACTIVE',
+    }), [filters]);
 
 
     const { data: stats, isLoading: isStatsLoading } = useAdminStatsQuery({
@@ -134,152 +133,33 @@ export const StudentManagementPage = () => {
         });
     };
 
-    const columns: ColumnsType<UserOverviewDto> = [
-        {
-            title: 'Học viên',
-            key: 'student',
-            render: (_, record) => (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <Avatar
-                        size={42}
-                        src={record.avatarUrl}
-                        style={{
-                            background: 'linear-gradient(135deg, #0ea5e9 0%, #6366f1 100%)',
-                            fontWeight: 700,
-                        }}
-                    >
-                        {record.displayName?.charAt(0) || record.email.charAt(0).toUpperCase()}
-                    </Avatar>
-                    <div>
-                        <div style={{ fontWeight: 700, color: '#0f172a' }}>{record.displayName || 'Chưa đặt tên'}</div>
-                        <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{record.email}</div>
-                    </div>
-                </div>
-            ),
-        },
-        {
-            title: 'Vai trò',
-            dataIndex: 'roleName',
-            key: 'role',
-            width: 160,
-            onCell: () => ({ style: { whiteSpace: 'nowrap' } }),
-            onHeaderCell: () => ({ style: { whiteSpace: 'nowrap' } }),
-            render: (role: string, record) => (
-                (() => {
-                    const visual = getRoleVisual(role);
-                    return (
-                        <div
-                            style={{
-                                borderRadius: 999,
-                                border: `1px solid ${visual.border}`,
-                                background: visual.bg,
-                                padding: '2px 8px',
-                                minWidth: 132,
-                            }}
-                        >
-                            <Select
-                                value={role}
-                                style={{ width: '100%' }}
-                                onChange={async (newRole) => {
-                                    try {
-                                        await updateUserRoleMutation.mutateAsync({ id: record.id, payload: { role: newRole } });
-                                        message.success(`Đã cập nhật vai trò: ${getRoleVisual(newRole).label}`);
-                                    } catch {
-                                        message.error('Cập nhật vai trò thất bại');
-                                    }
-                                }}
-                                loading={updateUserRoleMutation.isPending && updateUserRoleMutation.variables?.id === record.id}
-                                options={roleOptions}
-                                variant="borderless"
-                                suffixIcon={<SafetyCertificateOutlined style={{ color: visual.color }} />}
-                            />
-                        </div>
-                    );
-                })()
-            ),
-        },
-        {
-            title: 'Trạng thái',
-            key: 'status',
-            width: 180,
-            onCell: () => ({ style: { whiteSpace: 'nowrap' } }),
-            onHeaderCell: () => ({ style: { whiteSpace: 'nowrap' } }),
-            render: (_, record) => {
-                if (!record.isActive) {
-                    return <Badge color="#ef4444" text="Đã khóa" />;
-                }
+    const handleUpdateRole = async (id: string, newRole: string) => {
+        try {
+            await updateUserRoleMutation.mutateAsync({ id, payload: { role: newRole } });
+            message.success(`Đã cập nhật vai trò: ${getRoleVisual(newRole).label}`);
+        } catch {
+            message.error('Cập nhật vai trò thất bại');
+        }
+    };
 
-                return (
-                    <Badge
-                        color={record.isOnline ? '#16a34a' : '#64748b'}
-                        text={record.isOnline ? 'Đang hoạt động' : 'Không hoạt động'}
-                    />
-                );
-            },
-        },
-        {
-            title: 'Điểm TB',
-            key: 'avgScore',
-            width: 140,
-            onCell: () => ({ style: { whiteSpace: 'nowrap' } }),
-            onHeaderCell: () => ({ style: { whiteSpace: 'nowrap' } }),
-            render: (_, record) => (
-                <div>
-                    <div style={{ fontWeight: 700, fontSize: '0.8125rem', color: scoreColor(record.averageScore) }}>
-                        {record.averageScore > 0 ? `${record.averageScore.toFixed(1)} Band` : 'Chưa có điểm'}
-                    </div>
-                </div>
-            ),
-        },
-        {
-            title: 'Lần cuối hoạt động',
-            dataIndex: 'lastSeenAt',
-            key: 'lastActiveAt',
-            width: 200,
-            onCell: () => ({ style: { whiteSpace: 'nowrap' } }),
-            onHeaderCell: () => ({ style: { whiteSpace: 'nowrap' } }),
-            render: (value: string | null) => (
-                <span style={{ color: '#475569', fontSize: '0.8125rem' }}>
-                    {formatDateTimeToMinute(value) || 'Chưa có dữ liệu'}
-                </span>
-            ),
-        },
-        {
-            title: 'Thao tác',
-            key: 'action',
-            width: 140,
-            onCell: () => ({ style: { whiteSpace: 'nowrap' } }),
-            onHeaderCell: () => ({ style: { whiteSpace: 'nowrap' } }),
-            render: (_, record) => (
-                <Space>
-                    <Tooltip title="Xem nhanh">
-                        <Button
-                            type="text"
-                            icon={<EyeOutlined />}
-                            onClick={() => setSelectedStudentId(record.id)}
-                            style={{ color: '#0ea5e9' }}
-                        />
-                    </Tooltip>
-                    <Tooltip title={record.isActive ? 'Khóa tài khoản' : 'Kích hoạt'}>
-                        <Button
-                            type="text"
-                            icon={<SyncOutlined spin={toggleStatusMutation.isPending} />}
-                            onClick={() => handleToggleStatus(record.id, record.isActive)}
-                            style={{ color: record.isActive ? '#ef4444' : '#16a34a' }}
-                        />
-                    </Tooltip>
-                    <Tooltip title="Xóa tài khoản">
-                        <Button
-                            type="text"
-                            icon={<DeleteOutlined />}
-                            onClick={() => handleDeleteUser(record.id, record.email)}
-                            danger
-                        />
-                    </Tooltip>
-                </Space>
-            ),
-        },
-    ];
+    const columns = useMemo(
+        () =>
+            createStudentColumns({
+                onViewQuick: setSelectedStudentId,
+                onToggleStatus: handleToggleStatus,
+                onDelete: handleDeleteUser,
+                onUpdateRole: handleUpdateRole,
+                isRoleUpdating: (id) =>
+                    updateUserRoleMutation.isPending &&
+                    updateUserRoleMutation.variables?.id === id,
+                isToggleUpdating: toggleStatusMutation.isPending,
+            }),
+        [
+            updateUserRoleMutation.isPending,
+            updateUserRoleMutation.variables,
+            toggleStatusMutation.isPending,
+        ]
+    );
 
     const statCards = [
         {
@@ -385,8 +265,8 @@ export const StudentManagementPage = () => {
                 >
                     <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                         <Input
-                            value={searchText}
-                            onChange={(event) => setSearchText(event.target.value)}
+                            value={getSearchInputValue('search')}
+                            onChange={(event) => setFilter('search', event.target.value)}
                             size="large"
                             allowClear
                             prefix={<SearchOutlined style={{ color: '#94a3b8' }} />}
@@ -394,23 +274,19 @@ export const StudentManagementPage = () => {
                             style={{ minWidth: 260, flex: 2, borderRadius: '10px', height: 40 }}
                         />
                         <Select
-                            value={statusFilter}
-                            onChange={(value) => setStatusFilter(value)}
+                            value={filters.status}
+                            onChange={(value) => setFilter('status', value)}
                             size="large"
                             style={{ minWidth: 220, flex: 1, height: 40 }}
                             options={[
                                 { label: 'Tất cả trạng thái', value: 'ALL' },
-                                { label: 'Đang mở tài khoản', value: true },
-                                { label: 'Đã khóa tài khoản', value: false },
+                                { label: 'Đang mở tài khoản', value: 'ACTIVE' },
+                                { label: 'Đã khóa tài khoản', value: 'LOCKED' },
                             ]}
                         />
                         <Button
                             icon={<SyncOutlined />}
-                            onClick={() => {
-                                setSearchText('');
-                                setStatusFilter('ALL');
-                                setPage(1);
-                            }}
+                            onClick={resetFilters}
                             style={{ borderRadius: '10px', height: 40 }}
                         >
                             Xóa lọc
@@ -420,23 +296,21 @@ export const StudentManagementPage = () => {
             </motion.div>
 
             <motion.div variants={itemVariants}>
-                <Card styles={{ body: { padding: 0 } }} style={{ borderRadius: '14px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+                <Card styles={{ body: { padding: '16px 20px 20px 20px' } }} style={{ borderRadius: '14px', border: '1px solid #e2e8f0', background: '#fff' }}>
                     <Table
                         columns={columns}
                         dataSource={pagedData?.items || []}
                         loading={isTableLoading}
                         rowKey="id"
-                        pagination={{
-                            current: page,
-                            pageSize: pageSize,
+                        pagination={createTablePagination({
+                            current: filters.page,
+                            pageSize: filters.pageSize,
                             total: pagedData?.totalCount || 0,
                             onChange: (p, s) => {
-                                setPage(p);
-                                setPageSize(s);
+                                setFilters({ page: p, pageSize: s });
                             },
-                            showSizeChanger: true,
-                            pageSizeOptions: ['10', '20', '50', '100']
-                        }}
+                            entityLabel: 'học viên',
+                        })}
                         scroll={{ x: 'max-content' }}
                     />
                 </Card>

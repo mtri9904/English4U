@@ -4,6 +4,9 @@ export * from './types/user.types';
 // Constants
 export * from './constants/student.constants';
 
+// Configs
+export * from './configs/student.columns';
+
 // Utils
 export * from './utils/student.utils';
 

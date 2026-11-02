@@ -16,6 +16,7 @@ import {
 } from '@ant-design/icons';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { PageLoadingState, PageErrorState } from '@/components';
+import { APP_EMPTY_IMAGE } from '@/components/AppEmpty';
 import { useQueryClient } from '@tanstack/react-query';
 import {
     useFlashcardDeckDetailQuery,
@@ -253,7 +254,7 @@ export const FlashcardStudyPage: React.FC = () => {
     if (cards.length === 0) {
         return (
             <Card style={{ maxWidth: 600, margin: '60px auto', textAlign: 'center', borderRadius: 20 }}>
-                <Empty description="Bộ thẻ này chưa có từ vựng nào để học." />
+                <Empty image={APP_EMPTY_IMAGE} imageStyle={{ height: 88 }} description="Bộ thẻ này chưa có từ vựng nào để học." />
                 <Button type="primary" onClick={() => navigate(`/app/flashcards/${deckId}`)} style={{ marginTop: 16 }}>
                     Quay lại thêm từ vựng
                 </Button>

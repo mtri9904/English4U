@@ -5,12 +5,14 @@ using EnglishExamApp.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace EnglishExamApp.Application.Services;
 
 public class ExamService(
     IApplicationDbContext context,
     IWritingVisualExtractionService writingVisualExtractionService,
+    ICloudinaryMediaService cloudinaryMediaService,
     ILogger<ExamService> logger) : IExamService
 {
     private const int MaxReadingPassages = 3;
@@ -46,9 +48,10 @@ public class ExamService(
             .Include(e => e.ExamSections)
             .AsQueryable();
 
-        if (!string.IsNullOrWhiteSpace(request.SearchTerm))
+        var rawSearch = !string.IsNullOrWhiteSpace(request.SearchTerm) ? request.SearchTerm : request.Search;
+        if (!string.IsNullOrWhiteSpace(rawSearch))
         {
-            var search = request.SearchTerm.Trim().ToLower();
+            var search = rawSearch.Trim().ToLower();
             query = query.Where(e => e.Title.ToLower().Contains(search) || (e.Description != null && e.Description.ToLower().Contains(search)));
         }
 
@@ -160,9 +163,10 @@ public class ExamService(
             .Include(e => e.ExamSections)
             .AsQueryable();
 
-        if (!string.IsNullOrWhiteSpace(request.Search))
+        var rawPracticeSearch = !string.IsNullOrWhiteSpace(request.Search) ? request.Search : request.SearchTerm;
+        if (!string.IsNullOrWhiteSpace(rawPracticeSearch))
         {
-            var search = request.Search.Trim().ToLower();
+            var search = rawPracticeSearch.Trim().ToLower();
             query = query.Where(e => e.Title.ToLower().Contains(search) || (e.Description != null && e.Description.ToLower().Contains(search)));
         }
 
@@ -279,15 +283,184 @@ public class ExamService(
 
     public async Task<bool> DeleteAsync(Guid examId, CancellationToken cancellationToken = default)
     {
-        var exists = await context.Exams
-            .AsNoTracking()
-            .AnyAsync(e => e.Id == examId, cancellationToken);
-
-        if (!exists)
+        var exam = await context.Exams.AsNoTracking().FirstOrDefaultAsync(e => e.Id == examId, cancellationToken);
+        if (exam is null)
         {
             return false;
         }
 
+        // 1. Direct & guaranteed collection of all media URLs associated with this exam
+        var mediaUrls = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        void AddSnippet(string? snippet)
+        {
+            if (string.IsNullOrWhiteSpace(snippet)) return;
+            var unescaped = snippet.Replace(@"\/", "/");
+            var matches = Regex.Matches(unescaped, @"(https?://[^""'\s<>\\)]*cloudinary\.com/[^""'\s<>\\)]+|/uploads/[^""'\s<>\\)]+)", RegexOptions.IgnoreCase);
+            foreach (Match m in matches)
+            {
+                var clean = m.Value.TrimEnd('"', '\'', ')', ',', ';', '>', '}', ']', '\\');
+                if (!string.IsNullOrWhiteSpace(clean))
+                {
+                    mediaUrls.Add(clean);
+                }
+            }
+
+            if (unescaped.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                unescaped.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
+                unescaped.StartsWith("/uploads/", StringComparison.OrdinalIgnoreCase))
+            {
+                var clean = unescaped.Trim().TrimEnd('"', '\'', ')', ',', ';', '>', '}', ']', '\\');
+                if (clean.Contains("cloudinary.com", StringComparison.OrdinalIgnoreCase) || clean.StartsWith("/uploads/", StringComparison.OrdinalIgnoreCase))
+                {
+                    mediaUrls.Add(clean);
+                }
+            }
+        }
+
+        // Exam fields
+        AddSnippet(exam.SourcePdfUrl);
+        AddSnippet(exam.Description);
+
+        // Document Uploads linked to this exam
+        var documentUploads = await context.DocumentUploads
+            .AsNoTracking()
+            .Where(u => u.GeneratedExamId == examId)
+            .Select(u => u.FileUrl)
+            .ToListAsync(cancellationToken);
+        foreach (var uploadUrl in documentUploads) AddSnippet(uploadUrl);
+
+        // Section IDs for this exam
+        var sections = await context.ExamSections
+            .AsNoTracking()
+            .Where(s => s.ExamId == examId)
+            .Select(s => new { s.Id, s.Title })
+            .ToListAsync(cancellationToken);
+        var sectionIds = sections.Select(s => s.Id).ToList();
+        foreach (var s in sections) AddSnippet(s.Title);
+
+        // Reading Passages
+        var passages = await context.ReadingPassages
+            .AsNoTracking()
+            .Where(rp => sectionIds.Contains(rp.SectionId))
+            .Select(rp => new { rp.Id, rp.Title, rp.ParagraphsData, rp.AssetsData })
+            .ToListAsync(cancellationToken);
+        var passageIds = passages.Select(p => p.Id).ToList();
+        foreach (var rp in passages)
+        {
+            AddSnippet(rp.Title);
+            AddSnippet(rp.ParagraphsData);
+            AddSnippet(rp.AssetsData);
+        }
+
+        // Listening Parts
+        var listeningParts = await context.ListeningParts
+            .AsNoTracking()
+            .Where(lp => sectionIds.Contains(lp.SectionId))
+            .Select(lp => new { lp.Id, lp.AudioUrl, lp.TranscriptData, lp.ContextDescription })
+            .ToListAsync(cancellationToken);
+        var listeningPartIds = listeningParts.Select(l => l.Id).ToList();
+        foreach (var lp in listeningParts)
+        {
+            AddSnippet(lp.AudioUrl);
+            AddSnippet(lp.TranscriptData);
+            AddSnippet(lp.ContextDescription);
+        }
+
+        // Writing Tasks
+        var writingTasks = await context.WritingTasks
+            .AsNoTracking()
+            .Where(wt => sectionIds.Contains(wt.SectionId))
+            .Select(wt => new { wt.PromptText, wt.AssetsData })
+            .ToListAsync(cancellationToken);
+        foreach (var wt in writingTasks)
+        {
+            AddSnippet(wt.PromptText);
+            AddSnippet(wt.AssetsData);
+        }
+
+        // Speaking Parts & Questions
+        var speakingParts = await context.SpeakingParts
+            .AsNoTracking()
+            .Where(sp => sectionIds.Contains(sp.SectionId))
+            .Select(sp => new { sp.Id, sp.Description })
+            .ToListAsync(cancellationToken);
+        var speakingPartIds = speakingParts.Select(sp => sp.Id).ToList();
+        foreach (var sp in speakingParts) AddSnippet(sp.Description);
+
+        var speakingQuestions = await context.SpeakingQuestions
+            .AsNoTracking()
+            .Where(sq => speakingPartIds.Contains(sq.PartId))
+            .Select(sq => new { sq.AudioPromptUrl, sq.Content, sq.CueCardPoints })
+            .ToListAsync(cancellationToken);
+        foreach (var sq in speakingQuestions)
+        {
+            AddSnippet(sq.AudioPromptUrl);
+            AddSnippet(sq.Content);
+            AddSnippet(sq.CueCardPoints);
+        }
+
+        // Question Groups (by passageIds or listeningPartIds)
+        var questionGroups = await context.QuestionGroups
+            .AsNoTracking()
+            .Where(g => (g.PassageId.HasValue && passageIds.Contains(g.PassageId.Value)) ||
+                        (g.ListeningPartId.HasValue && listeningPartIds.Contains(g.ListeningPartId.Value)))
+            .Select(g => new { g.Id, g.ContentData, g.AssetsData, g.Instruction })
+            .ToListAsync(cancellationToken);
+        var groupIds = questionGroups.Select(g => g.Id).ToList();
+        foreach (var g in questionGroups)
+        {
+            AddSnippet(g.ContentData);
+            AddSnippet(g.AssetsData);
+            AddSnippet(g.Instruction);
+        }
+
+        // Questions
+        var questions = await context.Questions
+            .AsNoTracking()
+            .Where(q => groupIds.Contains(q.GroupId))
+            .Select(q => new { q.Id, q.Content, q.Explanation, q.Provenance, q.EvidenceLocation })
+            .ToListAsync(cancellationToken);
+        var questionIds = questions.Select(q => q.Id).ToList();
+        foreach (var q in questions)
+        {
+            AddSnippet(q.Content);
+            AddSnippet(q.Explanation);
+            AddSnippet(q.Provenance);
+            AddSnippet(q.EvidenceLocation);
+        }
+
+        // Question Options (where question choice images reside)
+        var questionOptions = await context.QuestionOptions
+            .AsNoTracking()
+            .Where(o => questionIds.Contains(o.QuestionId))
+            .Select(o => new { o.ImageUrl, o.OptionText })
+            .ToListAsync(cancellationToken);
+        foreach (var opt in questionOptions)
+        {
+            AddSnippet(opt.ImageUrl);
+            AddSnippet(opt.OptionText);
+        }
+
+        // 2. Perform cleanup on Cloudinary (main account) and local storage
+        if (mediaUrls.Count > 0)
+        {
+            try
+            {
+                logger.LogInformation("[ExamCleanup] Cleaning up {Count} media assets for exam {ExamId}: {Urls}", mediaUrls.Count, examId, string.Join("; ", mediaUrls));
+                await cloudinaryMediaService.DeleteMediaListAsync(mediaUrls, account: "main", cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "[ExamCleanup] Media cleanup encountered an error for exam {ExamId}, proceeding with DB deletion.", examId);
+            }
+        }
+        else
+        {
+            logger.LogInformation("[ExamCleanup] No media assets found for exam {ExamId}.", examId);
+        }
+
+        // 3. Database deletion inside transaction
         await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
 
         try

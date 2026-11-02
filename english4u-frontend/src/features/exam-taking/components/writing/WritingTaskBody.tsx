@@ -2,6 +2,7 @@ import React from 'react';
 import { Alert, Card, Empty, Input, Space, Tag, Typography } from 'antd';
 import { EditOutlined, FileImageOutlined } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
+import { APP_EMPTY_IMAGE } from '@/components/AppEmpty';
 import type { PracticeSessionWritingTaskDto } from '../../types/session.types';
 import {
     WRITING_SUBMIT_MIN_WORDS,
@@ -63,7 +64,7 @@ export const WritingTaskBody: React.FC<WritingTaskBodyProps> = ({
                                     {normalizeBlockMarkdownText(task.promptText)}
                                 </ReactMarkdown>
                             ) : (
-                                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Task này chưa có đề bài." />
+                                <Empty image={APP_EMPTY_IMAGE} imageStyle={{ height: 80 }} description="Task này chưa có đề bài." />
                             )}
                         </div>
 

@@ -17,6 +17,7 @@ import {
 import { StudentManagementPage, ProfilePage, ClientProfilePage } from '@/features/students';
 import { AttemptManagementPage } from '@/features/attempts';
 import { NotificationManagementPage } from '@/features/notifications';
+import { FeedbackManagementPage } from '@/features/feedbacks';
 import { ProgressPage } from '@/features/gamification';
 import {
     ExamManagementPage,
@@ -163,6 +164,10 @@ export const appRouter = createBrowserRouter([
             {
                 path: 'notifications',
                 element: <NotificationManagementPage />,
+            },
+            {
+                path: 'feedbacks',
+                element: <FeedbackManagementPage />,
             },
             {
                 path: '*',

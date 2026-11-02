@@ -8,6 +8,7 @@ import { useSpeakingReviewCopilot } from '../../hooks/useSpeakingReviewCopilot';
 import { getSpeakingPromptEntries } from './speakingSessionReview.utils';
 import { SpeakingReviewHeaderCard } from './SpeakingReviewHeaderCard';
 import { SpeakingPromptCard } from './SpeakingPromptCard';
+import { APP_EMPTY_IMAGE } from '@/components/AppEmpty';
 
 interface SpeakingSessionReviewProps {
     session: PracticeSessionDto;
@@ -123,8 +124,8 @@ export const SpeakingSessionReview: FC<SpeakingSessionReviewProps> = ({
                     />
 
                     {promptEntries.length === 0 ? (
-                        <Card style={{ borderRadius: 24 }}>
-                            <Empty description="Session này chưa có speaking prompt." />
+                        <Card style={{ borderRadius: 24, textAlign: 'center' }}>
+                            <Empty image={APP_EMPTY_IMAGE} imageStyle={{ height: 88 }} description="Session này chưa có speaking prompt." />
                         </Card>
                     ) : (
                         promptEntries.map((entry) => (

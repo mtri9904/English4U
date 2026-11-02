@@ -7,6 +7,9 @@ export interface GenericTableEditorProps {
     contentData?: string | null;
     onChange: (val: string) => void;
     nextQNum: number;
+    canAddQuestion?: boolean;
+    maxQuestionCount?: number;
+    warnQuestionLimit?: () => void;
     activeEditorRef?: MutableRefObject<TiptapQxEditorRef | null>;
 }
 
@@ -25,8 +28,14 @@ export const GenericTableEditor = ({
     contentData,
     onChange,
     nextQNum,
+    canAddQuestion,
+    maxQuestionCount,
+    warnQuestionLimit,
     activeEditorRef,
 }: GenericTableEditorProps) => {
+    const maxLimit = maxQuestionCount ?? 40;
+    const isLimitReached = (canAddQuestion != null && !canAddQuestion) || nextQNum > maxLimit;
+
     const parsedData = useMemo<{ title: string; rows: string[][] }>(() => {
         try {
             const data = JSON.parse(contentData || 'null');
@@ -72,6 +81,10 @@ export const GenericTableEditor = ({
     };
 
     const insertQ = () => {
+        if (isLimitReached) {
+            warnQuestionLimit?.();
+            return;
+        }
         const target = focused ?? { r: 0, c: 0 };
         const key = getCellKey(target.r, target.c);
         const editorRef = cellEditorRefs.current[key] ?? null;
@@ -127,6 +140,7 @@ export const GenericTableEditor = ({
                 <Button
                     size="small"
                     type="primary"
+                    disabled={isLimitReached}
                     onMouseDown={(e) => {
                         e.preventDefault();
                         insertQ();
@@ -153,6 +167,11 @@ export const GenericTableEditor = ({
                 >
                     In đậm
                 </Button>
+                {isLimitReached && (
+                    <span style={{ fontSize: '0.75rem', color: '#f59e0b' }}>
+                        (Đã đạt tối đa {maxLimit} câu)
+                    </span>
+                )}
                 {focused && (
                     <Tag color="blue" style={{ marginInlineEnd: 0 }}>
                         Đang chọn: Hàng {focused.r + 1}, Cột {focused.c + 1}

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Collapse, Empty } from 'antd';
 import { SoundOutlined } from '@ant-design/icons';
+import { APP_EMPTY_IMAGE } from '@/components/AppEmpty';
 import type { SectionDetailDto } from '@/features/exams/types/exam.types';
 import { formatTranscriptRangeLabel, parseListeningTranscriptEnvelope } from '@/shared/lib/listeningTranscript';
 import { parseWritingTaskAssetsData } from '@/shared/lib/writingTaskAssets';
@@ -20,7 +21,7 @@ export const ExamDetailSectionView: React.FC<ExamDetailSectionViewProps> = ({ se
 
     if (skill === 'Reading' || skill === 'READING') {
         const passages = section.readingPassages ?? [];
-        if (passages.length === 0) return <Empty description="Chưa có passage" />;
+        if (passages.length === 0) return <Empty image={APP_EMPTY_IMAGE} imageStyle={{ height: 80 }} description="Chưa có passage" />;
         return (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                 {passages.map((p, pIdx) => (
@@ -109,7 +110,7 @@ export const ExamDetailSectionView: React.FC<ExamDetailSectionViewProps> = ({ se
 
     if (skill === 'Listening' || skill === 'LISTENING') {
         const parts = section.listeningParts ?? [];
-        if (parts.length === 0) return <Empty description="Chưa có listening part" />;
+        if (parts.length === 0) return <Empty image={APP_EMPTY_IMAGE} imageStyle={{ height: 80 }} description="Chưa có listening part" />;
         const sharedAudioUrl = parts.map((part) => (part.audioUrl ?? '').trim()).find(Boolean);
         return (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -300,7 +301,7 @@ export const ExamDetailSectionView: React.FC<ExamDetailSectionViewProps> = ({ se
 
     if (skill === 'Writing' || skill === 'WRITING') {
         const tasks = section.writingTasks ?? [];
-        if (tasks.length === 0) return <Empty description="Chưa có writing task" />;
+        if (tasks.length === 0) return <Empty image={APP_EMPTY_IMAGE} imageStyle={{ height: 80 }} description="Chưa có writing task" />;
         return (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 {tasks.map((t, tIdx) => {
@@ -377,7 +378,7 @@ export const ExamDetailSectionView: React.FC<ExamDetailSectionViewProps> = ({ se
 
     if (skill === 'Speaking' || skill === 'SPEAKING') {
         const parts = section.speakingParts ?? [];
-        if (parts.length === 0) return <Empty description="Chưa có speaking part" />;
+        if (parts.length === 0) return <Empty image={APP_EMPTY_IMAGE} imageStyle={{ height: 80 }} description="Chưa có speaking part" />;
         return (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 {parts.map((sp, spIdx) => (
@@ -479,5 +480,5 @@ export const ExamDetailSectionView: React.FC<ExamDetailSectionViewProps> = ({ se
         );
     }
 
-    return <Empty description="Kỹ năng không xác định" />;
+    return <Empty image={APP_EMPTY_IMAGE} imageStyle={{ height: 80 }} description="Kỹ năng không xác định" />;
 };

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Button, Card, Col, Empty, Row, Space } from 'antd';
 import { useNavigate, useParams } from 'react-router-dom';
 import { PageLoadingState, PageErrorState } from '@/components';
+import { APP_EMPTY_IMAGE } from '@/components/AppEmpty';
 import { isSpeakingSkill } from '../utils/sessionRouting.utils';
 import { getNextPromptQuestionId } from '../utils/speakingSession.utils';
 import { SpeakingAvatarCanvas } from '../components/speaking/SpeakingAvatarCanvas';
@@ -87,10 +88,11 @@ export const ClientSpeakingSessionPage = () => {
 
     if (!isSpeakingSkill(session.skillType) || promptEntries.length === 0 || !activePrompt) {
         return (
-            <Card style={{ borderRadius: 24 }}>
+            <Card style={{ borderRadius: 24, textAlign: 'center' }}>
                 <Empty
                     description="Session này không phải speaking runner hoặc chưa có prompt speaking."
-                    image={Empty.PRESENTED_IMAGE_SIMPLE}
+                    image={APP_EMPTY_IMAGE}
+                    imageStyle={{ height: 88 }}
                 >
                     <Button type="primary" onClick={() => navigate('/app/my-exams')}>
                         Quay về bài thi của tôi

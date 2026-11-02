@@ -16,6 +16,7 @@ interface FlowchartOptionBankEditorProps {
     sharedOptions: CreateQuestionOptionDto[];
     optionLabelType: 'alpha' | 'roman';
     answerCount: number;
+    maxAnswerCount?: number;
     onUpdateOptionLabelType: (nextType: 'alpha' | 'roman') => void;
     onUpdateSharedOptionCount: (count?: number | null) => void;
     onUpdateSharedOptionText: (optionIndex: number, value: string) => void;
@@ -30,6 +31,7 @@ export const FlowchartOptionBankEditor: React.FC<FlowchartOptionBankEditorProps>
     sharedOptions,
     optionLabelType,
     answerCount,
+    maxAnswerCount,
     onUpdateOptionLabelType,
     onUpdateSharedOptionCount,
     onUpdateSharedOptionText,
@@ -100,12 +102,17 @@ export const FlowchartOptionBankEditor: React.FC<FlowchartOptionBankEditorProps>
                     <span style={{ color: '#334155', fontSize: '0.8125rem', fontWeight: 600 }}>Số ô đáp án</span>
                     <InputNumber
                         min={MIN_ANSWER_COUNT}
-                        max={MAX_ANSWER_COUNT}
+                        max={maxAnswerCount ?? MAX_ANSWER_COUNT}
                         value={answerCount}
                         size="middle"
                         style={{ width: 110 }}
                         onChange={onUpdateAnswerCount}
                     />
+                    {maxAnswerCount != null && (
+                        <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                            (Tối đa {maxAnswerCount} ô - giới hạn câu 40)
+                        </span>
+                    )}
                 </div>
             </div>
 

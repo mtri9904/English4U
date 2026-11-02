@@ -1,4 +1,5 @@
 import { useMemo, type MutableRefObject } from 'react';
+import { message } from 'antd';
 import type { TiptapQxEditorRef } from '@/features/exams/components/TiptapQxEditor';
 import type { CreateQuestionGroupDto } from '@/features/exams/types/exam.types';
 import { QUESTION_TYPES } from '@/features/exams/components/questionTypes';
@@ -30,6 +31,11 @@ interface FlowchartCompletionEditorProps {
     groupIdx: number;
     groupStartNum: number;
     nextQNum: number;
+    canAddQuestion?: boolean;
+    maxAllowedQuestions?: number;
+    maxQuestionCount?: number;
+    warnQuestionLimit?: () => void;
+    wouldExceedQuestionLimit?: (currentCount: number, nextCount: number) => boolean;
     activeEditorRef: MutableRefObject<TiptapQxEditorRef | null>;
     onUpdate: (groups: CreateQuestionGroupDto[]) => void;
     uploading?: boolean;
@@ -42,6 +48,11 @@ export const FlowchartCompletionEditor = ({
     groupIdx,
     groupStartNum,
     nextQNum,
+    canAddQuestion,
+    maxAllowedQuestions,
+    maxQuestionCount,
+    warnQuestionLimit,
+    wouldExceedQuestionLimit,
     activeEditorRef,
     onUpdate,
     uploading = false,
@@ -64,6 +75,10 @@ export const FlowchartCompletionEditor = ({
         return current.length > 0 ? cloneOptions(current) : createDefaultOptions();
     }, [group.questions]);
     const answerCount = group.questions.length > 0 ? group.questions.length : DEFAULT_ANSWER_COUNT;
+    const effectiveMaxAnswerCount = Math.max(
+        1,
+        Math.min(26, maxAllowedQuestions ?? 26),
+    );
 
     const updateGroup = (partial: Partial<CreateQuestionGroupDto>) => {
         const updatedGroups = [...groups];
@@ -126,6 +141,25 @@ export const FlowchartCompletionEditor = ({
 
     const syncQuestionsFromTemplate = (nextContent: string) => {
         const nextQuestions = buildTemplateQuestions(nextContent);
+        const maxLimit = maxQuestionCount ?? 40;
+
+        if (nextQuestions.some((q) => (q.questionNumber ?? 0) > maxLimit)) {
+            if (warnQuestionLimit) {
+                warnQuestionLimit();
+            } else {
+                message.warning(`Không được đánh số vượt quá câu ${maxLimit}.`);
+            }
+            return;
+        }
+
+        if (wouldExceedQuestionLimit?.(group.questions.length, nextQuestions.length)) {
+            if (warnQuestionLimit) {
+                warnQuestionLimit();
+            } else {
+                message.warning(`Không thể vượt quá số lượng câu hỏi tối đa.`);
+            }
+            return;
+        }
 
         updateGroup({
             contentData: nextContent,
@@ -190,7 +224,17 @@ export const FlowchartCompletionEditor = ({
     };
 
     const updateAnswerCount = (count?: number | null) => {
-        const nextCount = normalizeAnswerCount(count);
+        if (count != null && count > effectiveMaxAnswerCount) {
+            if (warnQuestionLimit) {
+                warnQuestionLimit();
+            } else {
+                message.warning(
+                    `Nhóm câu hỏi này chỉ có thể chứa tối đa ${effectiveMaxAnswerCount} câu (giới hạn tối đa câu ${maxQuestionCount ?? 40} của bài thi).`,
+                );
+            }
+        }
+        const requestedCount = normalizeAnswerCount(count);
+        const nextCount = Math.min(requestedCount, effectiveMaxAnswerCount);
         const nextQuestions = Array.from({ length: nextCount }, (_, index) => {
             const existing = group.questions[index];
             return existing
@@ -307,8 +351,12 @@ export const FlowchartCompletionEditor = ({
                     group={group}
                     groupStartNum={groupStartNum}
                     nextQNum={nextQNum}
+                    canAddQuestion={canAddQuestion}
+                    maxQuestionCount={maxQuestionCount}
+                    warnQuestionLimit={warnQuestionLimit}
                     textInputLayout={textInputLayout}
                     answerCount={answerCount}
+                    maxAnswerCount={effectiveMaxAnswerCount}
                     activeEditorRef={activeEditorRef}
                     onSyncQuestionsFromTemplate={syncQuestionsFromTemplate}
                     onUpdateAnswerCount={updateAnswerCount}
@@ -322,6 +370,7 @@ export const FlowchartCompletionEditor = ({
                     sharedOptions={sharedOptions}
                     optionLabelType={optionLabelType}
                     answerCount={answerCount}
+                    maxAnswerCount={effectiveMaxAnswerCount}
                     onUpdateOptionLabelType={updateOptionLabelType}
                     onUpdateSharedOptionCount={updateSharedOptionCount}
                     onUpdateSharedOptionText={updateSharedOptionText}

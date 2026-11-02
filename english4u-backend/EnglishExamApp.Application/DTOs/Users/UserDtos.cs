@@ -58,6 +58,7 @@ public record UserPagedRequest(
     int PageNumber = 1,
     int PageSize = 10,
     string? SearchTerm = null,
+    string? Search = null,
     bool? IsActive = null,
     string? SubscriptionId = null,
     string? SortBy = "CreatedAt",

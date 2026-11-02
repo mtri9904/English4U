@@ -22,6 +22,7 @@ import {
     markdownComponents,
 } from './highlight/HighlightableMarkdown';
 import { GroupBlock } from './question-inputs/GroupBlock';
+import { APP_EMPTY_IMAGE } from '@/components/AppEmpty';
 
 const { Title } = Typography;
 
@@ -52,8 +53,8 @@ export const ReadingBody = ({
 
     if (!passage) {
         return (
-            <Card style={{ borderRadius: 22 }}>
-                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Đề này chưa có passage." />
+            <Card style={{ borderRadius: 22, textAlign: 'center' }}>
+                <Empty image={APP_EMPTY_IMAGE} imageStyle={{ height: 88 }} description="Đề này chưa có passage." />
             </Card>
         );
     }
@@ -170,7 +171,7 @@ export const ReadingBody = ({
                                 )}
                             </div>
                         ) : (
-                            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Passage chưa có nội dung." />
+                            <Empty image={APP_EMPTY_IMAGE} imageStyle={{ height: 80 }} description="Passage chưa có nội dung." />
                         )}
                     </Space>
                 </div>

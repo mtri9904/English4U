@@ -23,6 +23,7 @@ import type {
 import { ListeningBody, ReadingBody } from '@/features/exam-taking/pages/ObjectiveSessionRunnerPage';
 import { useObjectiveReviewCopilot } from '../hooks/useObjectiveReviewCopilot';
 import { ObjectiveReviewAudioPlayer } from './review/ObjectiveReviewAudioPlayer';
+import { APP_EMPTY_IMAGE } from '@/components/AppEmpty';
 import { ObjectiveReviewNavigation } from './review/ObjectiveReviewNavigation';
 import { ObjectiveReviewHeaderBar } from './review/ObjectiveReviewHeaderBar';
 
@@ -159,8 +160,8 @@ export const ObjectiveSessionReviewRunner = ({
 
     if (navigationItems.length === 0) {
         return (
-            <Card style={{ borderRadius: 22 }}>
-                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Không có dữ liệu đề để xem lại." />
+            <Card style={{ borderRadius: 22, textAlign: 'center' }}>
+                <Empty image={APP_EMPTY_IMAGE} imageStyle={{ height: 88 }} description="Không có dữ liệu đề để xem lại." />
             </Card>
         );
     }
@@ -181,7 +182,7 @@ export const ObjectiveSessionReviewRunner = ({
                     />
                 )}
 
-                <Card style={{ borderRadius: 22 }}>
+                <Card style={{ borderRadius: 22, textAlign: 'center' }}>
                     <Space direction="vertical" size={16} style={{ width: '100%' }}>
                         <div>
                             <Title level={4} style={{ margin: 0 }}>Xem lại bài làm</Title>

@@ -1,8 +1,9 @@
-    import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Card, Empty, Modal, Table, message } from 'antd';
-import { ExclamationCircleFilled, FileTextOutlined } from '@ant-design/icons';
+import { ExclamationCircleFilled } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
+import { useUrlFilters } from '@/shared/hooks';
 import {
     useDeleteExamMutation,
     useExamsQuery,
@@ -19,7 +20,9 @@ import { ExamManagementHeader } from '../components/management/ExamManagementHea
 import { ExamOverviewStats } from '../components/management/ExamOverviewStats';
 import { ExamFilterBar, type PublishFilter } from '../components/management/ExamFilterBar';
 import { ExamPdfUploadModal } from '../components/management/ExamPdfUploadModal';
-import { createExamColumns } from '../components/management/examManagement.columns';
+import { createExamColumns } from '../configs/exam.columns';
+import { createTablePagination } from '@/components/AppPagination';
+import { APP_EMPTY_IMAGE } from '@/components/AppEmpty';
 
 const containerVariants = {
     hidden: { opacity: 0 },
@@ -34,13 +37,36 @@ const itemVariants = {
     visible: { opacity: 1, y: 0 },
 };
 
+interface ExamUrlFilters {
+    search: string;
+    skill: string;
+    publish: PublishFilter;
+    page: number;
+    pageSize: number;
+}
+
+const DEFAULT_EXAM_FILTERS: ExamUrlFilters = {
+    search: '',
+    skill: 'ALL',
+    publish: 'ALL',
+    page: 1,
+    pageSize: 10,
+};
+
 export const ExamManagement = () => {
     const navigate = useNavigate();
-    const [pageNumber, setPageNumber] = useState(1);
-    const [pageSize, setPageSize] = useState(10);
-    const [searchText, setSearchText] = useState('');
-    const [filterSkill, setFilterSkill] = useState<string>('ALL');
-    const [publishFilter, setPublishFilter] = useState<PublishFilter>('ALL');
+    const {
+        filters,
+        getSearchInputValue,
+        setFilter,
+        setFilters,
+        resetFilters,
+        hasActiveFilters,
+    } = useUrlFilters<ExamUrlFilters>({
+        defaultValues: DEFAULT_EXAM_FILTERS,
+        pageKey: 'page',
+    });
+
     const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
     const [selectedPdfFile, setSelectedPdfFile] = useState<File | null>(null);
     const { job: pdfGenerationJob, openUploadModalTrigger } = usePdfGenerationJobStore();
@@ -52,19 +78,16 @@ export const ExamManagement = () => {
         }
     }, [openUploadModalTrigger]);
 
-    useEffect(() => {
-        setPageNumber(1);
-    }, [searchText, filterSkill, publishFilter]);
-
     const isPublishedParam =
-        publishFilter === 'PUBLISHED' ? true : publishFilter === 'DRAFT' ? false : undefined;
+        filters.publish === 'PUBLISHED' ? true : filters.publish === 'DRAFT' ? false : undefined;
 
     const { data: pagedData, isLoading } = useExamsQuery({
-        search: searchText.trim() || undefined,
-        skill: filterSkill !== 'ALL' ? filterSkill : undefined,
+        search: filters.search.trim() || undefined,
+        searchTerm: filters.search.trim() || undefined,
+        skill: filters.skill !== 'ALL' ? filters.skill : undefined,
         isPublished: isPublishedParam,
-        pageNumber,
-        pageSize,
+        pageNumber: filters.page,
+        pageSize: filters.pageSize,
     });
 
     const exams = pagedData?.items ?? [];
@@ -95,16 +118,6 @@ export const ExamManagement = () => {
         () => ['READING', 'LISTENING', 'WRITING', 'SPEAKING'],
         []
     );
-
-    const hasActiveFilter =
-        searchText.trim().length > 0 || filterSkill !== 'ALL' || publishFilter !== 'ALL';
-
-    const resetFilters = () => {
-        setSearchText('');
-        setFilterSkill('ALL');
-        setPublishFilter('ALL');
-        setPageNumber(1);
-    };
 
     const resetPdfForm = () => {
         setSelectedPdfFile(null);
@@ -236,6 +249,7 @@ export const ExamManagement = () => {
             okText: 'Xóa',
             okType: 'danger',
             cancelText: 'Hủy',
+            centered: true,
             onOk: async () => {
                 try {
                     await deleteMutation.mutateAsync(exam.id);
@@ -304,14 +318,14 @@ export const ExamManagement = () => {
                         }}
                     >
                         <ExamFilterBar
-                            searchText={searchText}
-                            onSearchTextChange={setSearchText}
-                            filterSkill={filterSkill}
-                            onFilterSkillChange={setFilterSkill}
+                            searchText={getSearchInputValue('search')}
+                            onSearchTextChange={(val) => setFilter('search', val)}
+                            filterSkill={filters.skill}
+                            onFilterSkillChange={(val) => setFilter('skill', val)}
                             skillFilterOptions={skillFilterOptions}
-                            publishFilter={publishFilter}
-                            onPublishFilterChange={setPublishFilter}
-                            hasActiveFilter={hasActiveFilter}
+                            publishFilter={filters.publish}
+                            onPublishFilterChange={(val) => setFilter('publish', val)}
+                            hasActiveFilter={hasActiveFilters}
                             onResetFilters={resetFilters}
                         />
 
@@ -321,21 +335,21 @@ export const ExamManagement = () => {
                             dataSource={exams}
                             loading={isLoading}
                             scroll={{ x: 'max-content' }}
-                            pagination={{
-                                current: pageNumber,
-                                pageSize,
+                            pagination={createTablePagination({
+                                current: filters.page,
+                                pageSize: filters.pageSize,
                                 total: totalCount,
-                                showSizeChanger: true,
-                                pageSizeOptions: ['10', '20', '50'],
                                 onChange: (page, size) => {
-                                    setPageNumber(page);
-                                    setPageSize(size);
+                                    setFilters({ page, pageSize: size });
                                 },
-                            }}
+                                entityLabel: 'đề thi',
+                                pageSizeOptions: ['10', '20', '50'],
+                            })}
                             locale={{
                                 emptyText: (
                                     <Empty
-                                        image={<FileTextOutlined style={{ fontSize: 48, color: '#cbd5e1' }} />}
+                                        image={APP_EMPTY_IMAGE}
+                                        imageStyle={{ height: 96 }}
                                         description={<span style={{ color: '#94a3b8' }}>Chưa có đề thi phù hợp bộ lọc.</span>}
                                     />
                                 ),

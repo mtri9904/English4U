@@ -6,6 +6,7 @@ public sealed record ExamPagedRequest(
     int PageNumber = 1,
     int PageSize = 10,
     string? SearchTerm = null,
+    string? Search = null,
     string? ExamType = null,
     string? Skill = null,
     bool? IsPublished = null,
@@ -17,6 +18,7 @@ public sealed record PracticeExamPagedRequest(
     int PageNumber = 1,
     int PageSize = 9,
     string? Search = null,
+    string? SearchTerm = null,
     string? Skill = null,
     string? ExamType = null
 );

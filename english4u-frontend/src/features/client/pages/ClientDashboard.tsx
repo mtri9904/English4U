@@ -14,6 +14,7 @@ import {
 } from '@ant-design/icons';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
+import { APP_EMPTY_IMAGE } from '@/components/AppEmpty';
 import {
     CartesianGrid,
     Line,
@@ -267,7 +268,7 @@ export const ClientDashboard: React.FC = () => {
                     {isLoading ? (
                         <Skeleton active paragraph={{ rows: 4 }} />
                     ) : fluencyTrendData.length === 0 ? (
-                        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có WPM từ bài Speaking." />
+                        <Empty image={APP_EMPTY_IMAGE} imageStyle={{ height: 80 }} description="Chưa có WPM từ bài Speaking." />
                     ) : (
                         <ResponsiveContainer width="100%" height={210}>
                             <LineChart data={fluencyTrendData}>
@@ -311,7 +312,7 @@ export const ClientDashboard: React.FC = () => {
                     </div>
 
                     {recentActivities.length === 0 ? (
-                        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có bài thi gần đây." />
+                        <Empty image={APP_EMPTY_IMAGE} imageStyle={{ height: 80 }} description="Chưa có bài thi gần đây." />
                     ) : (
                         <div className="recent-list">
                             {recentActivities.slice(0, 4).map((item) => {

@@ -2,6 +2,7 @@ import { Tag, Empty, Button, FloatButton } from 'antd';
 import { motion } from 'framer-motion';
 import { useParams, useNavigate } from 'react-router-dom';
 import { PageLoadingState, PageErrorState } from '@/components';
+import { APP_EMPTY_IMAGE } from '@/components/AppEmpty';
 import { useExamDetailQuery } from '@/features/exams/hooks/useExamQueries';
 import { BookOutlined, ArrowLeftOutlined, EditOutlined, VerticalAlignTopOutlined } from '@ant-design/icons';
 import { SKILL_COLORS } from '../constants/examDetail.constants';
@@ -31,8 +32,8 @@ export const ExamDetailPage = () => {
 
     if (!exam) {
         return (
-            <div style={{ padding: '40px' }}>
-                <Empty description="Không tìm thấy đề thi" />
+            <div style={{ padding: '40px', textAlign: 'center' }}>
+                <Empty image={APP_EMPTY_IMAGE} imageStyle={{ height: 88 }} description="Không tìm thấy đề thi" />
                 <Button type="primary" onClick={() => navigate('/admin/exams')} style={{ marginTop: 16 }}>
                     Quay về danh sách
                 </Button>
@@ -147,7 +148,7 @@ export const ExamDetailPage = () => {
                         </div>
                     </div>
                 ) : (
-                    <Empty description="Đề thi chưa có section nào." />
+                    <Empty image={APP_EMPTY_IMAGE} imageStyle={{ height: 88 }} description="Đề thi chưa có section nào." />
                 )}
                 <FloatButton.BackTop
                     type="primary"

@@ -28,6 +28,7 @@ import {
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { PageLoadingState, PageErrorState } from '@/components';
+import { APP_EMPTY_IMAGE } from '@/components/AppEmpty';
 import { useQueryClient } from '@tanstack/react-query';
 import {
     useFlashcardDecksQuery,
@@ -245,7 +246,8 @@ export const FlashcardDeckListPage: React.FC = () => {
             ) : decks.length === 0 ? (
                 <Card style={{ borderRadius: 16, textAlign: 'center', padding: '40px 20px' }}>
                     <Empty
-                        image={Empty.PRESENTED_IMAGE_SIMPLE}
+                        image={APP_EMPTY_IMAGE}
+                        imageStyle={{ height: 96 }}
                         description="Bạn chưa có bộ thẻ từ vựng nào. Hãy tạo ngay một bộ thẻ hoặc dùng AI để thêm từ nhé!"
                     >
                         <Button type="primary" icon={<PlusOutlined />} onClick={() => setIsCreateDeckOpen(true)}>

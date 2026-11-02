@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
-import { Button, Empty, Image, Input, InputNumber, Select, Upload } from 'antd';
+import { Button, Empty, Image, Input, InputNumber, Select, Upload, message } from 'antd';
 import { CloseOutlined, MinusCircleOutlined, PictureOutlined, PlusOutlined } from '@ant-design/icons';
+import { APP_EMPTY_IMAGE } from '@/components/AppEmpty';
 import type { CreateQuestionGroupDto, CreateQuestionOptionDto } from '@/features/exams/types/exam.types';
 import { emptyOption, emptyQuestion } from './examEditor.helpers';
 import { getCleanPastedInputValue } from '@/shared/utils/input';
@@ -10,6 +11,9 @@ interface MapLabellingEditorProps {
     groups: CreateQuestionGroupDto[];
     groupIdx: number;
     groupStartNum: number;
+    maxAllowedQuestions?: number;
+    maxQuestionCount?: number;
+    warnQuestionLimit?: () => void;
     onUpdate: (groups: CreateQuestionGroupDto[]) => void;
     uploading?: boolean;
     handleUploadFile?: (file: File, type: 'image' | 'video' | 'raw' | 'auto') => Promise<string>;
@@ -117,10 +121,15 @@ export const MapLabellingEditor = ({
     groups,
     groupIdx,
     groupStartNum,
+    maxAllowedQuestions,
+    maxQuestionCount,
+    warnQuestionLimit,
     onUpdate,
     uploading = false,
     handleUploadFile,
 }: MapLabellingEditorProps) => {
+    const effectiveMaxQuestions = maxAllowedQuestions != null ? maxAllowedQuestions : 26;
+    const canAddMapQuestion = group.questions.length < effectiveMaxQuestions;
     const mapAssets = useMemo(() => parseMapAssetsData(group.assetsData), [group.assetsData]);
     const sharedOptions = useMemo(() => {
         const current = group.questions[0]?.options ?? [];
@@ -279,7 +288,8 @@ export const MapLabellingEditor = ({
                         />
                     ) : (
                         <Empty
-                            image={Empty.PRESENTED_IMAGE_SIMPLE}
+                            image={APP_EMPTY_IMAGE}
+                            imageStyle={{ height: 80, display: 'flex', justifyContent: 'center', alignItems: 'center', margin: '0 auto' }}
                             description="Chưa có hình map/diagram"
                         />
                     )}
@@ -375,8 +385,17 @@ export const MapLabellingEditor = ({
                     type="default"
                     size="middle"
                     icon={<PlusOutlined />}
+                    disabled={!canAddMapQuestion}
                     style={{ marginTop: '10px', height: '36px' }}
                     onClick={() => {
+                        if (!canAddMapQuestion) {
+                            if (warnQuestionLimit) {
+                                warnQuestionLimit();
+                            } else {
+                                message.warning(`Nhóm câu hỏi này chỉ có thể chứa tối đa ${effectiveMaxQuestions} câu (giới hạn tối đa câu ${maxQuestionCount ?? 40} của bài thi).`);
+                            }
+                            return;
+                        }
                         updateGroup({
                             questions: [
                                 ...group.questions,

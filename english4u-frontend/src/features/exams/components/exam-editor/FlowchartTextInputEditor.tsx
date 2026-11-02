@@ -14,8 +14,12 @@ interface FlowchartTextInputEditorProps {
     group: CreateQuestionGroupDto;
     groupStartNum: number;
     nextQNum: number;
+    canAddQuestion?: boolean;
+    maxQuestionCount?: number;
+    warnQuestionLimit?: () => void;
     textInputLayout: FlowchartTextInputLayout;
     answerCount: number;
+    maxAnswerCount?: number;
     activeEditorRef: MutableRefObject<TiptapQxEditorRef | null>;
     onSyncQuestionsFromTemplate: (nextContent: string) => void;
     onUpdateAnswerCount: (count?: number | null) => void;
@@ -26,14 +30,20 @@ export const FlowchartTextInputEditor: React.FC<FlowchartTextInputEditorProps> =
     group,
     groupStartNum,
     nextQNum,
+    canAddQuestion,
+    maxQuestionCount,
+    warnQuestionLimit,
     textInputLayout,
     answerCount,
+    maxAnswerCount,
     activeEditorRef,
     onSyncQuestionsFromTemplate,
     onUpdateAnswerCount,
     onUpdateQuestionAnswer,
 }) => {
     const editorRef = useRef<TiptapQxEditorRef | null>(null);
+    const maxLimit = maxQuestionCount ?? 40;
+    const isLimitReached = (canAddQuestion != null && !canAddQuestion) || nextQNum > maxLimit;
 
     return (
         <>
@@ -43,12 +53,17 @@ export const FlowchartTextInputEditor: React.FC<FlowchartTextInputEditorProps> =
                         <div style={{ fontWeight: 700, color: '#1e40af', fontSize: '0.8125rem' }}>
                             Template nội dung dưới flowchart
                         </div>
-                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
                             <Button
                                 size="small"
                                 type="primary"
+                                disabled={isLimitReached}
                                 onMouseDown={(event) => {
                                     event.preventDefault();
+                                    if (isLimitReached) {
+                                        warnQuestionLimit?.();
+                                        return;
+                                    }
                                     activeEditorRef.current = editorRef.current;
                                     editorRef.current?.insertQ(nextQNum);
                                 }}
@@ -66,6 +81,11 @@ export const FlowchartTextInputEditor: React.FC<FlowchartTextInputEditorProps> =
                             >
                                 In đậm
                             </Button>
+                            {isLimitReached && (
+                                <span style={{ fontSize: '0.75rem', color: '#f59e0b' }}>
+                                    (Đã đạt tối đa {maxLimit} câu)
+                                </span>
+                            )}
                         </div>
                     </div>
                     <TiptapQxEditor
@@ -88,12 +108,17 @@ export const FlowchartTextInputEditor: React.FC<FlowchartTextInputEditorProps> =
                         <span style={{ color: '#334155', fontSize: '0.8125rem', fontWeight: 600 }}>Số câu question</span>
                         <InputNumber
                             min={MIN_ANSWER_COUNT}
-                            max={MAX_ANSWER_COUNT}
+                            max={maxAnswerCount ?? MAX_ANSWER_COUNT}
                             value={answerCount}
                             size="middle"
                             style={{ width: 110 }}
                             onChange={onUpdateAnswerCount}
                         />
+                        {maxAnswerCount != null && (
+                            <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                                (Tối đa {maxAnswerCount} câu - giới hạn câu 40)
+                            </span>
+                        )}
                     </div>
                 </div>
             )}

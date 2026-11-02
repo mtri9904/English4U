@@ -31,9 +31,10 @@ public class UserService(IApplicationDbContext context) : IUserService
             .Where(u => u.UserRoles.Any(ur => ManagedRoles.Contains(ur.Role.Name)))
             .AsQueryable();
 
-        if (!string.IsNullOrWhiteSpace(request.SearchTerm))
+        var rawSearch = !string.IsNullOrWhiteSpace(request.SearchTerm) ? request.SearchTerm : request.Search;
+        if (!string.IsNullOrWhiteSpace(rawSearch))
         {
-            var search = request.SearchTerm.ToLower();
+            var search = rawSearch.Trim().ToLower();
             query = query.Where(u => u.Email.ToLower().Contains(search) || 
                                      (u.DisplayName != null && u.DisplayName.ToLower().Contains(search)) ||
                                      (u.Phone != null && u.Phone.Contains(search)));

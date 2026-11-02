@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { markRealtimeScopeInvalidated } from '@/features/realtime/hooks/useRealtimeSync';
 import {
     notificationService,
     notificationApi,
@@ -70,7 +71,11 @@ export const useBroadcastNotificationMutation = () => {
     const queryClient = useQueryClient();
     return useMutation({
         mutationFn: (payload: BroadcastNotificationRequest) => notificationService.broadcastNotification(payload),
+        onMutate: () => {
+            markRealtimeScopeInvalidated('notifications.changed');
+        },
         onSuccess: () => {
+            markRealtimeScopeInvalidated('notifications.changed');
             queryClient.invalidateQueries({ queryKey: notificationQueryKeys.adminAll });
         },
     });
@@ -81,7 +86,11 @@ export const useUpdateNotificationMutation = () => {
     return useMutation({
         mutationFn: ({ id, payload }: { id: string; payload: UpdateNotificationRequest }) =>
             notificationService.updateNotification(id, payload),
+        onMutate: () => {
+            markRealtimeScopeInvalidated('notifications.changed');
+        },
         onSuccess: () => {
+            markRealtimeScopeInvalidated('notifications.changed');
             queryClient.invalidateQueries({ queryKey: notificationQueryKeys.adminAll });
         },
     });
@@ -91,7 +100,11 @@ export const useDeleteNotificationMutation = () => {
     const queryClient = useQueryClient();
     return useMutation({
         mutationFn: (id: string) => notificationService.deleteNotification(id),
+        onMutate: () => {
+            markRealtimeScopeInvalidated('notifications.changed');
+        },
         onSuccess: () => {
+            markRealtimeScopeInvalidated('notifications.changed');
             queryClient.invalidateQueries({ queryKey: notificationQueryKeys.adminAll });
         },
     });
@@ -125,6 +138,7 @@ export const useUpdateClientNotificationReadMutation = () => {
         mutationFn: ({ id, isRead }: { id: string; isRead: boolean }) =>
             notificationService.updateClientReadStatus(id, isRead),
         onSuccess: () => {
+            markRealtimeScopeInvalidated('notifications.changed');
             queryClient.invalidateQueries({ queryKey: notificationQueryKeys.clientAll });
         },
     });
@@ -135,6 +149,7 @@ export const useMarkAllClientNotificationsReadMutation = () => {
     return useMutation({
         mutationFn: notificationService.markAllClientAsRead,
         onSuccess: () => {
+            markRealtimeScopeInvalidated('notifications.changed');
             queryClient.invalidateQueries({ queryKey: notificationQueryKeys.clientAll });
         },
     });

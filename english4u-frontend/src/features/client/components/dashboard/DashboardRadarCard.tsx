@@ -1,5 +1,6 @@
 import React from 'react';
 import { Empty, Tag, Typography } from 'antd';
+import { APP_EMPTY_IMAGE } from '@/components/AppEmpty';
 import { motion } from 'framer-motion';
 import {
     PolarAngleAxis,
@@ -46,7 +47,7 @@ export const DashboardRadarCard: React.FC<DashboardRadarCardProps> = ({
             </div>
 
             {scoredBands.length === 0 ? (
-                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa đủ dữ liệu kỹ năng." />
+                <Empty image={APP_EMPTY_IMAGE} imageStyle={{ height: 88 }} description="Chưa đủ dữ liệu kỹ năng." />
             ) : (
                 <div className="radar-wrap">
                     <ResponsiveContainer width="100%" height={360}>

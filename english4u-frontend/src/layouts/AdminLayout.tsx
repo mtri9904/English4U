@@ -11,6 +11,7 @@ import {
     MenuUnfoldOutlined,
     CheckCircleOutlined,
     ReloadOutlined,
+    BugOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useUserProfileQuery, studentService as userApi } from '@/features/students';
@@ -26,6 +27,7 @@ import { PdfGenerationProgressWidget } from '@/features/exams';
 import { pdfGenerationJobStore } from '@/features/exams';
 import { useRealtimeSync } from '@/features/realtime/hooks/useRealtimeSync';
 import { formatDateTimeToMinute } from '@/shared/lib/dateTime';
+import { APP_EMPTY_IMAGE } from '@/components/AppEmpty';
 
 const { Header, Sider, Content } = Layout;
 
@@ -72,7 +74,7 @@ export const AdminLayout: React.FC = () => {
     }, [navigate]);
 
 
-    const { token: { colorBgContainer, borderRadiusLG } } = theme.useToken();
+    const { token: { colorBgContainer } } = theme.useToken();
 
     const handleLogout = async () => {
         try {
@@ -133,7 +135,7 @@ export const AdminLayout: React.FC = () => {
                     <Spin size="small" />
                 </div>
             ) : notificationItems.length === 0 ? (
-                <Empty description="Chưa có thông báo" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                <Empty description="Chưa có thông báo" image={APP_EMPTY_IMAGE} imageStyle={{ height: 64 }} />
             ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 340, overflowY: 'auto' }}>
                     {notificationItems.map((item) => (
@@ -219,6 +221,11 @@ export const AdminLayout: React.FC = () => {
             key: '/admin/notifications',
             icon: <BellOutlined />,
             label: 'Thông báo hệ thống',
+        },
+        {
+            key: '/admin/feedbacks',
+            icon: <BugOutlined />,
+            label: 'Phản hồi & Báo lỗi',
         }
     ];
 

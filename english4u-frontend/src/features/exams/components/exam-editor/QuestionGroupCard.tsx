@@ -1,5 +1,5 @@
 import React, { useState, type MutableRefObject } from 'react';
-import { Button, InputNumber, Radio, Select } from 'antd';
+import { Button, InputNumber, Radio, Select, message } from 'antd';
 import {
     AppstoreOutlined,
     BoldOutlined,
@@ -50,6 +50,8 @@ interface QuestionGroupCardProps {
     skill: 'Reading' | 'Listening';
     typeOptions: Array<{ label: string; value: string }>;
     canAddQuestion: boolean;
+    maxAllowedQuestions?: number;
+    maxQuestionCount?: number;
     warnQuestionLimit: () => void;
     wouldExceedQuestionLimit: (currentCount: number, nextCount: number) => boolean;
     onUpdateGroups: (nextGroups: CreateQuestionGroupDto[]) => void;
@@ -70,6 +72,8 @@ export const QuestionGroupCard: React.FC<QuestionGroupCardProps> = ({
     skill,
     typeOptions,
     canAddQuestion,
+    maxAllowedQuestions,
+    maxQuestionCount,
     warnQuestionLimit,
     wouldExceedQuestionLimit,
     onUpdateGroups,
@@ -135,7 +139,7 @@ export const QuestionGroupCard: React.FC<QuestionGroupCardProps> = ({
     };
 
     const templateQuestionNumbers = isComplexLayout ? extractTemplateQuestionNumbers(group.contentData) : [];
-    const numberedQuestions = isComplexLayout
+    const numberedQuestions = templateQuestionNumbers.length > 0
         ? templateQuestionNumbers
         : group.questions
               .map((question) => question.questionNumber)
@@ -158,6 +162,11 @@ export const QuestionGroupCard: React.FC<QuestionGroupCardProps> = ({
             return existing || { ...emptyQuestion(), questionNumber: number, options: sharedOptions };
         });
 
+        if (sortedNumbers.some((num) => num > (maxQuestionCount ?? 40))) {
+            message.warning(`Không được đánh số vượt quá câu ${maxQuestionCount ?? 40}.`);
+            return;
+        }
+
         if (wouldExceedQuestionLimit(group.questions.length, newQuestions.length)) {
             warnQuestionLimit();
             return;
@@ -179,7 +188,7 @@ export const QuestionGroupCard: React.FC<QuestionGroupCardProps> = ({
     };
 
     const insertBlankAtCursor = () => {
-        if (!canAddQuestion) {
+        if (!canAddQuestion || nextQToInsert > (maxQuestionCount ?? 40)) {
             warnQuestionLimit();
             return;
         }
@@ -360,6 +369,9 @@ export const QuestionGroupCard: React.FC<QuestionGroupCardProps> = ({
                     groups={groups}
                     groupIdx={groupIdx}
                     groupStartNum={groupStartNum}
+                    maxAllowedQuestions={maxAllowedQuestions}
+                    maxQuestionCount={maxQuestionCount}
+                    warnQuestionLimit={warnQuestionLimit}
                     onUpdate={onUpdateGroups}
                     uploading={uploading}
                     handleUploadFile={handleUploadFile}
@@ -373,6 +385,11 @@ export const QuestionGroupCard: React.FC<QuestionGroupCardProps> = ({
                     groupIdx={groupIdx}
                     groupStartNum={groupStartNum}
                     nextQNum={nextQToInsert}
+                    canAddQuestion={canAddQuestion && nextQToInsert <= (maxQuestionCount ?? 40)}
+                    maxAllowedQuestions={maxAllowedQuestions}
+                    maxQuestionCount={maxQuestionCount}
+                    warnQuestionLimit={warnQuestionLimit}
+                    wouldExceedQuestionLimit={wouldExceedQuestionLimit}
                     activeEditorRef={activeEditorRef}
                     onUpdate={onUpdateGroups}
                     uploading={uploading}
@@ -386,6 +403,9 @@ export const QuestionGroupCard: React.FC<QuestionGroupCardProps> = ({
                     groups={groups}
                     groupIdx={groupIdx}
                     groupStartNum={groupStartNum}
+                    maxAllowedQuestions={maxAllowedQuestions}
+                    maxQuestionCount={maxQuestionCount}
+                    warnQuestionLimit={warnQuestionLimit}
                     onUpdate={onUpdateGroups}
                 />
             )}
@@ -397,7 +417,7 @@ export const QuestionGroupCard: React.FC<QuestionGroupCardProps> = ({
                             <Button
                                 size="small"
                                 type="primary"
-                                disabled={!canAddQuestion}
+                                disabled={!canAddQuestion || nextQToInsert > (maxQuestionCount ?? 40)}
                                 onMouseDown={(event) => {
                                     event.preventDefault();
                                     insertBlankAtCursor();
@@ -415,6 +435,11 @@ export const QuestionGroupCard: React.FC<QuestionGroupCardProps> = ({
                             >
                                 In đậm
                             </Button>
+                            {(!canAddQuestion || nextQToInsert > (maxQuestionCount ?? 40)) && (
+                                <span style={{ fontSize: '0.75rem', color: '#f59e0b' }}>
+                                    (Đã đạt tối đa {maxQuestionCount ?? 40} câu)
+                                </span>
+                            )}
                             <Button
                                 size="small"
                                 icon={<TableOutlined />}
@@ -481,6 +506,9 @@ export const QuestionGroupCard: React.FC<QuestionGroupCardProps> = ({
                         <GenericTableEditor
                             contentData={group.contentData}
                             nextQNum={nextQToInsert}
+                            canAddQuestion={canAddQuestion && nextQToInsert <= (maxQuestionCount ?? 40)}
+                            maxQuestionCount={maxQuestionCount}
+                            warnQuestionLimit={warnQuestionLimit}
                             activeEditorRef={activeEditorRef}
                             onChange={handleContentChange}
                         />
@@ -516,7 +544,7 @@ export const QuestionGroupCard: React.FC<QuestionGroupCardProps> = ({
                         matchingHeadingAnswerOptions={matchingHeadingAnswerOptions}
                         sharedQuestionOptions={sharedQuestionOptions}
                         matchingHeadingOptionCount={matchingHeadingOptionCount}
-                        canAddQuestion={canAddQuestion}
+                        canAddQuestion={canAddQuestion && nextQToInsert <= (maxQuestionCount ?? 40)}
                         warnQuestionLimit={warnQuestionLimit}
                         onUpdateQuestion={(questionIdx, partial) => {
                             const updatedGroups = [...groups];
@@ -621,7 +649,7 @@ export const QuestionGroupCard: React.FC<QuestionGroupCardProps> = ({
                             icon={<PlusOutlined />}
                             block
                             size="small"
-                            disabled={!canAddQuestion}
+                            disabled={!canAddQuestion || nextQToInsert > (maxQuestionCount ?? 40)}
                             style={{
                                 marginTop: '8px',
                                 background: '#f8fafc',
@@ -632,7 +660,7 @@ export const QuestionGroupCard: React.FC<QuestionGroupCardProps> = ({
                                 borderRadius: '6px',
                             }}
                             onClick={() => {
-                                if (!canAddQuestion) {
+                                if (!canAddQuestion || nextQToInsert > (maxQuestionCount ?? 40)) {
                                     warnQuestionLimit();
                                     return;
                                 }

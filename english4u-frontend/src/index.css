@@ -47,3 +47,44 @@
     max-width: 1200px;
     margin: 0 auto;
 }
+
+/* Ant Design Empty state centering fix across the entire application */
+.ant-empty {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    text-align: center !important;
+    margin-inline: auto !important;
+}
+
+.ant-empty .ant-empty-image {
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    width: 100% !important;
+}
+
+.ant-empty .ant-empty-image img {
+    display: block !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    max-width: 100% !important;
+    object-fit: contain !important;
+}
+
+.ant-empty .ant-empty-description {
+    text-align: center !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+}
+
+.ant-empty .ant-empty-footer {
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+}

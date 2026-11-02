@@ -20,6 +20,7 @@ public class AdminNotificationController(
         int PageNumber = 1,
         int PageSize = 10,
         string? SearchTerm = null,
+        string? Search = null,
         bool? IsRead = null,
         string? Role = null);
 
@@ -50,9 +51,10 @@ public class AdminNotificationController(
         var pageNumber = request.PageNumber <= 0 ? 1 : request.PageNumber;
         var pageSize = request.PageSize <= 0 ? 10 : Math.Min(request.PageSize, 100);
         var normalizedRole = string.IsNullOrWhiteSpace(request.Role) ? null : request.Role.Trim();
-        var normalizedSearch = string.IsNullOrWhiteSpace(request.SearchTerm)
+        var rawSearch = !string.IsNullOrWhiteSpace(request.SearchTerm) ? request.SearchTerm : request.Search;
+        var normalizedSearch = string.IsNullOrWhiteSpace(rawSearch)
             ? null
-            : request.SearchTerm.Trim().ToLower();
+            : rawSearch.Trim().ToLower();
 
         var query = context.Notifications
             .AsNoTracking()

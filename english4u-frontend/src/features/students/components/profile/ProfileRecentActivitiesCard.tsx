@@ -1,6 +1,7 @@
 import React from 'react';
 import { Button, Card, Empty, Tag, Typography } from 'antd';
 import { ArrowRightOutlined } from '@ant-design/icons';
+import { APP_EMPTY_IMAGE } from '@/components/AppEmpty';
 import { motion } from 'framer-motion';
 import { fadeUp, getSkillTone } from '../../utils/student.utils';
 import { getSkillLabel } from '@/features/exam-taking';
@@ -39,7 +40,8 @@ export const ProfileRecentActivitiesCard: React.FC<ProfileRecentActivitiesCardPr
 
                 {recentActivities.length === 0 ? (
                     <Empty
-                        image={Empty.PRESENTED_IMAGE_SIMPLE}
+                        image={APP_EMPTY_IMAGE}
+                        imageStyle={{ height: 80 }}
                         description="Bạn chưa hoàn thành đề nào để hiển thị lịch sử."
                     />
                 ) : (

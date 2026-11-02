@@ -5,9 +5,9 @@ import {
     EditOutlined,
     EyeOutlined,
 } from '@ant-design/icons';
-import type { ExamDto } from '@/features/exams/types/exam.types';
-import { examTypeColorMap, skillColors } from '../../constants/exam.constants';
-import { getPrimarySkill } from '../../utils/exam.utils';
+import type { ExamDto } from '../types/exam.types';
+import { examTypeColorMap, skillColors } from '../constants/exam.constants';
+import { getPrimarySkill } from '../utils/exam.utils';
 
 const iconButtonStyle = {
     borderRadius: 10,
@@ -17,7 +17,7 @@ const iconButtonStyle = {
     background: '#fff',
 };
 
-interface CreateExamColumnsOptions {
+export interface CreateExamColumnsOptions {
     onView: (id: string) => void;
     onEdit: (id: string) => void;
     onDelete: (exam: ExamDto) => void;

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Button, Empty, Image, Input, Radio, Upload } from 'antd';
 import { CloseOutlined, PictureOutlined } from '@ant-design/icons';
+import { APP_EMPTY_IMAGE } from '@/components/AppEmpty';
 import type { FlowchartAnswerMode, FlowchartAssetData, FlowchartTextInputLayout } from './flowchartCompletion.utils';
 
 interface FlowchartImageUploaderProps {
@@ -131,9 +132,10 @@ export const FlowchartImageUploader: React.FC<FlowchartImageUploaderProps> = ({
                     />
                 </div>
             ) : (
-                <div style={{ marginTop: '12px' }}>
+                <div style={{ marginTop: '12px', textAlign: 'center' }}>
                     <Empty
-                        image={Empty.PRESENTED_IMAGE_SIMPLE}
+                        image={APP_EMPTY_IMAGE}
+                        imageStyle={{ height: 80, display: 'flex', justifyContent: 'center', alignItems: 'center', margin: '0 auto' }}
                         description="Tải ảnh flowchart lên để xem preview"
                     />
                 </div>

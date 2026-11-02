@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { markRealtimeScopeInvalidated } from '@/features/realtime/hooks/useRealtimeSync';
 import { studentService, userApi } from '../services/student.service';
 import type {
     UpdateProfileRequest,
@@ -103,7 +104,11 @@ export const useToggleUserStatusMutation = () => {
     return useMutation({
         mutationFn: ({ id, payload }: { id: string; payload: { isLocked: boolean; reason?: string } }) =>
             studentService.toggleUserStatus(id, payload),
+        onMutate: () => {
+            markRealtimeScopeInvalidated('users.presence.changed');
+        },
         onSuccess: (_, variables) => {
+            markRealtimeScopeInvalidated('users.presence.changed');
             queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
             queryClient.invalidateQueries({ queryKey: studentQueryKeys.adminDetail(variables.id) });
         },
@@ -115,7 +120,11 @@ export const useUpdateUserRoleMutation = () => {
     return useMutation({
         mutationFn: ({ id, payload }: { id: string; payload: { role: string } }) =>
             studentService.updateUserRole(id, payload),
+        onMutate: () => {
+            markRealtimeScopeInvalidated('users.presence.changed');
+        },
         onSuccess: (_, variables) => {
+            markRealtimeScopeInvalidated('users.presence.changed');
             queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
             queryClient.invalidateQueries({ queryKey: studentQueryKeys.adminDetail(variables.id) });
         },
@@ -126,7 +135,11 @@ export const useDeleteUserMutation = () => {
     const queryClient = useQueryClient();
     return useMutation({
         mutationFn: (id: string) => studentService.deleteUser(id),
+        onMutate: () => {
+            markRealtimeScopeInvalidated('users.presence.changed');
+        },
         onSuccess: () => {
+            markRealtimeScopeInvalidated('users.presence.changed');
             queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
         },
     });

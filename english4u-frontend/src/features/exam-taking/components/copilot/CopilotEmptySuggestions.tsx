@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { Button, Empty, Space } from 'antd';
 import { BulbOutlined } from '@ant-design/icons';
+import { APP_EMPTY_IMAGE } from '@/components/AppEmpty';
 
 interface CopilotEmptySuggestionsProps {
     skillType?: string | null;
@@ -61,7 +62,8 @@ export const CopilotEmptySuggestions = ({
                 }}
             >
                 <Empty
-                    image={Empty.PRESENTED_IMAGE_SIMPLE}
+                    image={APP_EMPTY_IMAGE}
+                    imageStyle={{ height: 72 }}
                     description="Copilot có thể trả lời xuyên suốt về toàn bộ bài đã làm."
                 />
                 <Space direction="vertical" size={10} style={{ width: '100%' }}>

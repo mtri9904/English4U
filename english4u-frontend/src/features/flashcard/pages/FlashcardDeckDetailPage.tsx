@@ -19,6 +19,7 @@ import {
 } from '@ant-design/icons';
 import { useParams, useNavigate } from 'react-router-dom';
 import { PageLoadingState, PageErrorState } from '@/components';
+import { APP_EMPTY_IMAGE } from '@/components/AppEmpty';
 import { useQueryClient } from '@tanstack/react-query';
 import {
     useFlashcardDeckDetailQuery,
@@ -99,7 +100,7 @@ export const FlashcardDeckDetailPage: React.FC = () => {
     if (!deck) {
         return (
             <Card style={{ margin: 24, textAlign: 'center' }}>
-                <Empty description="Không tìm thấy bộ thẻ." />
+                <Empty image={APP_EMPTY_IMAGE} imageStyle={{ height: 88 }} description="Không tìm thấy bộ thẻ." />
                 <Button onClick={() => navigate(ROUTE_PATHS.FLASHCARDS_ROOT)}>
                     Quay lại danh sách
                 </Button>
@@ -199,7 +200,8 @@ export const FlashcardDeckDetailPage: React.FC = () => {
             {filteredCards.length === 0 ? (
                 <Card style={{ borderRadius: 16, textAlign: 'center', padding: '40px 20px' }}>
                     <Empty
-                        image={Empty.PRESENTED_IMAGE_SIMPLE}
+                        image={APP_EMPTY_IMAGE}
+                        imageStyle={{ height: 88 }}
                         description={
                             cards.length === 0
                                 ? 'Bộ thẻ này chưa có từ vựng nào.'

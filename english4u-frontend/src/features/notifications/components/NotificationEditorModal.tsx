@@ -1,5 +1,6 @@
 import React from 'react';
 import { Modal, Form, Input, Select, Empty, Skeleton, Avatar, Button, type FormInstance } from 'antd';
+import { APP_EMPTY_IMAGE } from '@/components/AppEmpty';
 import { Send, Pencil, Trash2 } from 'lucide-react';
 import type { EditorMode, NotificationFormValues } from '../constants/notification.constants';
 import { DEFAULT_FORM, ROLE_OPTIONS } from '../constants/notification.constants';
@@ -116,7 +117,7 @@ export const NotificationEditorModal: React.FC<NotificationEditorModalProps> = (
                                                 isUsersLoading ? (
                                                     <Skeleton active paragraph={{ rows: 1 }} />
                                                 ) : (
-                                                    <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                                                    <Empty image={APP_EMPTY_IMAGE} imageStyle={{ height: 60 }} description="Không tìm thấy người dùng" />
                                                 )
                                             }
                                         />

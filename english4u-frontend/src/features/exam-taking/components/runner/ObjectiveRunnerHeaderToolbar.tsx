@@ -3,7 +3,6 @@ import { Button } from 'antd';
 import {
     ArrowLeftOutlined,
     ClockCircleOutlined,
-    SaveOutlined,
 } from '@ant-design/icons';
 import { getSkillLabel } from '../../utils/sessionRouting.utils';
 import { formatAudioTime } from '../../utils/objectiveRunner.utils';
@@ -13,7 +12,7 @@ export interface ObjectiveRunnerHeaderToolbarProps {
     examTitle: string;
     skillType: string;
     timerText: string;
-    autosaveLabel: string;
+    autosaveLabel?: string;
     isListeningSession: boolean;
     sharedListeningAudioUrl?: string | null;
     listeningAttemptMode: ListeningAttemptMode;
@@ -104,10 +103,6 @@ export const ObjectiveRunnerHeaderToolbar: React.FC<ObjectiveRunnerHeaderToolbar
                 <span className="runner-header-chip runner-timer-chip">
                     <ClockCircleOutlined />
                     {timerText}
-                </span>
-                <span className="runner-header-chip runner-save-chip runner-save-status-chip runner-autosave-tag">
-                    <SaveOutlined />
-                    {autosaveLabel}
                 </span>
             </div>
             <Button type="primary" className="runner-header-submit" onClick={onSubmit}>

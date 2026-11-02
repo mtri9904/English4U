@@ -7,6 +7,9 @@ interface FlowchartEditorProps {
     contentData?: string | null;
     onChange: (value: string) => void;
     nextQNum: number;
+    canAddQuestion?: boolean;
+    maxQuestionCount?: number;
+    warnQuestionLimit?: () => void;
     activeEditorRef: MutableRefObject<TiptapQxEditorRef | null>;
 }
 
@@ -85,8 +88,13 @@ export const FlowchartEditor = ({
     contentData,
     onChange,
     nextQNum,
+    canAddQuestion,
+    maxQuestionCount,
+    warnQuestionLimit,
     activeEditorRef,
 }: FlowchartEditorProps) => {
+    const maxLimit = maxQuestionCount ?? 40;
+    const isLimitReached = (canAddQuestion != null && !canAddQuestion) || nextQNum > maxLimit;
     const rows = useMemo(() => parseFlowchartRows(contentData), [contentData]);
     const [focused, setFocused] = useState<{ row: number; col: number } | null>(null);
     const cellEditorRefs = useRef<Record<string, TiptapQxEditorRef | null>>({});
@@ -100,6 +108,10 @@ export const FlowchartEditor = ({
 
     const insertQ = () => {
         if (!focused) return;
+        if (isLimitReached) {
+            warnQuestionLimit?.();
+            return;
+        }
 
         const key = getCellKey(focused.row, focused.col);
         const editorRef = cellEditorRefs.current[key] ?? null;
@@ -156,7 +168,7 @@ export const FlowchartEditor = ({
                         event.preventDefault();
                         insertQ();
                     }}
-                    disabled={!focused}
+                    disabled={!focused || isLimitReached}
                 >
                     Thêm ô trống [Q{nextQNum}]
                 </Button>
@@ -174,6 +186,11 @@ export const FlowchartEditor = ({
                 >
                     In đậm
                 </Button>
+                {isLimitReached && (
+                    <span style={{ fontSize: '0.75rem', color: '#f59e0b' }}>
+                        (Đã đạt tối đa {maxLimit} câu)
+                    </span>
+                )}
                 {focused && (
                     <Tag color="blue" style={{ marginInlineEnd: 0 }}>
                         Đang sửa: Hàng {focused.row + 1}, Ô {focused.col + 1}

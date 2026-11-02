@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { markRealtimeScopeInvalidated } from '@/features/realtime/hooks/useRealtimeSync';
 import { examService, examApi } from '../services/exam.service';
 import type {
     CreateExamDto,
@@ -96,7 +97,13 @@ export const useDeleteExamMutation = () => {
     const queryClient = useQueryClient();
     return useMutation({
         mutationFn: examService.delete,
-        onSuccess: () => queryClient.invalidateQueries({ queryKey: examQueryKeys.lists() }),
+        onMutate: () => {
+            markRealtimeScopeInvalidated('exams.changed');
+        },
+        onSuccess: () => {
+            markRealtimeScopeInvalidated('exams.changed');
+            queryClient.invalidateQueries({ queryKey: examQueryKeys.lists() });
+        },
     });
 };
 
@@ -104,7 +111,11 @@ export const useUpdateExamStatusMutation = () => {
     const queryClient = useQueryClient();
     return useMutation({
         mutationFn: examService.updateStatus,
+        onMutate: () => {
+            markRealtimeScopeInvalidated('exams.changed');
+        },
         onSuccess: (_, variables) => {
+            markRealtimeScopeInvalidated('exams.changed');
             queryClient.invalidateQueries({ queryKey: examQueryKeys.lists() });
             queryClient.invalidateQueries({
                 queryKey: examQueryKeys.detail(variables.id),
@@ -119,7 +130,11 @@ export const useGenerateExamFromPdfMutation = () => {
     const queryClient = useQueryClient();
     return useMutation({
         mutationFn: examService.generateFromPdf,
+        onMutate: () => {
+            markRealtimeScopeInvalidated('exams.changed');
+        },
         onSuccess: (result) => {
+            markRealtimeScopeInvalidated('exams.changed');
             queryClient.invalidateQueries({ queryKey: examQueryKeys.all });
             queryClient.invalidateQueries({ queryKey: examQueryKeys.detail(result.examId) });
         },
@@ -130,7 +145,11 @@ export const useGenerateExamAiMutation = () => {
     const queryClient = useQueryClient();
     return useMutation({
         mutationFn: examService.generateAi,
+        onMutate: () => {
+            markRealtimeScopeInvalidated('exams.changed');
+        },
         onSuccess: (result) => {
+            markRealtimeScopeInvalidated('exams.changed');
             queryClient.invalidateQueries({ queryKey: examQueryKeys.all });
             queryClient.invalidateQueries({ queryKey: examQueryKeys.detail(result.examId) });
         },

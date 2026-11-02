@@ -1,4 +1,4 @@
-import { Input, InputNumber, Tag } from 'antd';
+import { Input, InputNumber, Tag, message } from 'antd';
 import type {
     CreateQuestionDto,
     CreateQuestionGroupDto,
@@ -12,6 +12,9 @@ interface ListeningMultiSelectEditorProps {
     groups: CreateQuestionGroupDto[];
     groupIdx: number;
     groupStartNum: number;
+    maxAllowedQuestions?: number;
+    maxQuestionCount?: number;
+    warnQuestionLimit?: () => void;
     onUpdate: (groups: CreateQuestionGroupDto[]) => void;
 }
 
@@ -146,8 +149,15 @@ export const ListeningMultiSelectEditor = ({
     groups,
     groupIdx,
     groupStartNum,
+    maxAllowedQuestions,
+    maxQuestionCount,
+    warnQuestionLimit,
     onUpdate,
 }: ListeningMultiSelectEditorProps) => {
+    const effectiveMaxAnswerCount = Math.max(
+        MIN_ANSWER_COUNT,
+        Math.min(MAX_ANSWER_COUNT, maxAllowedQuestions ?? MAX_ANSWER_COUNT),
+    );
     const sharedOptions = group.questions[0]?.options?.length
         ? cloneOptions(group.questions[0].options)
         : createDefaultOptions();
@@ -188,7 +198,16 @@ export const ListeningMultiSelectEditor = ({
     };
 
     const updateAnswerCount = (count?: number | null) => {
-        const nextAnswerCount = normalizeAnswerCount(count);
+        if (count != null && count > effectiveMaxAnswerCount) {
+            if (warnQuestionLimit) {
+                warnQuestionLimit();
+            } else {
+                message.warning(
+                    `Nhóm câu hỏi này chỉ có thể chứa tối đa ${effectiveMaxAnswerCount} câu (giới hạn tối đa câu ${maxQuestionCount ?? 40} của bài thi).`,
+                );
+            }
+        }
+        const nextAnswerCount = Math.min(normalizeAnswerCount(count), effectiveMaxAnswerCount);
         const nextSelectedAnswers = normalizeSelectedAnswers(
             selectedAnswers,
             sharedOptions.length,
@@ -278,11 +297,16 @@ export const ListeningMultiSelectEditor = ({
                 <InputNumber
                     value={answerCount}
                     min={MIN_ANSWER_COUNT}
-                    max={MAX_ANSWER_COUNT}
+                    max={effectiveMaxAnswerCount}
                     size="middle"
                     style={{ width: 110 }}
                     onChange={updateAnswerCount}
                 />
+                {maxAllowedQuestions != null && (
+                    <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                        (Tối đa {effectiveMaxAnswerCount} ô - giới hạn câu {maxQuestionCount ?? 40})
+                    </span>
+                )}
                 <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
                     Mỗi ô tương ứng 1 question number: Q{groupStartNum} - Q{groupStartNum + answerCount - 1}
                 </span>

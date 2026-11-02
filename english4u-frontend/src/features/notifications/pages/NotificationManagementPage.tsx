@@ -1,9 +1,12 @@
 import { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Modal, Form, Empty, Skeleton, message, Avatar } from 'antd';
+import { useUrlFilters } from '@/shared/hooks';
 import {
-    Bell, ChevronLeft, ChevronRight, Megaphone,
+    Bell, Megaphone,
 } from 'lucide-react';
+import { AppPagination } from '@/components/AppPagination';
+import { APP_EMPTY_IMAGE } from '@/components/AppEmpty';
 import {
     useAdminNotificationStatsQuery,
     useAdminNotificationsQuery,
@@ -39,12 +42,33 @@ const cardAnim = {
     show: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 280, damping: 22 } },
 } as const;
 
+interface NotificationUrlFilters {
+    search: string;
+    role: RoleFilter;
+    read: ReadFilter;
+    page: number;
+    pageSize: number;
+}
+
+const DEFAULT_NOTIFICATION_FILTERS: NotificationUrlFilters = {
+    search: '',
+    role: 'ALL',
+    read: 'ALL',
+    page: 1,
+    pageSize: 10,
+};
+
 export const NotificationManagementPage = () => {
-    const [search, setSearch] = useState('');
-    const [roleFilter, setRoleFilter] = useState<RoleFilter>('ALL');
-    const [readFilter, setReadFilter] = useState<ReadFilter>('ALL');
-    const [pageNumber, setPage] = useState(1);
-    const [pageSize] = useState(PAGE_SIZE);
+    const {
+        filters,
+        getSearchInputValue,
+        setFilter,
+        setFilters,
+    } = useUrlFilters<NotificationUrlFilters>({
+        defaultValues: DEFAULT_NOTIFICATION_FILTERS,
+        pageKey: 'page',
+    });
+
     const [selected, setSelected] = useState<NotificationListItemDto | null>(null);
     const [editorOpen, setEditorOpen] = useState(false);
     const [editorMode, setEditorMode] = useState<EditorMode>('create');
@@ -106,13 +130,14 @@ export const NotificationManagementPage = () => {
 
     const queryParams = useMemo(
         () => ({
-            pageNumber,
-            pageSize,
-            searchTerm: search.trim() || undefined,
-            role: roleFilter === 'ALL' ? undefined : roleFilter,
-            isRead: readFilter === 'ALL' ? undefined : readFilter === 'read',
+            pageNumber: filters.page,
+            pageSize: filters.pageSize,
+            searchTerm: filters.search.trim() || undefined,
+            search: filters.search.trim() || undefined,
+            role: filters.role === 'ALL' ? undefined : filters.role,
+            isRead: filters.read === 'ALL' ? undefined : filters.read === 'read',
         }),
-        [pageNumber, pageSize, search, roleFilter, readFilter],
+        [filters.page, filters.pageSize, filters.search, filters.role, filters.read],
     );
 
     const {
@@ -136,7 +161,7 @@ export const NotificationManagementPage = () => {
 
     const notifications = paged?.items ?? [];
     const totalCount = paged?.totalCount ?? 0;
-    const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+    const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
     const isSaving = broadcastMutation.isPending || updateMutation.isPending;
 
     const openCreate = () => {
@@ -225,18 +250,7 @@ export const NotificationManagementPage = () => {
         });
     };
 
-    const handleSearchChange = (v: string) => {
-        setSearch(v);
-        setPage(1);
-    };
-    const handleRoleChange = (v: RoleFilter) => {
-        setRoleFilter(v);
-        setPage(1);
-    };
-    const handleReadChange = (v: ReadFilter) => {
-        setReadFilter(v);
-        setPage(1);
-    };
+
 
     return (
         <motion.div variants={container} initial="hidden" animate="show" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
@@ -323,13 +337,13 @@ export const NotificationManagementPage = () => {
 
             {/* Filter & Search Controls */}
             <NotificationFilterBar
-                search={search}
-                roleFilter={roleFilter}
-                readFilter={readFilter}
+                search={getSearchInputValue('search')}
+                roleFilter={filters.role}
+                readFilter={filters.read}
                 isFetching={isFetching}
-                onSearchChange={handleSearchChange}
-                onRoleChange={handleRoleChange}
-                onReadChange={handleReadChange}
+                onSearchChange={(v) => setFilter('search', v)}
+                onRoleChange={(v) => setFilter('role', v)}
+                onReadChange={(v) => setFilter('read', v)}
                 onRefresh={() => refetch()}
             />
 
@@ -344,8 +358,12 @@ export const NotificationManagementPage = () => {
                         ))}
                     </div>
                 ) : notifications.length === 0 ? (
-                    <div style={{ background: '#fff', borderRadius: 20, border: '1px solid #f1f5f9', padding: '64px 0' }}>
-                        <Empty description="Không có thông báo nào khớp bộ lọc" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                    <div style={{ background: '#fff', borderRadius: 20, border: '1px solid #f1f5f9', padding: '48px 0' }}>
+                        <Empty
+                            description="Không có thông báo nào khớp bộ lọc"
+                            image={APP_EMPTY_IMAGE}
+                            imageStyle={{ height: 96 }}
+                        />
                     </div>
                 ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -365,82 +383,16 @@ export const NotificationManagementPage = () => {
                     </div>
                 )}
 
-                {totalPages > 1 && (
-                    <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
-                        <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
-                            {totalCount} thông báo · Trang {pageNumber}/{totalPages}
-                        </span>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <motion.button
-                                whileHover={{ scale: 1.05 }}
-                                whileTap={{ scale: 0.95 }}
-                                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                                disabled={pageNumber === 1}
-                                style={{
-                                    width: 32,
-                                    height: 32,
-                                    borderRadius: 8,
-                                    border: '1px solid #e2e8f0',
-                                    background: pageNumber === 1 ? '#f8fafc' : '#fff',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    cursor: pageNumber === 1 ? 'not-allowed' : 'pointer',
-                                    opacity: pageNumber === 1 ? 0.4 : 1,
-                                }}
-                            >
-                                <ChevronLeft size={14} color="#475569" />
-                            </motion.button>
-                            {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
-                                const p = totalPages <= 5 ? i + 1 : Math.max(1, Math.min(pageNumber - 2, totalPages - 4)) + i;
-                                return (
-                                    <motion.button
-                                        key={p}
-                                        whileHover={{ scale: 1.05 }}
-                                        whileTap={{ scale: 0.95 }}
-                                        onClick={() => setPage(p)}
-                                        style={{
-                                            width: 32,
-                                            height: 32,
-                                            borderRadius: 8,
-                                            border: p === pageNumber ? 'none' : '1px solid #e2e8f0',
-                                            background: p === pageNumber ? 'linear-gradient(135deg,#6366f1,#8b5cf6)' : '#fff',
-                                            color: p === pageNumber ? '#fff' : '#475569',
-                                            fontWeight: p === pageNumber ? 800 : 500,
-                                            fontSize: '0.8rem',
-                                            cursor: 'pointer',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            boxShadow: p === pageNumber ? '0 4px 12px rgba(99,102,241,0.35)' : 'none',
-                                        }}
-                                    >
-                                        {p}
-                                    </motion.button>
-                                );
-                            })}
-                            <motion.button
-                                whileHover={{ scale: 1.05 }}
-                                whileTap={{ scale: 0.95 }}
-                                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                                disabled={pageNumber === totalPages}
-                                style={{
-                                    width: 32,
-                                    height: 32,
-                                    borderRadius: 8,
-                                    border: '1px solid #e2e8f0',
-                                    background: pageNumber === totalPages ? '#f8fafc' : '#fff',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    cursor: pageNumber === totalPages ? 'not-allowed' : 'pointer',
-                                    opacity: pageNumber === totalPages ? 0.4 : 1,
-                                }}
-                            >
-                                <ChevronRight size={14} color="#475569" />
-                            </motion.button>
-                        </div>
-                    </div>
+                {totalCount > 0 && (
+                    <AppPagination
+                        current={filters.page}
+                        pageSize={filters.pageSize}
+                        total={totalCount}
+                        onChange={(p, s) => setFilters({ page: p, pageSize: s })}
+                        entityLabel="thông báo"
+                        align="right"
+                        showSizeChanger={true}
+                    />
                 )}
             </motion.div>
 

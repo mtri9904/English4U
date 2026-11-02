@@ -1,5 +1,7 @@
-import { Button, Card, Col, Empty, Pagination, Progress, Row, Segmented, Space, Statistic, Tag, Typography, message } from 'antd';
-import { useEffect, useState } from 'react';
+import { Button, Card, Col, Empty, Progress, Row, Segmented, Space, Statistic, Tag, Typography, message } from 'antd';
+import { AppPagination } from '@/components/AppPagination';
+import { APP_EMPTY_IMAGE } from '@/components/AppEmpty';
+import { useState } from 'react';
 import {
     BookOutlined,
     CheckCircleOutlined,
@@ -11,6 +13,7 @@ import {
     TrophyOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
+import { useUrlFilters } from '@/shared/hooks';
 import { PageLoadingState, PageErrorState } from '@/components';
 import { useMyPracticeSessionsQuery, useStartPracticeSessionMutation } from '@/features/exam-taking';
 import { getSessionRunnerPath, getSkillLabel } from '@/features/exam-taking';
@@ -121,22 +124,36 @@ const formatSeconds = (value?: number | null) => {
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 };
 
+interface MyExamsUrlFilters {
+    skill: string;
+    status: string;
+    page: number;
+}
+
+const DEFAULT_MY_EXAMS_FILTERS: MyExamsUrlFilters = {
+    skill: 'ALL',
+    status: 'ALL',
+    page: 1,
+};
+
 export const ClientMyExamsPage = () => {
     const navigate = useNavigate();
-    const [currentPage, setCurrentPage] = useState(1);
+    const {
+        filters,
+        setFilter,
+        resetFilters,
+    } = useUrlFilters<MyExamsUrlFilters>({
+        defaultValues: DEFAULT_MY_EXAMS_FILTERS,
+        pageKey: 'page',
+    });
+
     const pageSize = 8;
     const [pendingListeningExamId, setPendingListeningExamId] = useState<string | null>(null);
-    const [selectedSkill, setSelectedSkill] = useState('ALL');
-    const [selectedStatus, setSelectedStatus] = useState('ALL');
-
-    useEffect(() => {
-        setCurrentPage(1);
-    }, [selectedSkill, selectedStatus]);
 
     const { data: pagedData, isLoading, isError, refetch } = useMyPracticeSessionsQuery({
-        skill: selectedSkill !== 'ALL' ? selectedSkill : undefined,
-        status: selectedStatus !== 'ALL' ? selectedStatus : undefined,
-        pageNumber: currentPage,
+        skill: filters.skill !== 'ALL' ? filters.skill : undefined,
+        status: filters.status !== 'ALL' ? filters.status : undefined,
+        pageNumber: filters.page,
         pageSize,
     });
     const startSessionMutation = useStartPracticeSessionMutation();
@@ -253,8 +270,8 @@ export const ClientMyExamsPage = () => {
                         <Text type="secondary" style={{ fontSize: 13 }}>Tổng số {totalCount} bài thi</Text>
                     </Space>
                     <Space size={10} wrap>
-                        <Segmented options={skillFilterOptions} value={selectedSkill} onChange={(value) => setSelectedSkill(String(value))} />
-                        <Segmented options={statusFilterOptions} value={selectedStatus} onChange={(value) => setSelectedStatus(String(value))} />
+                        <Segmented options={skillFilterOptions} value={filters.skill} onChange={(value) => setFilter('skill', String(value))} />
+                        <Segmented options={statusFilterOptions} value={filters.status} onChange={(value) => setFilter('status', String(value))} />
                     </Space>
                 </div>
             </Card>
@@ -274,18 +291,23 @@ export const ClientMyExamsPage = () => {
                 ) : visibleSessions.length === 0 ? (
                     <Col span={24}>
                         <Card style={{ borderRadius: 18, border: '1px solid #e2e8f0' }}>
-                            {selectedSkill === 'ALL' && selectedStatus === 'ALL' ? (
+                            {filters.skill === 'ALL' && filters.status === 'ALL' ? (
                                 <Empty
                                     description="Bạn chưa làm bài thi nào. Hãy vào kho đề và bắt đầu một đề Reading, Listening, Writing hoặc Speaking."
-                                    image={Empty.PRESENTED_IMAGE_SIMPLE}
+                                    image={APP_EMPTY_IMAGE}
+                                    imageStyle={{ height: 96 }}
                                 >
                                     <Button type="primary" style={libraryButtonStyle} onClick={() => navigate('/app/practice')}>
                                         Mở kho đề
                                     </Button>
                                 </Empty>
                             ) : (
-                                <Empty description="Không có bài thi nào khớp bộ lọc hiện tại." image={Empty.PRESENTED_IMAGE_SIMPLE}>
-                                    <Button style={clearFilterButtonStyle} onClick={() => { setSelectedSkill('ALL'); setSelectedStatus('ALL'); }}>
+                                <Empty
+                                    description="Không có bài thi nào khớp bộ lọc hiện tại."
+                                    image={APP_EMPTY_IMAGE}
+                                    imageStyle={{ height: 96 }}
+                                >
+                                    <Button style={clearFilterButtonStyle} onClick={resetFilters}>
                                         Xóa bộ lọc
                                     </Button>
                                 </Empty>
@@ -442,15 +464,15 @@ export const ClientMyExamsPage = () => {
             </Row>
 
             {totalCount > pageSize && (
-                <div style={{ display: 'flex', justifyContent: 'center', marginTop: 16 }}>
-                    <Pagination
-                        current={currentPage}
-                        pageSize={pageSize}
-                        total={totalCount}
-                        onChange={(page) => setCurrentPage(page)}
-                        showSizeChanger={false}
-                    />
-                </div>
+                <AppPagination
+                    current={filters.page}
+                    pageSize={pageSize}
+                    total={totalCount}
+                    onChange={(page) => setFilter('page', page)}
+                    entityLabel="đề thi"
+                    align="center"
+                    showSizeChanger={false}
+                />
             )}
 
             <ListeningAttemptModeModal

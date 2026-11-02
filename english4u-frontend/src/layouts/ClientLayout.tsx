@@ -29,6 +29,8 @@ import {
 import { getStreakDisplayMeta } from '@/features/gamification';
 import { useRealtimeSync } from '@/features/realtime/hooks/useRealtimeSync';
 import { formatDateTimeToMinute } from '@/shared/lib/dateTime';
+import { FeedbackModal } from '@/features/feedbacks';
+import { APP_EMPTY_IMAGE } from '@/components/AppEmpty';
 
 const { Sider, Content } = Layout;
 const { Text } = Typography;
@@ -37,6 +39,7 @@ export const ClientLayout: React.FC = () => {
     const [collapsed, setCollapsed] = useState(false);
     const [isMobile, setIsMobile] = useState(false);
     const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+    const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
     const hasUserId = !!localStorage.getItem('userId');
     const hasToken = !!localStorage.getItem('token');
     const navigate = useNavigate();
@@ -143,7 +146,7 @@ export const ClientLayout: React.FC = () => {
                     <Spin size="small" />
                 </div>
             ) : notificationItems.length === 0 ? (
-                <Empty description="Chưa có thông báo" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                <Empty description="Chưa có thông báo" image={APP_EMPTY_IMAGE} imageStyle={{ height: 64 }} />
             ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 340, overflowY: 'auto' }}>
                     {notificationItems.map((item) => (
@@ -407,6 +410,69 @@ export const ClientLayout: React.FC = () => {
                     />
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexShrink: 0 }}>
+                        {/* Nút Báo lỗi (Pill button with badge & icon) */}
+                        <button
+                            type="button"
+                            onClick={() => setIsFeedbackModalOpen(true)}
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 8,
+                                padding: '5px 14px 5px 8px',
+                                borderRadius: 9999,
+                                background: '#0f172a',
+                                border: '1px solid #1e293b',
+                                color: '#ffffff',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s ease',
+                                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)',
+                            }}
+                            onMouseEnter={(e) => {
+                                e.currentTarget.style.transform = 'translateY(-1px)';
+                                e.currentTarget.style.borderColor = '#f97316';
+                                e.currentTarget.style.boxShadow = '0 4px 14px rgba(249, 115, 22, 0.25)';
+                            }}
+                            onMouseLeave={(e) => {
+                                e.currentTarget.style.transform = 'translateY(0)';
+                                e.currentTarget.style.borderColor = '#1e293b';
+                                e.currentTarget.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.15)';
+                            }}
+                            title="Gửi phản hồi & Báo lỗi"
+                        >
+                            <div style={{ position: 'relative', width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <rect x="3" y="6" width="18" height="14" rx="4" fill="#1e293b" stroke="#f97316" strokeWidth="1.5"/>
+                                    <path d="M7 6V3M17 6V3" stroke="#f97316" strokeWidth="1.5" strokeLinecap="round"/>
+                                    <circle cx="8.5" cy="12.5" r="1.5" fill="#f97316"/>
+                                    <circle cx="15.5" cy="12.5" r="1.5" fill="#f97316"/>
+                                    <path d="M10.5 15.5C11 16 13 16 13.5 15.5" stroke="#f97316" strokeWidth="1.5" strokeLinecap="round"/>
+                                </svg>
+                                <span
+                                    style={{
+                                        position: 'absolute',
+                                        top: -3,
+                                        right: -3,
+                                        width: 13,
+                                        height: 13,
+                                        borderRadius: '50%',
+                                        background: '#f97316',
+                                        color: '#ffffff',
+                                        fontSize: 9,
+                                        fontWeight: 900,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        boxShadow: '0 0 8px rgba(249, 115, 22, 0.8)',
+                                        border: '1.5px solid #0f172a',
+                                    }}
+                                >
+                                    !
+                                </span>
+                            </div>
+                            <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.01em', color: '#f8fafc' }}>
+                                Báo lỗi
+                            </span>
+                        </button>
                         <Popover
                             trigger="click"
                             placement="bottomRight"
@@ -456,6 +522,10 @@ export const ClientLayout: React.FC = () => {
                     <Outlet />
                 </Content>
             </Layout>
+            <FeedbackModal
+                open={isFeedbackModalOpen}
+                onClose={() => setIsFeedbackModalOpen(false)}
+            />
         </Layout>
     );
 };

@@ -11,6 +11,7 @@ import type {
 } from '../../constants/objectiveRunner.constants';
 import type { PracticeSessionListeningPartDto } from '../../types/session.types';
 import { formatTemplateText } from '../../utils/objectiveRunner.utils';
+import { APP_EMPTY_IMAGE } from '@/components/AppEmpty';
 import {
     compactMarkdownComponents,
     HighlightableMarkdown,
@@ -45,8 +46,8 @@ export const ListeningBody = ({
 
     if (!part) {
         return (
-            <Card style={{ borderRadius: 22 }}>
-                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Đề này chưa có part listening." />
+            <Card style={{ borderRadius: 22, textAlign: 'center' }}>
+                <Empty image={APP_EMPTY_IMAGE} imageStyle={{ height: 88 }} description="Đề này chưa có part listening." />
             </Card>
         );
     }

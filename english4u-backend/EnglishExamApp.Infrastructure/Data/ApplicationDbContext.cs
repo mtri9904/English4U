@@ -38,6 +38,8 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<FlashcardDeck> FlashcardDecks => Set<FlashcardDeck>();
     public DbSet<FlashcardItem> FlashcardItems => Set<FlashcardItem>();
+    public DbSet<UserFeedback> Feedbacks => Set<UserFeedback>();
+    public DbSet<FeedbackActivityLog> FeedbackActivityLogs => Set<FeedbackActivityLog>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -506,6 +508,22 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             entity.Property(e => e.CreatedAt).HasColumnName("createdAt").HasDefaultValueSql(defaultDateSql);
             entity.Property(e => e.UpdatedAt).HasColumnName("updatedAt").HasDefaultValueSql(defaultDateSql);
             entity.HasOne(e => e.User).WithMany().HasForeignKey(e => e.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<UserFeedback>(entity =>
+        {
+            entity.ToTable("Feedbacks");
+            entity.HasKey(e => e.Id);
+            entity.HasOne(e => e.User).WithMany().HasForeignKey(e => e.UserId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.AssignedAdmin).WithMany().HasForeignKey(e => e.AssignedAdminId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasMany(e => e.ActivityLogs).WithOne(l => l.Feedback).HasForeignKey(l => l.FeedbackId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<FeedbackActivityLog>(entity =>
+        {
+            entity.ToTable("FeedbackActivityLogs");
+            entity.HasKey(e => e.Id);
+            entity.HasOne(e => e.Feedback).WithMany(f => f.ActivityLogs).HasForeignKey(e => e.FeedbackId).OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

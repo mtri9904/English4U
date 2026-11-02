@@ -102,4 +102,16 @@ export const ApiRouters = {
         CHAT: '/copilot/chat',
         HINT: '/copilot/hint',
     },
-} as const;
+
+    FEEDBACK: {
+        BASE: 'feedbacks',
+        UPLOAD_IMAGE: 'feedbacks/upload-image',
+        RECENT: 'feedbacks/recent',
+        MY: 'feedbacks/my',
+        BY_ID: (id: string | number) => `feedbacks/${id}`,
+        ADMIN_BASE: 'admin/feedbacks',
+        ADMIN_STATS: 'admin/feedbacks/stats',
+        ADMIN_UPDATE_STATUS: (id: string | number) => `admin/feedbacks/${id}/status`,
+        ADMIN_DELETE: (id: string | number) => `admin/feedbacks/${id}`,
+    },
+};

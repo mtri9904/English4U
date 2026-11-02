@@ -23,6 +23,7 @@ import {
     message,
 } from 'antd';
 import { useNavigate, useParams } from 'react-router-dom';
+import { APP_EMPTY_IMAGE } from '@/components/AppEmpty';
 import { PageLoadingState, PageErrorState } from '@/components';
 import { usePracticeExamDetailQuery } from '@/features/exams/hooks/useExamQueries';
 import { useStartPracticeSessionMutation } from '@/features/exam-taking';
@@ -110,7 +111,8 @@ export const ClientPracticeExamPage: FC = () => {
         return (
             <Card style={{ borderRadius: 24, border: '1px solid #f1f5f9' }}>
                 <Empty
-                    image={Empty.PRESENTED_IMAGE_SIMPLE}
+                    image={APP_EMPTY_IMAGE}
+                    imageStyle={{ height: 96 }}
                     description="Không tìm thấy đề thi đã publish hoặc đề đã bị gỡ khỏi web user."
                 >
                     <Button type="primary" onClick={() => navigate('/app/practice')} style={{ borderRadius: 12 }}>

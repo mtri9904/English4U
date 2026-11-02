@@ -120,6 +120,85 @@ public static class DatabaseInitializer
             await context.Database.EnsureCreatedAsync();
         }
 
+        if (isSqlite)
+        {
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(@"
+                CREATE TABLE IF NOT EXISTS ""Feedbacks"" (
+                    ""Id"" TEXT PRIMARY KEY,
+                    ""Code"" TEXT NOT NULL,
+                    ""UserId"" TEXT NOT NULL,
+                    ""Type"" TEXT NOT NULL,
+                    ""Priority"" TEXT NOT NULL,
+                    ""Title"" TEXT NOT NULL,
+                    ""Description"" TEXT NOT NULL,
+                    ""SuggestedSolution"" TEXT NULL,
+                    ""AttachmentsJson"" TEXT NULL,
+                    ""BrowserInfo"" TEXT NULL,
+                    ""CurrentPageUrl"" TEXT NULL,
+                    ""Status"" TEXT NOT NULL,
+                    ""AssignedAdminId"" TEXT NULL,
+                    ""CreatedAt"" TEXT NOT NULL,
+                    ""UpdatedAt"" TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS ""FeedbackActivityLogs"" (
+                    ""Id"" TEXT PRIMARY KEY,
+                    ""FeedbackId"" TEXT NOT NULL,
+                    ""Status"" TEXT NOT NULL,
+                    ""Note"" TEXT NOT NULL,
+                    ""ActorId"" TEXT NULL,
+                    ""ActorName"" TEXT NOT NULL,
+                    ""CreatedAt"" TEXT NOT NULL
+                );
+                ");
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "[!] Failed to ensure feedback tables in SQLite database.");
+            }
+        }
+        else
+        {
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(@"
+                CREATE TABLE IF NOT EXISTS Feedbacks (
+                    Id CHAR(36) PRIMARY KEY,
+                    Code VARCHAR(50) NOT NULL,
+                    UserId CHAR(36) NOT NULL,
+                    Type VARCHAR(30) NOT NULL,
+                    Priority VARCHAR(30) NOT NULL,
+                    Title VARCHAR(255) NOT NULL,
+                    Description LONGTEXT NOT NULL,
+                    SuggestedSolution LONGTEXT NULL,
+                    AttachmentsJson LONGTEXT NULL,
+                    BrowserInfo LONGTEXT NULL,
+                    CurrentPageUrl VARCHAR(500) NULL,
+                    Status VARCHAR(30) NOT NULL,
+                    AssignedAdminId CHAR(36) NULL,
+                    CreatedAt DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6),
+                    UpdatedAt DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6)
+                );
+
+                CREATE TABLE IF NOT EXISTS FeedbackActivityLogs (
+                    Id CHAR(36) PRIMARY KEY,
+                    FeedbackId CHAR(36) NOT NULL,
+                    Status VARCHAR(30) NOT NULL,
+                    Note TEXT NOT NULL,
+                    ActorId CHAR(36) NULL,
+                    ActorName VARCHAR(255) NOT NULL,
+                    CreatedAt DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6)
+                );
+                ");
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "[!] Failed to ensure feedback tables on non-sqlite database.");
+            }
+        }
+
         // Ensure flashcard tables exist in SQLite
         if (isSqlite)
         {
@@ -166,6 +245,37 @@ public static class DatabaseInitializer
                     FOREIGN KEY (deckId) REFERENCES flashcard_decks (id) ON DELETE CASCADE,
                     FOREIGN KEY (userId) REFERENCES users (id) ON DELETE CASCADE
                 );
+
+                CREATE TABLE IF NOT EXISTS feedbacks (
+                    id TEXT PRIMARY KEY,
+                    code TEXT NOT NULL,
+                    userId TEXT NOT NULL,
+                    type TEXT NOT NULL,
+                    priority TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    description TEXT NOT NULL,
+                    suggestedSolution TEXT,
+                    attachmentsJson TEXT,
+                    browserInfo TEXT,
+                    currentPageUrl TEXT,
+                    status TEXT NOT NULL,
+                    assignedAdminId TEXT,
+                    createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
+                    updatedAt TEXT DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (userId) REFERENCES users (id) ON DELETE CASCADE
+                );
+
+                CREATE TABLE IF NOT EXISTS feedback_activity_logs (
+                    id TEXT PRIMARY KEY,
+                    feedbackId TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    note TEXT NOT NULL,
+                    actorId TEXT,
+                    actorName TEXT NOT NULL,
+                    createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (feedbackId) REFERENCES feedbacks (id) ON DELETE CASCADE
+                );
+
             ");
 
             try
