@@ -25,6 +25,13 @@ public class AdminAttemptController(IExamExecutionService examExecutionService) 
         return TypedResults.Ok(attempts);
     }
 
+    [HttpGet("stats")]
+    public async Task<IResult> GetAttemptStats(CancellationToken cancellationToken)
+    {
+        var stats = await examExecutionService.GetAdminAttemptStatsAsync(cancellationToken);
+        return TypedResults.Ok(stats);
+    }
+
     [HttpGet("{sessionId:guid}")]
     public async Task<IResult> GetAttemptDetail(Guid sessionId, CancellationToken cancellationToken)
     {

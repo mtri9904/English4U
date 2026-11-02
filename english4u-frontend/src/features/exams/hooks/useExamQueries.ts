@@ -15,6 +15,7 @@ export { examService, examApi };
  */
 export const examQueryKeys = {
     all: ['exams'] as const,
+    stats: () => [...examQueryKeys.all, 'stats'] as const,
     lists: (params?: ExamPagedRequest) =>
         params ? ([...examQueryKeys.all, 'list', params] as const) : ([...examQueryKeys.all, 'list'] as const),
     detail: (id: string) => ['exams', id] as const,
@@ -22,6 +23,7 @@ export const examQueryKeys = {
     practiceList: (params?: PracticeExamPagedRequest) =>
         params ? ([...examQueryKeys.practiceAll, 'list', params] as const) : ([...examQueryKeys.practiceAll, 'list'] as const),
     practiceDetail: (id: string) => ['client', 'practice', 'exams', id] as const,
+    myPracticeStats: () => ['practice', 'my-exams', 'stats'] as const,
 };
 
 // Aliases for backwards compatibility
@@ -43,6 +45,13 @@ export const useExamsQuery = (params?: ExamPagedRequest) =>
         queryFn: () => examService.getAll(params),
     });
 
+export const useExamStatsQuery = (options?: { refetchInterval?: number }) =>
+    useQuery({
+        queryKey: examQueryKeys.stats(),
+        queryFn: examService.getStats,
+        ...options,
+    });
+
 export const useExamDetailQuery = (id: string) =>
     useQuery({
         queryKey: examQueryKeys.detail(id),
@@ -59,6 +68,12 @@ export const usePracticeExamsQuery = (params?: PracticeExamPagedRequest) =>
         queryFn: () => examService.getPracticeExams(params),
     });
 
+export const useMyPracticeStatsQuery = () =>
+    useQuery({
+        queryKey: examQueryKeys.myPracticeStats(),
+        queryFn: examService.getMyPracticeStats,
+    });
+
 export const usePracticeExamDetailQuery = (id: string) =>
     useQuery({
         queryKey: examQueryKeys.practiceDetail(id),
@@ -73,7 +88,10 @@ export const useCreateExamMutation = () => {
     const queryClient = useQueryClient();
     return useMutation({
         mutationFn: examService.create,
-        onSuccess: () => queryClient.invalidateQueries({ queryKey: examQueryKeys.lists() }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: examQueryKeys.lists() });
+            queryClient.invalidateQueries({ queryKey: examQueryKeys.stats() });
+        },
     });
 };
 
@@ -84,6 +102,7 @@ export const useUpdateExamMutation = () => {
             examService.update({ id, data }),
         onSuccess: (_, variables) => {
             queryClient.invalidateQueries({ queryKey: examQueryKeys.lists() });
+            queryClient.invalidateQueries({ queryKey: examQueryKeys.stats() });
             queryClient.invalidateQueries({
                 queryKey: examQueryKeys.detail(variables.id),
                 exact: true,
@@ -103,6 +122,7 @@ export const useDeleteExamMutation = () => {
         onSuccess: () => {
             markRealtimeScopeInvalidated('exams.changed');
             queryClient.invalidateQueries({ queryKey: examQueryKeys.lists() });
+            queryClient.invalidateQueries({ queryKey: examQueryKeys.stats() });
         },
     });
 };
@@ -117,6 +137,7 @@ export const useUpdateExamStatusMutation = () => {
         onSuccess: (_, variables) => {
             markRealtimeScopeInvalidated('exams.changed');
             queryClient.invalidateQueries({ queryKey: examQueryKeys.lists() });
+            queryClient.invalidateQueries({ queryKey: examQueryKeys.stats() });
             queryClient.invalidateQueries({
                 queryKey: examQueryKeys.detail(variables.id),
                 exact: true,

@@ -16,9 +16,10 @@ export interface ExamOverviewData {
 
 interface ExamOverviewStatsProps {
     overview: ExamOverviewData;
+    isLoading?: boolean;
 }
 
-export const ExamOverviewStats: React.FC<ExamOverviewStatsProps> = ({ overview }) => {
+export const ExamOverviewStats: React.FC<ExamOverviewStatsProps> = ({ overview, isLoading = false }) => {
     return (
         <div
             style={{
@@ -27,7 +28,7 @@ export const ExamOverviewStats: React.FC<ExamOverviewStatsProps> = ({ overview }
                 gap: 12,
             }}
         >
-            <Card style={{ borderRadius: 14, border: '1px solid #dbeafe' }}>
+            <Card loading={isLoading} style={{ borderRadius: 14, border: '1px solid #dbeafe' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
                         <div style={{ color: '#64748b', fontSize: '0.82rem' }}>Tổng đề thi</div>
@@ -38,7 +39,7 @@ export const ExamOverviewStats: React.FC<ExamOverviewStatsProps> = ({ overview }
                     <FileTextOutlined style={{ color: '#2563eb', fontSize: 20 }} />
                 </div>
             </Card>
-            <Card style={{ borderRadius: 14, border: '1px solid #dcfce7' }}>
+            <Card loading={isLoading} style={{ borderRadius: 14, border: '1px solid #dcfce7' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
                         <div style={{ color: '#64748b', fontSize: '0.82rem' }}>Đang xuất bản</div>
@@ -49,7 +50,7 @@ export const ExamOverviewStats: React.FC<ExamOverviewStatsProps> = ({ overview }
                     <CheckCircleOutlined style={{ color: '#16a34a', fontSize: 20 }} />
                 </div>
             </Card>
-            <Card style={{ borderRadius: 14, border: '1px solid #fee2e2' }}>
+            <Card loading={isLoading} style={{ borderRadius: 14, border: '1px solid #fee2e2' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
                         <div style={{ color: '#64748b', fontSize: '0.82rem' }}>Đề nháp</div>
@@ -60,7 +61,7 @@ export const ExamOverviewStats: React.FC<ExamOverviewStatsProps> = ({ overview }
                     <EditOutlined style={{ color: '#dc2626', fontSize: 20 }} />
                 </div>
             </Card>
-            <Card style={{ borderRadius: 14, border: '1px solid #ede9fe' }}>
+            <Card loading={isLoading} style={{ borderRadius: 14, border: '1px solid #ede9fe' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
                         <div style={{ color: '#64748b', fontSize: '0.82rem' }}>Thời gian TB</div>

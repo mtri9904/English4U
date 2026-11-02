@@ -430,6 +430,60 @@ public sealed partial class ExamExecutionService
             .FirstAsync(cancellationToken);
     }
 
+    public async Task<AdminAttemptStatsDto> GetAdminAttemptStatsAsync(CancellationToken cancellationToken = default)
+    {
+        var rawSessions = await context.ExamSessions
+            .AsNoTracking()
+            .Select(s => new
+            {
+                s.UserId,
+                s.Status,
+                TotalAutoScore = s.UserAnswers
+                    .Where(answer => answer.QuestionId != null)
+                    .Sum(answer => (double?)answer.ScoreEarned),
+                TotalBandScore = s.ScoringResults
+                    .OrderByDescending(result => result.ScoredAt)
+                    .Select(result => result.TotalBandScore)
+                    .FirstOrDefault()
+            })
+            .ToListAsync(cancellationToken);
+
+        var totalAttempts = rawSessions.Count;
+        var completedAttempts = rawSessions.Count(s =>
+        {
+            var st = NormalizeSessionStatus(s.Status);
+            return st.Equals("Completed", StringComparison.OrdinalIgnoreCase) || st.Equals("Scored", StringComparison.OrdinalIgnoreCase);
+        });
+        var inProgressAttempts = rawSessions.Count(s =>
+        {
+            var st = NormalizeSessionStatus(s.Status);
+            return st.Equals("InProgress", StringComparison.OrdinalIgnoreCase) || st.Equals("In_Progress", StringComparison.OrdinalIgnoreCase);
+        });
+        var abandonedAttempts = rawSessions.Count(s =>
+        {
+            var st = NormalizeSessionStatus(s.Status);
+            return st.Equals("Abandoned", StringComparison.OrdinalIgnoreCase);
+        });
+
+        var scoredValues = rawSessions
+            .Select(s => s.TotalBandScore ?? s.TotalAutoScore)
+            .Where(score => score.HasValue && score.Value > 0)
+            .Select(score => score!.Value)
+            .ToList();
+
+        double? averageScore = scoredValues.Count > 0 ? Math.Round(scoredValues.Average(), 1) : null;
+        var uniqueUsersCount = rawSessions.Select(s => s.UserId).Distinct().Count();
+
+        return new AdminAttemptStatsDto(
+            totalAttempts,
+            completedAttempts,
+            inProgressAttempts,
+            abandonedAttempts,
+            averageScore,
+            uniqueUsersCount
+        );
+    }
+
     public async Task<AdminDashboardDto> GetAdminDashboardAsync(CancellationToken cancellationToken = default)
     {
         string[] managedRoles = ["Student", "Admin"];

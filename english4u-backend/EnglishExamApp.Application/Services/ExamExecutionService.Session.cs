@@ -455,6 +455,56 @@ public sealed partial class ExamExecutionService
         return new PagedResult<PracticeSessionListItemDto>(items, totalCount, pageNumber, pageSize);
     }
 
+    public async Task<MyPracticeStatsDto> GetMyPracticeStatsAsync(Guid userId, CancellationToken cancellationToken = default)
+    {
+        var userSessions = await context.ExamSessions
+            .AsNoTracking()
+            .Where(s => s.UserId == userId)
+            .Select(s => new
+            {
+                s.Id,
+                s.ExamId,
+                s.Status,
+                s.StartedAt,
+                TotalBandScore = s.ScoringResults
+                    .OrderByDescending(r => r.ScoredAt)
+                    .Select(r => r.TotalBandScore)
+                    .FirstOrDefault()
+            })
+            .ToListAsync(cancellationToken);
+
+        if (userSessions.Count == 0)
+        {
+            return new MyPracticeStatsDto(0, 0, 0, 0.0);
+        }
+
+        var latestSessionsPerExam = userSessions
+            .GroupBy(s => s.ExamId)
+            .Select(g => g.OrderByDescending(s => s.StartedAt).First())
+            .ToList();
+
+        var totalPracticedExams = latestSessionsPerExam.Count;
+        var inProgressCount = latestSessionsPerExam.Count(s =>
+        {
+            var st = NormalizeSessionStatus(s.Status);
+            return st.Equals("InProgress", StringComparison.OrdinalIgnoreCase) || st.Equals("In_Progress", StringComparison.OrdinalIgnoreCase);
+        });
+        var completedCount = latestSessionsPerExam.Count(s =>
+        {
+            var st = NormalizeSessionStatus(s.Status);
+            return st.Equals("Completed", StringComparison.OrdinalIgnoreCase) || st.Equals("Submitted", StringComparison.OrdinalIgnoreCase) || st.Equals("Scored", StringComparison.OrdinalIgnoreCase);
+        });
+
+        var scoredBands = latestSessionsPerExam
+            .Where(s => s.TotalBandScore.HasValue && s.TotalBandScore.Value > 0)
+            .Select(s => s.TotalBandScore!.Value)
+            .ToList();
+
+        var averageScore = scoredBands.Count > 0 ? Math.Round(scoredBands.Average(), 1) : 0.0;
+
+        return new MyPracticeStatsDto(totalPracticedExams, inProgressCount, completedCount, averageScore);
+    }
+
     public async Task UpdatePracticeSessionAnswersAsync(
         Guid userId,
         Guid sessionId,

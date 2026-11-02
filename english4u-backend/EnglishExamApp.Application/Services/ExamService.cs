@@ -88,6 +88,23 @@ public class ExamService(
         return new PagedResult<ExamListItemDto>(items, totalCount, pageNumber, pageSize);
     }
 
+    public async Task<ExamStatsDto> GetExamStatsAsync(CancellationToken cancellationToken = default)
+    {
+        var query = context.Exams.AsNoTracking();
+        var totalExams = await query.CountAsync(cancellationToken);
+        var publishedExams = await query.CountAsync(e => e.IsPublished, cancellationToken);
+        var draftExams = totalExams - publishedExams;
+
+        var durations = await query
+            .Where(e => e.DurationMinutes.HasValue && e.DurationMinutes.Value > 0)
+            .Select(e => e.DurationMinutes!.Value)
+            .ToListAsync(cancellationToken);
+
+        var avgDuration = durations.Count > 0 ? (int)Math.Round(durations.Average()) : 0;
+
+        return new ExamStatsDto(totalExams, publishedExams, draftExams, avgDuration);
+    }
+
     public async Task<List<PracticeExamListItemDto>> GetPublishedPracticeExamsAsync(CancellationToken cancellationToken = default)
     {
         var exams = await context.Exams
@@ -500,8 +517,33 @@ public class ExamService(
 
     public async Task<bool> UpdateStatusAsync(Guid examId, bool isPublished, CancellationToken cancellationToken = default)
     {
-        var exam = await context.Exams.FirstOrDefaultAsync(e => e.Id == examId, cancellationToken);
+        var exam = await context.Exams
+            .Include(e => e.ExamSections)
+                .ThenInclude(s => s.ListeningParts)
+            .FirstOrDefaultAsync(e => e.Id == examId, cancellationToken);
+
         if (exam is null) return false;
+
+        if (isPublished)
+        {
+            var hasListeningSection = exam.ExamSections.Any(s =>
+                string.Equals(s.SkillType, "LISTENING", StringComparison.OrdinalIgnoreCase));
+
+            if (hasListeningSection)
+            {
+                var listeningParts = exam.ExamSections
+                    .Where(s => string.Equals(s.SkillType, "LISTENING", StringComparison.OrdinalIgnoreCase))
+                    .SelectMany(s => s.ListeningParts)
+                    .ToList();
+
+                var hasAudio = listeningParts.Count > 0 && listeningParts.Any(p => !string.IsNullOrWhiteSpace(p.AudioUrl));
+                if (!hasAudio)
+                {
+                    throw new InvalidOperationException("Đề thi kỹ năng Listening bắt buộc phải có file audio trước khi công khai.");
+                }
+            }
+        }
+
         exam.IsPublished = isPublished;
         await context.SaveChangesAsync(cancellationToken);
         return true;
@@ -743,6 +785,20 @@ public class ExamService(
 
             if (exam is null) return false;
 
+            if (exam.IsPublished)
+            {
+                throw new InvalidOperationException("Đề thi đang ở trạng thái công khai. Vui lòng chuyển đề thi về Bản nháp (tắt công khai) trước khi chỉnh sửa.");
+            }
+
+            var hasActiveSessions = await context.ExamSessions
+                .AsNoTracking()
+                .AnyAsync(s => s.ExamId == examId && (s.Status == null || s.Status == "" || s.Status.ToLower() == "inprogress"), cancellationToken);
+
+            if (hasActiveSessions)
+            {
+                throw new InvalidOperationException("Đề thi đang có học viên làm bài, không thể chỉnh sửa lúc này. Vui lòng đợi học viên hoàn thành phiên thi.");
+            }
+
             exam.Title = dto.Title;
             exam.Description = dto.Description;
             exam.DurationMinutes = dto.DurationMinutes;
@@ -852,6 +908,23 @@ public class ExamService(
                 if (partCount < MinSpeakingParts || partCount > MaxSpeakingParts)
                 {
                     throw new InvalidOperationException($"Speaking phải có từ {MinSpeakingParts} đến {MaxSpeakingParts} parts.");
+                }
+            }
+        }
+
+        if (dto.IsPublished)
+        {
+            foreach (var section in dto.Sections)
+            {
+                var skillType = (section.SkillType ?? string.Empty).Trim().ToUpperInvariant();
+                if (skillType == "LISTENING")
+                {
+                    var parts = section.ListeningParts ?? [];
+                    var hasAudio = parts.Count > 0 && parts.Any(p => !string.IsNullOrWhiteSpace(p.AudioUrl));
+                    if (!hasAudio)
+                    {
+                        throw new InvalidOperationException("Đề thi kỹ năng Listening bắt buộc phải có file audio trước khi công khai.");
+                    }
                 }
             }
         }

@@ -150,11 +150,14 @@ export const createExamColumns = ({
                         style={{ ...iconButtonStyle, color: '#0ea5e9' }}
                     />
                 </Tooltip>
-                <Tooltip title="Chỉnh sửa">
+                <Tooltip title={record.isPublished ? 'Vui lòng tắt xuất bản để chỉnh sửa' : 'Chỉnh sửa'}>
                     <Button
                         icon={<EditOutlined />}
                         onClick={() => onEdit(record.id)}
-                        style={{ ...iconButtonStyle, color: '#f59e0b' }}
+                        style={{
+                            ...iconButtonStyle,
+                            color: record.isPublished ? '#94a3b8' : '#f59e0b',
+                        }}
                     />
                 </Tooltip>
                 <Tooltip title="Xóa">

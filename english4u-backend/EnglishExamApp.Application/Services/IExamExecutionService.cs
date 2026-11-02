@@ -24,4 +24,6 @@ public interface IExamExecutionService
     Task<ClientDashboardDto> GetClientDashboardAsync(Guid userId, CancellationToken cancellationToken = default);
     Task<ClientProgressDto> GetClientProgressAsync(Guid userId, CancellationToken cancellationToken = default);
     Task<AdminDashboardDto> GetAdminDashboardAsync(CancellationToken cancellationToken = default);
+    Task<AdminAttemptStatsDto> GetAdminAttemptStatsAsync(CancellationToken cancellationToken = default);
+    Task<MyPracticeStatsDto> GetMyPracticeStatsAsync(Guid userId, CancellationToken cancellationToken = default);
 }

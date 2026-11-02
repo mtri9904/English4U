@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { AppPagination } from '@/components/AppPagination';
 import { APP_EMPTY_IMAGE } from '@/components/AppEmpty';
-import { useAdminAttemptDetailQuery, useAdminAttemptsQuery } from '../hooks/useAttemptQueries';
+import { useAdminAttemptDetailQuery, useAdminAttemptsQuery, useAdminAttemptStatsQuery } from '../hooks/useAttemptQueries';
 import type { AdminAttemptAnswerDto } from '../types/attempt.types';
 import { formatDateTimeToMinute } from '@/shared/lib/dateTime';
 
@@ -54,8 +54,9 @@ interface MiniStatProps {
     value: string | number;
     icon: React.ElementType;
     color: string;
+    isLoading?: boolean;
 }
-function MiniStat({ label, value, icon: Icon, color }: MiniStatProps) {
+function MiniStat({ label, value, icon: Icon, color, isLoading = false }: MiniStatProps) {
     return (
         <div style={{
             flex: 1, minWidth: 140,
@@ -117,20 +118,22 @@ export const AttemptManagementPage = () => {
     }), [filters.search, filters.status, filters.page, filters.pageSize]);
 
     const { data: pagedData, isLoading, refetch, isFetching } = useAdminAttemptsQuery(queryParams);
+    const { data: attemptStats, isLoading: isStatsLoading } = useAdminAttemptStatsQuery();
     const attempts = pagedData?.items ?? [];
     const totalCount = pagedData?.totalCount ?? 0;
     const { data: detail, isLoading: isDetailLoading } = useAdminAttemptDetailQuery(selectedSessionId, !!selectedSessionId);
 
 
     const stats = useMemo(() => {
-        const completed = attempts.filter(a => a.status === 'Completed').length;
-        const inProgress = attempts.filter(a => a.status === 'InProgress').length;
-        const abandoned = attempts.filter(a => a.status === 'Abandoned').length;
-        const withScore = attempts.filter((a) => a.totalAutoScore != null || a.totalBandScore != null);
-        const avgScore = withScore.length ? (withScore.reduce((s, a) => s + (a.totalAutoScore ?? a.totalBandScore ?? 0), 0) / withScore.length) : null;
-        const uniqueUsers = new Set(attempts.map(a => a.userId)).size;
-        return { total: attempts.length, completed, inProgress, abandoned, avgScore, uniqueUsers };
-    }, [attempts]);
+        return {
+            total: attemptStats?.totalAttempts ?? 0,
+            completed: attemptStats?.completedAttempts ?? 0,
+            inProgress: attemptStats?.inProgressAttempts ?? 0,
+            abandoned: attemptStats?.abandonedAttempts ?? 0,
+            avgScore: attemptStats?.averageScore ?? null,
+            uniqueUsers: attemptStats?.uniqueUsersCount ?? 0,
+        };
+    }, [attemptStats]);
 
 
     const totalPages = Math.ceil(totalCount / PAGE_SIZE);
@@ -309,12 +312,12 @@ export const AttemptManagementPage = () => {
 
 
             <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-                <MiniStat label="Tổng lượt thi" value={stats.total} icon={Activity} color="#6366f1" />
-                <MiniStat label="Hoàn thành" value={stats.completed} icon={CheckCircle2} color="#10b981" />
-                <MiniStat label="Đang thi" value={stats.inProgress} icon={Clock3} color="#3b82f6" />
-                <MiniStat label="Bỏ dở" value={stats.abandoned} icon={XCircle} color="#ef4444" />
-                <MiniStat label="Điểm TB" value={stats.avgScore != null ? stats.avgScore.toFixed(1) : '—'} icon={Award} color="#f59e0b" />
-                <MiniStat label="Học viên" value={stats.uniqueUsers} icon={Users} color="#8b5cf6" />
+                <MiniStat label="Tổng lượt thi" value={stats.total} icon={Activity} color="#6366f1" isLoading={isStatsLoading} />
+                <MiniStat label="Hoàn thành" value={stats.completed} icon={CheckCircle2} color="#10b981" isLoading={isStatsLoading} />
+                <MiniStat label="Đang thi" value={stats.inProgress} icon={Clock3} color="#3b82f6" isLoading={isStatsLoading} />
+                <MiniStat label="Bỏ dở" value={stats.abandoned} icon={XCircle} color="#ef4444" isLoading={isStatsLoading} />
+                <MiniStat label="Điểm TB" value={stats.avgScore != null ? stats.avgScore.toFixed(1) : '—'} icon={Award} color="#f59e0b" isLoading={isStatsLoading} />
+                <MiniStat label="Học viên" value={stats.uniqueUsers} icon={Users} color="#8b5cf6" isLoading={isStatsLoading} />
             </div>
 
 

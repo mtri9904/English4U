@@ -72,6 +72,18 @@ public class PracticeController(
         return TypedResults.Ok(sessions);
     }
 
+    [HttpGet("my-exams/stats")]
+    public async Task<IResult> GetMyPracticeStats(CancellationToken cancellationToken)
+    {
+        if (!currentUser.TryGetUserId(out var userId))
+        {
+            return TypedResults.Unauthorized();
+        }
+
+        var stats = await examExecutionService.GetMyPracticeStatsAsync(userId, cancellationToken);
+        return TypedResults.Ok(stats);
+    }
+
     [HttpGet("sessions/{sessionId:guid}")]
     public async Task<IResult> GetPracticeSession(
         Guid sessionId,

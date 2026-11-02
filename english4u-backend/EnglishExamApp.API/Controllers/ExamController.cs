@@ -44,7 +44,14 @@ public class ExamController(
         return TypedResults.Ok(result);
     }
 
-    [HttpGet("{examId}")]
+    [HttpGet("stats")]
+    public async Task<IResult> GetExamStats(CancellationToken cancellationToken)
+    {
+        var stats = await examService.GetExamStatsAsync(cancellationToken);
+        return TypedResults.Ok(stats);
+    }
+
+    [HttpGet("{examId:guid}")]
     public async Task<IResult> GetExamDetail(Guid examId, CancellationToken cancellationToken)
     {
         var exam = await examService.GetExamDetailAsync(examId, cancellationToken);
@@ -358,15 +365,22 @@ public class ExamController(
         [FromBody] UpdateExamStatusRequest request,
         CancellationToken cancellationToken)
     {
-        var updated = await examService.UpdateStatusAsync(examId, request.IsPublished, cancellationToken);
-        if (updated)
+        try
         {
-            await PublishExamChangedAsync(cancellationToken);
+            var updated = await examService.UpdateStatusAsync(examId, request.IsPublished, cancellationToken);
+            if (updated)
+            {
+                await PublishExamChangedAsync(cancellationToken);
+            }
+            
+            return updated
+                ? TypedResults.Ok(new { message = "Status updated successfully." })
+                : TypedResults.NotFound(new { message = "Exam not found." });
         }
-        
-        return updated
-            ? TypedResults.Ok(new { message = "Status updated successfully." })
-            : TypedResults.NotFound(new { message = "Exam not found." });
+        catch (InvalidOperationException ex)
+        {
+            return TypedResults.BadRequest(new { message = ex.Message });
+        }
     }
 
     [HttpPost("generate-ai")]

@@ -15,4 +15,5 @@ public interface IExamService
     Task<bool> DeleteAsync(Guid examId, CancellationToken cancellationToken = default);
     Task<bool> UpdateStatusAsync(Guid examId, bool isPublished, CancellationToken cancellationToken = default);
     Task<bool> UpdateExamAsync(Guid examId, CreateExamDto dto, CancellationToken cancellationToken = default);
+    Task<ExamStatsDto> GetExamStatsAsync(CancellationToken cancellationToken = default);
 }

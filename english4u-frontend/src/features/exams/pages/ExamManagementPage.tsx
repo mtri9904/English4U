@@ -7,6 +7,7 @@ import { useUrlFilters } from '@/shared/hooks';
 import {
     useDeleteExamMutation,
     useExamsQuery,
+    useExamStatsQuery,
     useGenerateExamFromPdfMutation,
     useUpdateExamStatusMutation,
 } from '@/features/exams/hooks/useExamQueries';
@@ -93,6 +94,8 @@ export const ExamManagement = () => {
     const exams = pagedData?.items ?? [];
     const totalCount = pagedData?.totalCount ?? 0;
 
+    const { data: examStats, isLoading: isStatsLoading } = useExamStatsQuery();
+
     const deleteMutation = useDeleteExamMutation();
     const updateStatusMutation = useUpdateExamStatusMutation();
     const generateFromPdfMutation = useGenerateExamFromPdfMutation();
@@ -100,19 +103,13 @@ export const ExamManagement = () => {
     const pdfJobPercent = Math.round(pdfGenerationJob?.progressPercent ?? 0);
 
     const examOverview = useMemo(() => {
-        const total = totalCount;
-        const published = exams.filter((exam) => exam.isPublished).length;
-        const draft = total - published;
-        const totalDuration = exams.reduce((sum, exam) => sum + (exam.durationMinutes ?? 0), 0);
-        const avgDuration = exams.length > 0 ? Math.round(totalDuration / exams.length) : 0;
-
         return {
-            total,
-            published,
-            draft,
-            avgDuration,
+            total: examStats?.totalExams ?? 0,
+            published: examStats?.publishedExams ?? 0,
+            draft: examStats?.draftExams ?? 0,
+            avgDuration: examStats?.averageDurationMinutes ?? 0,
         };
-    }, [exams, totalCount]);
+    }, [examStats]);
 
     const skillFilterOptions = useMemo(
         () => ['READING', 'LISTENING', 'WRITING', 'SPEAKING'],
@@ -224,6 +221,21 @@ export const ExamManagement = () => {
     };
 
     const handleEdit = (id: string) => {
+        const targetExam = exams.find((e) => e.id === id);
+        if (targetExam?.isPublished) {
+            Modal.warning({
+                title: 'Không thể chỉnh sửa đề thi đang công khai',
+                content: (
+                    <div>
+                        <p>Đề thi này đang ở trạng thái <strong>Công khai (Xuất bản)</strong>.</p>
+                        <p>Vui lòng tắt công khai (chuyển sang trạng thái <strong>Nháp</strong>) trước khi chỉnh sửa để tránh ảnh hưởng đến học viên.</p>
+                    </div>
+                ),
+                okText: 'Đã hiểu',
+                centered: true,
+            });
+            return;
+        }
         navigate(`/admin/exams/edit/${id}`);
     };
 
@@ -231,8 +243,11 @@ export const ExamManagement = () => {
         updateStatusMutation.mutate(
             { id, isPublished },
             {
-                onSuccess: () => message.success('Cập nhật trạng thái thành công.'),
-                onError: () => message.error('Cập nhật trạng thái thất bại.'),
+                onSuccess: () => message.success(isPublished ? 'Đã công khai đề thi.' : 'Đã chuyển đề thi về bản nháp.'),
+                onError: (error: any) => {
+                    const msg = error?.response?.data?.message || 'Cập nhật trạng thái thất bại.';
+                    message.error(msg);
+                },
             }
         );
     };
@@ -305,7 +320,7 @@ export const ExamManagement = () => {
                 </motion.div>
 
                 <motion.div variants={itemVariants}>
-                    <ExamOverviewStats overview={examOverview} />
+                    <ExamOverviewStats overview={examOverview} isLoading={isStatsLoading} />
                 </motion.div>
 
                 <motion.div variants={itemVariants}>

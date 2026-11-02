@@ -17,6 +17,7 @@ export const ApiRouters = {
 
     EXAM: {
         BASE: '/exam',
+        STATS: '/exam/stats',
         BY_ID: (id: string | number) => `/exam/${id}`,
         PUBLISH: (id: string | number) => `/exam/${id}/publish`,
         SPEAKING_PROMPT_AUDIO: '/exam/speaking-prompt-audio',
@@ -31,6 +32,7 @@ export const ApiRouters = {
     ATTEMPT: {
         BASE: '/attempt',
         ADMIN: '/attempt/admin',
+        ADMIN_STATS: '/admin/attempts/stats',
         BY_ID: (id: string | number) => `/attempt/${id}`,
     },
 
@@ -38,6 +40,7 @@ export const ApiRouters = {
         BASE: '/practice',
         EXAMS: '/practice/exams',
         MY_EXAMS: '/practice/my-exams',
+        MY_EXAMS_STATS: '/practice/my-exams/stats',
         USER_EXAMS: '/practice/user-exams',
         EXAM_BY_ID: (examId: string | number) => `/practice/exams/${examId}`,
         START_EXAM: (examId: string | number) => `/practice/exams/${examId}/start`,

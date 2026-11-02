@@ -1,6 +1,6 @@
 import { callApi } from '@/apis/handleApi';
 import type { PagedResult } from '@/types/api.types';
-import type { AdminAttemptDetailDto, AdminAttemptListItemDto } from '../types/attempt.types';
+import type { AdminAttemptDetailDto, AdminAttemptListItemDto, AdminAttemptStatsDto } from '../types/attempt.types';
 
 export interface AdminAttemptQueryParams {
     status?: string;

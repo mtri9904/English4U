@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Button, Card, FloatButton, Input, InputNumber, Select, Tag, message } from 'antd';
+import { Alert, Button, Card, FloatButton, Input, InputNumber, Modal, Select, Tag, message } from 'antd';
 import { ArrowLeftOutlined, SaveOutlined, VerticalAlignTopOutlined } from '@ant-design/icons';
 import { motion } from 'framer-motion';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -153,6 +153,16 @@ export const ExamEditorPage = () => {
             return;
         }
 
+        if (isEdit && initialData?.isPublished) {
+            Modal.warning({
+                title: 'Không thể chỉnh sửa đề thi đang công khai',
+                content: 'Đề thi này đang ở trạng thái Công khai. Vui lòng chuyển đề thi về Bản nháp tại trang Quản lý trước khi chỉnh sửa.',
+                okText: 'Đã hiểu',
+                centered: true,
+            });
+            return;
+        }
+
         let currentSections = form.sections;
 
         // Auto-generate listening transcript for Listening sections that have audio but lack transcriptData
@@ -204,6 +214,18 @@ export const ExamEditorPage = () => {
             }
         }
 
+        // Check if Listening exam has audio before allowing public
+        for (const section of currentSections) {
+            if ((normalizeSkillType(section.skillType) || 'Reading') === 'Listening') {
+                const parts = section.listeningParts ?? [];
+                const audioUrl = (globalAudioUrl || getSharedListeningAudioUrl(parts) || '').trim();
+                if (form.isPublished && !audioUrl) {
+                    message.error('Đề thi kỹ năng Listening bắt buộc phải có file audio trước khi công khai.');
+                    return;
+                }
+            }
+        }
+
         const normalizedSections = normalizeObjectiveQuestionPointsForSubmit(
             sanitizeSpeakingSectionsForSubmit(
                 currentSections
@@ -235,8 +257,9 @@ export const ExamEditorPage = () => {
                 message.success('Tạo đề thi thành công!');
             }
             navigate('/admin/exams');
-        } catch {
-            message.error(isEdit ? 'Cập nhật đề thi thất bại!' : 'Tạo đề thi thất bại!');
+        } catch (error: any) {
+            const apiMessage = error?.response?.data?.message;
+            message.error(typeof apiMessage === 'string' ? apiMessage : (isEdit ? 'Cập nhật đề thi thất bại!' : 'Tạo đề thi thất bại!'));
         }
     };
 
@@ -344,6 +367,15 @@ export const ExamEditorPage = () => {
 
     return (
         <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto', background: '#f8fafc', minHeight: '100vh' }}>
+            {isEdit && initialData?.isPublished && (
+                <Alert
+                    type="warning"
+                    showIcon
+                    message="Đề thi đang ở trạng thái Công khai"
+                    description="Đề thi này đang được công khai cho học viên. Để tránh ảnh hưởng đến các phiên thi đang diễn ra, bạn cần chuyển đề thi về trạng thái Nháp (tắt công khai) tại trang Quản lý trước khi lưu chỉnh sửa."
+                    style={{ marginBottom: 16 }}
+                />
+            )}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                     <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/admin/exams')} />

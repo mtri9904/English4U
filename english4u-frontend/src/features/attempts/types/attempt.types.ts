@@ -63,3 +63,12 @@ export interface AdminAttemptDetailDto {
     result: PracticeSessionResultDto | null;
     answers: AdminAttemptAnswerDto[];
 }
+
+export interface AdminAttemptStatsDto {
+    totalAttempts: number;
+    completedAttempts: number;
+    inProgressAttempts: number;
+    abandonedAttempts: number;
+    averageScore: number | null;
+    uniqueUsersCount: number;
+}

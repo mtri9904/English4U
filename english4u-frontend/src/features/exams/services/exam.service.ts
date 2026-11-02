@@ -15,6 +15,8 @@ import type {
     PracticeExamDetailDto,
     ExamPagedRequest,
     PracticeExamPagedRequest,
+    ExamStats,
+    MyPracticeStats,
 } from '../types/exam.types';
 
 /**
@@ -26,6 +28,10 @@ export const examService = {
     // ----------------- Admin Exam Operations -----------------
     getAll: async (params?: ExamPagedRequest): Promise<PagedResult<ExamDto>> => {
         return callApi<PagedResult<ExamDto>>(ApiRouters.EXAM.BASE, undefined, 'get', undefined, { params });
+    },
+
+    getStats: async (): Promise<ExamStats> => {
+        return callApi<ExamStats>(ApiRouters.EXAM.STATS, undefined, 'get');
     },
 
     getDetail: async (id: string): Promise<ExamDto> => {
@@ -223,6 +229,10 @@ export const examService = {
                 timeout: 30 * 1000,
             }
         );
+    },
+
+    getMyPracticeStats: async (): Promise<MyPracticeStats> => {
+        return callApi<MyPracticeStats>(ApiRouters.PRACTICE.MY_EXAMS_STATS, undefined, 'get');
     },
 };
 

@@ -16,6 +16,7 @@ import { useNavigate } from 'react-router-dom';
 import { useUrlFilters } from '@/shared/hooks';
 import { PageLoadingState, PageErrorState } from '@/components';
 import { useMyPracticeSessionsQuery, useStartPracticeSessionMutation } from '@/features/exam-taking';
+import { useMyPracticeStatsQuery } from '../hooks/useExamQueries';
 import { getSessionRunnerPath, getSkillLabel } from '@/features/exam-taking';
 import { formatDateTimeToMinute } from '@/shared/lib/dateTime';
 import { ListeningAttemptModeModal } from '@/features/exam-taking';
@@ -156,19 +157,16 @@ export const ClientMyExamsPage = () => {
         pageNumber: filters.page,
         pageSize,
     });
+    const { data: practiceStats, isLoading: isPracticeStatsLoading } = useMyPracticeStatsQuery();
     const startSessionMutation = useStartPracticeSessionMutation();
     const rawSessions = pagedData?.items ?? [];
     const totalCount = pagedData?.totalCount ?? 0;
     const visibleSessions = rawSessions;
 
-    const inProgress = visibleSessions.filter((item) => item.status === 'InProgress').length;
-    const completed = visibleSessions.filter((item) => item.status === 'Completed' || item.status === 'Submitted').length;
-    const scoredSessions = visibleSessions
-        .map(getSessionBandScore)
-        .filter((score): score is number => score != null);
-    const avgScore = scoredSessions.length > 0
-        ? scoredSessions.reduce((total, score) => total + score, 0) / scoredSessions.length
-        : 0;
+    const totalPracticed = practiceStats?.totalSessions ?? totalCount;
+    const inProgress = practiceStats?.inProgressCount ?? 0;
+    const completed = practiceStats?.completedCount ?? 0;
+    const avgScore = practiceStats?.averageScore ?? 0;
 
     const handleStartNewAttempt = (examId: string, attemptMode?: ListeningAttemptMode) => {
         startSessionMutation.mutate(
@@ -217,7 +215,7 @@ export const ClientMyExamsPage = () => {
                 {statsCardConfigs.map((item) => (
                     <Col xs={12} md={6} key={item.title}>
                         <Card
-                            loading={isLoading}
+                            loading={isLoading || isPracticeStatsLoading}
                             style={{
                                 borderRadius: 18,
                                 border: `1px solid ${item.border}`,
@@ -239,7 +237,7 @@ export const ClientMyExamsPage = () => {
                             <Statistic
                                 title={<span style={{ color: '#64748b', fontSize: 14 }}>{item.title}</span>}
                                 value={item.title === 'Tổng bài đã luyện'
-                                    ? totalCount
+                                    ? totalPracticed
                                     : item.title === 'Đang làm'
                                         ? inProgress
                                         : item.title === 'Đã có kết quả'
@@ -332,7 +330,7 @@ export const ClientMyExamsPage = () => {
 
                             return (
                         <Card
-                            loading={isLoading}
+                            loading={isLoading || isPracticeStatsLoading}
                             style={{
                                 borderRadius: 18,
                                 border: `1px solid ${skillTheme.border}`,

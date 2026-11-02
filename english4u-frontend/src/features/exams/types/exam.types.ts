@@ -433,3 +433,17 @@ export interface PracticeExamPagedRequest {
     skill?: string;
     examType?: string;
 }
+
+export interface ExamStats {
+    totalExams: number;
+    publishedExams: number;
+    draftExams: number;
+    averageDurationMinutes: number;
+}
+
+export interface MyPracticeStats {
+    totalSessions: number;
+    inProgressCount: number;
+    completedCount: number;
+    averageScore: number;
+}

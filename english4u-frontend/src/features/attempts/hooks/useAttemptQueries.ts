@@ -10,6 +10,7 @@ export const attemptQueryKeys = {
     all: ['admin', 'attempts'] as const,
     list: (params?: AdminAttemptQueryParams) => ['admin', 'attempts', 'list', params] as const,
     detail: (sessionId: string) => ['admin', 'attempts', 'detail', sessionId] as const,
+    stats: () => ['admin', 'attempts', 'stats'] as const,
 };
 
 // Alias for backwards compatibility
@@ -29,3 +30,10 @@ export const useAdminAttemptDetailQuery = (sessionId: string, enabled = true) =>
         retry: false,
     });
 
+
+export const useAdminAttemptStatsQuery = (options?: { refetchInterval?: number }) =>
+    useQuery({
+        queryKey: attemptQueryKeys.stats(),
+        queryFn: attemptService.getStats,
+        ...options,
+    });

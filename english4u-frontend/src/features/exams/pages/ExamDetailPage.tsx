@@ -1,4 +1,4 @@
-import { Tag, Empty, Button, FloatButton } from 'antd';
+import { Tag, Empty, Button, FloatButton, Modal } from 'antd';
 import { motion } from 'framer-motion';
 import { useParams, useNavigate } from 'react-router-dom';
 import { PageLoadingState, PageErrorState } from '@/components';
@@ -65,7 +65,23 @@ export const ExamDetailPage = () => {
                 <Button
                     type="primary"
                     icon={<EditOutlined />}
-                    onClick={() => navigate(`/admin/exams/edit/${id}`)}
+                    onClick={() => {
+                        if (exam?.isPublished) {
+                            Modal.warning({
+                                title: 'Không thể chỉnh sửa đề thi đang công khai',
+                                content: (
+                                    <div>
+                                        <p>Đề thi này đang ở trạng thái <strong>Công khai (Xuất bản)</strong>.</p>
+                                        <p>Vui lòng chuyển trạng thái về <strong>Nháp</strong> tại trang Quản lý đề thi trước khi chỉnh sửa để tránh ảnh hưởng đến học viên.</p>
+                                    </div>
+                                ),
+                                okText: 'Đã hiểu',
+                                centered: true,
+                            });
+                            return;
+                        }
+                        navigate(`/admin/exams/edit/${id}`);
+                    }}
                     style={{ fontWeight: 600, borderRadius: '8px', background: '#4f46e5' }}
                 >
                     Chỉnh sửa đề thi
