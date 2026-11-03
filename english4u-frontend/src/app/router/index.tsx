@@ -46,6 +46,7 @@ import {
     FlashcardStudyPage,
 } from '@/features/flashcard';
 import { DictationPage } from '@/features/dictation';
+import { NewsPage } from '@/features/news';
 import { ROUTE_PATHS } from '@/constants/route-paths';
 import { RequirePolicy } from '@/components/RequirePolicy';
 
@@ -58,6 +59,10 @@ export const appRouter = createBrowserRouter([
             {
                 index: true,
                 element: <HomePage />,
+            },
+            {
+                path: 'news',
+                element: <NewsPage />,
             },
             {
                 path: 'about',
@@ -242,6 +247,10 @@ export const appRouter = createBrowserRouter([
             {
                 path: 'profile',
                 element: <ClientProfilePage />,
+            },
+            {
+                path: 'news',
+                element: <NewsPage />,
             },
         ]
     },

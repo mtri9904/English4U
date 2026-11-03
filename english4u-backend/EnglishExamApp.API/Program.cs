@@ -41,6 +41,7 @@ var isMySql = defaultConnectionString.StartsWith("Server=", StringComparison.Ord
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddMemoryCache();
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -92,6 +93,8 @@ builder.Services.AddHttpClient("CloudinaryDestroy");
 builder.Services.AddScoped<IFeedbackService, FeedbackService>();
 builder.Services.AddHttpClient<IFlashcardService, FlashcardService>();
 builder.Services.AddHttpClient<IDictationService, DictationService>();
+builder.Services.AddHttpClient<INewsService, TheGuardianNewsService>();
+builder.Services.AddHostedService<NewsBackgroundSyncService>();
 builder.Services.AddSingleton<ITtsService, EdgeTtsService>();
 builder.Services.AddSingleton<IPdfGenerationProgressTracker, PdfGenerationProgressTracker>();
 builder.Services.AddSingleton<RealtimeEventDispatcher>();

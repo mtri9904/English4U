@@ -117,4 +117,12 @@ export const ApiRouters = {
         ADMIN_UPDATE_STATUS: (id: string | number) => `admin/feedbacks/${id}/status`,
         ADMIN_DELETE: (id: string | number) => `admin/feedbacks/${id}`,
     },
+
+    NEWS: {
+        BASE: '/news',
+        ARTICLE: '/news/article',
+        QUOTA: '/news/quota',
+        TRANSLATE: '/news/translate',
+        DICTIONARY: '/news/dictionary',
+    },
 };

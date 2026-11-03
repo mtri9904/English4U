@@ -140,7 +140,7 @@ public sealed class GemmaCompletionClient(
     {
         var cleaned = Regex.Replace(
             content,
-            @"(?is)<think>.*?</think>",
+            @"(?is)<(think|thought)>.*?</(think|thought)>",
             string.Empty);
         return cleaned.Trim();
     }

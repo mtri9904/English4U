@@ -119,6 +119,7 @@ export interface NavLinkItem {
 
 export const LANDING_NAV_LINKS: NavLinkItem[] = [
     { label: 'Trang chủ', href: '/' },
+    { label: 'Tin tức', href: '/news' },
     { label: 'Giới thiệu', href: '/about' },
     { label: 'Liên hệ', href: '/contact' },
     { label: 'Chính sách bảo mật', href: '/privacy-policy' },

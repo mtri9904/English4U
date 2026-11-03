@@ -5,6 +5,7 @@
 export const ROUTE_PATHS = {
     // Public Marketing & Legal Pages
     HOME: '/',
+    NEWS: '/news',
     ABOUT: '/about',
     CONTACT: '/contact',
     PRIVACY_POLICY: '/privacy-policy',
@@ -52,6 +53,7 @@ export const ROUTE_PATHS = {
     APP_FLASHCARD_DECK: '/app/flashcards/:deckId',
     APP_FLASHCARD_STUDY: '/app/flashcards/:deckId/study',
     APP_PROFILE: '/app/profile',
+    APP_NEWS: '/app/news',
 
     // Standalone Flashcard direct routes (compatibility)
     FLASHCARDS_ROOT: '/flashcards',
