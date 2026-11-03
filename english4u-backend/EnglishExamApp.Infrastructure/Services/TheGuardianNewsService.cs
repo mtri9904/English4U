@@ -118,13 +118,6 @@ public class TheGuardianNewsService : INewsService
         try
         {
             var apiKey = GetApiKey();
-
-            // If API key is not configured or using deprecated 'test' key, automatically fallback to The Guardian RSS
-            if (string.IsNullOrWhiteSpace(apiKey) || apiKey.Equals("test", StringComparison.OrdinalIgnoreCase))
-            {
-                return await FetchFromGuardianRssAsync(normalizedCategory, categoryLabel, page, pageSize, search);
-            }
-
             var baseUrl = _configuration["TheGuardian:BaseUrl"] ?? "https://content.guardianapis.com";
 
             var (section, _) = CategoryMap[normalizedCategory];
@@ -320,7 +313,11 @@ public class TheGuardianNewsService : INewsService
     private string GetApiKey()
     {
         var key = _configuration["TheGuardian:ApiKey"];
-        return string.IsNullOrWhiteSpace(key) ? "test" : key.Trim();
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            throw new InvalidOperationException("The Guardian API Key is required. Please configure 'TheGuardian:ApiKey' in appsettings or as environment variable 'TheGuardian__ApiKey'.");
+        }
+        return key.Trim();
     }
 
     private static string InferCategory(string? sectionId)
@@ -676,31 +673,11 @@ public class TheGuardianNewsService : INewsService
             }
         }
 
-        // 3. Fallback dự phòng qua Google Translate GTX (Hoàn toàn miễn phí, không bao giờ chết)
-        try
-        {
-            var gtxResult = await TranslateWithGoogleGtxAsync(cleanText, cancellationToken);
-            if (!string.IsNullOrWhiteSpace(gtxResult))
-            {
-                _cache.Set(cacheKey, gtxResult, TimeSpan.FromDays(7));
-                return new NewsTranslateResponseDto
-                {
-                    TranslatedText = gtxResult,
-                    IsCached = false,
-                    ModelUsed = "google-gtx"
-                };
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Google GTX fallback translation failed as well.");
-        }
-
         return new NewsTranslateResponseDto
         {
             TranslatedText = cleanText,
             IsCached = false,
-            ModelUsed = "fallback-original"
+            ModelUsed = "failed"
         };
     }
 
@@ -818,37 +795,6 @@ public class TheGuardianNewsService : INewsService
         // Lưu Cache 30 ngày
         _cache.Set(cacheKey, result, TimeSpan.FromDays(30));
         return result;
-    }
-
-    private async Task<string> TranslateWithGoogleGtxAsync(string text, CancellationToken cancellationToken)
-    {
-        var url = $"https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=vi&dt=t&q={Uri.EscapeDataString(text)}";
-        var response = await _httpClient.GetAsync(url, cancellationToken);
-        if (!response.IsSuccessStatusCode) return string.Empty;
-
-        var json = await response.Content.ReadAsStringAsync(cancellationToken);
-        using var doc = JsonDocument.Parse(json);
-        if (doc.RootElement.ValueKind == JsonValueKind.Array && doc.RootElement.GetArrayLength() > 0)
-        {
-            var firstArray = doc.RootElement[0];
-            if (firstArray.ValueKind == JsonValueKind.Array)
-            {
-                var sb = new System.Text.StringBuilder();
-                foreach (var sentence in firstArray.EnumerateArray())
-                {
-                    if (sentence.ValueKind == JsonValueKind.Array && sentence.GetArrayLength() > 0)
-                    {
-                        var part = sentence[0].GetString();
-                        if (!string.IsNullOrEmpty(part))
-                        {
-                            sb.Append(part);
-                        }
-                    }
-                }
-                return sb.ToString().Trim();
-            }
-        }
-        return string.Empty;
     }
 
     private static string CleanTranslationResult(string text)
