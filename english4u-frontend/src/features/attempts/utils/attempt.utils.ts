@@ -6,7 +6,7 @@ import {
 } from '../constants/attempt.constants';
 
 /**
- * Định dạng thời lượng (giây) sang dạng mm:ss
+ * Format duration (seconds) into mm:ss
  */
 export const formatAttemptSeconds = (v?: number | null): string => {
     if (v == null) return 'Không giới hạn';
@@ -16,7 +16,7 @@ export const formatAttemptSeconds = (v?: number | null): string => {
 };
 
 /**
- * Lấy cấu hình hiển thị trạng thái lượt thi
+ * Get display configuration for exam attempt status
  */
 export const getAttemptStatusMeta = (key: string): AttemptStatusConfigItem =>
     ATTEMPT_STATUS_CONFIG[key] ?? {
@@ -28,7 +28,7 @@ export const getAttemptStatusMeta = (key: string): AttemptStatusConfigItem =>
     };
 
 /**
- * Lấy cấu hình hiển thị kỹ năng lượt thi
+ * Get display configuration for exam attempt skill
  */
 export const getAttemptSkillMeta = (key: string): { label: string; bg: string; text: string } =>
     ATTEMPT_SKILL_CONFIG[key] ?? { label: key, bg: '#f1f5f9', text: '#64748b' };

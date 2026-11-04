@@ -241,7 +241,7 @@ export const ReviewAddToFlashcard: React.FC = () => {
             let targetDeckTitle = EXAM_DECK_TITLE;
 
             if (selectedDeckId === CREATE_EXAM_DECK_KEY) {
-                // Auto create the default "Từ vựng bài thi" deck
+                // Auto create default "Exam Vocabulary" deck
                 const newDeck = await flashcardApi.createDeck({
                     title: EXAM_DECK_TITLE,
                     description: 'Bộ thẻ từ vựng được lưu từ các bài thi',

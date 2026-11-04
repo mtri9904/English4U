@@ -1,4 +1,4 @@
-import { Tag, Empty, Button, FloatButton, Modal } from 'antd';
+import { Tag, Empty, Button, FloatButton, Modal, Alert } from 'antd';
 import { motion } from 'framer-motion';
 import { useParams, useNavigate } from 'react-router-dom';
 import { PageLoadingState, PageErrorState } from '@/components';
@@ -134,17 +134,13 @@ export const ExamDetailPage = () => {
             </div>
 
             {hasLegacyMultiSection && (
-                <div
-                    style={{
-                        background: '#fff7ed',
-                        borderRadius: '16px',
-                        padding: '16px 20px',
-                        border: '1px solid #fdba74',
-                        color: '#9a3412',
-                    }}
-                >
-                    Đề này đang có nhiều section từ cấu trúc cũ. CMS hiện ưu tiên hiển thị section đầu tiên để khớp với mô hình một đề một kỹ năng.
-                </div>
+                <Alert
+                    type="info"
+                    showIcon
+                    style={{ borderRadius: '16px', marginBottom: '16px' }}
+                    message="Đề thi tích hợp nhiều kỹ năng"
+                    description={`Đề thi này bao gồm ${exam.sections.length} phần thi kỹ năng. Chi tiết bên dưới đang hiển thị theo phần thi chính (${primarySection?.skillType || 'Kỹ năng chính'}).`}
+                />
             )}
 
             <div style={{ background: '#fff', borderRadius: '16px', padding: '24px', border: '1px solid #f1f5f9' }}>

@@ -76,7 +76,7 @@ export const DictationRunner: React.FC<DictationRunnerProps> = ({
         [selectedVoiceId]
     );
 
-    // Cleanup on unmount (e.g. user clicks Exit / Thoát)
+    // Cleanup on unmount (e.g. user clicks Exit)
     useEffect(() => {
         return () => {
             stop();

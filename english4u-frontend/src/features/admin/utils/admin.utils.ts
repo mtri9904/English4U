@@ -1,5 +1,5 @@
 /**
- * Lấy cấu hình màu sắc badge trạng thái bài thi cho Admin Dashboard
+ * Get badge color configuration for exam status on Admin Dashboard
  */
 export const getAdminStatusColor = (status: string): { bg: string; text: string; dot: string } => {
     switch (status?.toLowerCase()) {
@@ -11,7 +11,7 @@ export const getAdminStatusColor = (status: string): { bg: string; text: string;
 };
 
 /**
- * Định dạng nhãn tiếng Việt cho trạng thái bài thi
+ * Format display label for exam status
  */
 export const formatAdminStatus = (s: string): string => {
     switch (s?.toLowerCase()) {

@@ -9,10 +9,10 @@ using Microsoft.Extensions.Logging;
 namespace EnglishExamApp.Infrastructure.Services;
 
 /// <summary>
-/// Background Service chạy ngầm tự động để:
-/// 1. Khởi động cùng Backend (warm-up): nạp sẵn 200 bài báo cho tất cả 7 chuyên mục.
-/// 2. Định kỳ mỗi 25 phút tự động cập nhật bài báo mới nhất vào RAM Cache.
-/// 3. Sử dụng triệt để hạn mức 500 requests/ngày mà người dùng không cần bấm bất kỳ nút nào.
+/// Background service that automatically:
+/// 1. Warms up on startup by pre-fetching articles across all 7 news categories.
+/// 2. Periodically refreshes latest articles into RAM cache every 25 minutes.
+/// 3. Safely utilizes the 500 requests/day quota with zero user latency.
 /// </summary>
 public class NewsBackgroundSyncService : BackgroundService
 {
@@ -30,7 +30,7 @@ public class NewsBackgroundSyncService : BackgroundService
         "lifestyle"
     };
 
-    // Chu kỳ tự động đồng bộ ngầm: mỗi 25 phút
+    // Background synchronization interval: every 25 minutes
     private static readonly TimeSpan SyncInterval = TimeSpan.FromMinutes(25);
 
     public NewsBackgroundSyncService(
@@ -45,7 +45,7 @@ public class NewsBackgroundSyncService : BackgroundService
     {
         _logger.LogInformation("The Guardian News Background Sync Service started.");
 
-        // Đợi 3 giây sau khi server khởi động ổn định
+        // Wait 3 seconds after server startup to allow initialization
         try
         {
             await Task.Delay(TimeSpan.FromSeconds(3), stoppingToken);
@@ -112,7 +112,7 @@ public class NewsBackgroundSyncService : BackgroundService
                 _logger.LogError(ex, "Failed to background sync category '{Category}'", category);
             }
 
-            // Nghỉ 1.2 giây giữa các request để tuân thủ giới hạn 1 request/giây của The Guardian API
+            // Pause 1.2s between requests to strictly respect The Guardian's 1 req/sec rate limit
             try
             {
                 await Task.Delay(TimeSpan.FromMilliseconds(1200), stoppingToken);

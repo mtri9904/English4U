@@ -1,7 +1,7 @@
 import { FORCED_LOGOUT_REASON_KEY } from '../constants/auth.constants';
 
 /**
- * Lưu lý do buộc đăng xuất vào sessionStorage (xử lý đa tab)
+ * Store forced logout reason in sessionStorage (cross-tab handling)
  */
 export const setForcedLogoutReason = (reason: string): void => {
     if (typeof window !== 'undefined') {
@@ -10,7 +10,7 @@ export const setForcedLogoutReason = (reason: string): void => {
 };
 
 /**
- * Đọc và xóa lý do buộc đăng xuất khỏi sessionStorage
+ * Retrieve and remove forced logout reason from sessionStorage
  */
 export const consumeForcedLogoutReason = (): string | null => {
     if (typeof window === 'undefined') return null;
@@ -25,7 +25,7 @@ export const consumeForcedLogoutReason = (): string | null => {
 };
 
 /**
- * Kiểm tra định dạng email hợp lệ
+ * Validate email address format
  */
 export const isValidEmail = (email: string): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -33,7 +33,7 @@ export const isValidEmail = (email: string): boolean => {
 };
 
 /**
- * Kiểm tra độ mạnh của mật khẩu (tối thiểu 6 ký tự)
+ * Validate password strength (minimum 6 characters)
  */
 export const isStrongPassword = (password: string): boolean => {
     return password.length >= 6;

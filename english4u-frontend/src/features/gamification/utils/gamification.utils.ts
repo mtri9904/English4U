@@ -20,7 +20,7 @@ export interface StreakDisplayMeta {
 }
 
 /**
- * Tính toán metadata hiển thị chuỗi ngày học liên tục (streak)
+ * Calculate streak display metadata
  */
 export const getStreakDisplayMeta = (streak: number): StreakDisplayMeta => {
     const safeStreak = Math.max(0, Math.floor(streak));
@@ -100,7 +100,7 @@ export const getStreakDisplayMeta = (streak: number): StreakDisplayMeta => {
 };
 
 /**
- * Lấy skill key hợp lệ cho bảng thống kê tiến độ
+ * Get valid skill key for progress statistics
  */
 export const getSkillKey = (value?: string | null): ProgressSkillKey => {
     const normalized = (value ?? '').trim().toUpperCase();
@@ -108,19 +108,19 @@ export const getSkillKey = (value?: string | null): ProgressSkillKey => {
 };
 
 /**
- * Kiểm tra phiên thi đã hoàn thành hoặc nộp bài chưa
+ * Check if exam attempt is completed or submitted
  */
 export const isFinished = (session: PracticeSessionListItemDto): boolean =>
     session.status === 'Completed' || session.status === 'Submitted';
 
 /**
- * Lấy điểm số bài thi (band score)
+ * Extract band score from exam attempt
  */
 export const getSessionScore = (session: PracticeSessionListItemDto): number | null =>
     session.totalBandScore ?? session.writingScore ?? session.speakingScore ?? null;
 
 /**
- * Chuyển đổi timestamp ISO sang milliseconds
+ * Convert ISO timestamp to milliseconds
  */
 export const parseDateMs = (value?: string | null): number => {
     if (!value) return 0;
@@ -129,7 +129,7 @@ export const parseDateMs = (value?: string | null): number => {
 };
 
 /**
- * Tính số phút làm bài thi
+ * Calculate exam attempt duration in minutes
  */
 export const getDurationMinutes = (session: PracticeSessionListItemDto): number => {
     const start = parseDateMs(session.startedAt);
@@ -139,7 +139,7 @@ export const getDurationMinutes = (session: PracticeSessionListItemDto): number 
 };
 
 /**
- * Định dạng ngày ngắn DD/MM
+ * Format short date DD/MM
  */
 export const formatShortDate = (value?: string | null): string => {
     if (!value) return 'N/A';
@@ -149,7 +149,7 @@ export const formatShortDate = (value?: string | null): string => {
 };
 
 /**
- * Lời khuyên học tập tự động theo thang điểm trung bình
+ * Generate automated study recommendation by average band score
  */
 export const getAiAdvice = (skill: string, avgBand: number | null): string => {
     if (avgBand === null) return 'Hãy hoàn thành bài thi thử đầu tiên để nhận đánh giá chi tiết từ trợ lý học tập.';

@@ -210,9 +210,9 @@ public sealed partial class GemmaPdfExamGenerationService
             .Replace("\r\n", "\n")
             .Replace('\r', '\n');
 
-        // GhÃ©p tá»« bá»‹ ngáº¯t dÃ²ng báº±ng dáº¥u gáº¡ch ná»‘i á»Ÿ cuá»‘i dÃ²ng.
+        // Rejoin words hyphenated across line breaks.
         normalized = HyphenatedWordAcrossLinesRegex().Replace(normalized, string.Empty);
-        // Vá»›i ngáº¯t dÃ²ng má»m giá»¯a 2 chá»¯ thÆ°á»ng, ná»‘i báº±ng khoáº£ng tráº¯ng Ä‘á»ƒ trÃ¡nh dÃ­nh chá»¯.
+        // For soft line breaks between lowercase letters, join with whitespace to prevent glued words.
         normalized = SoftLineBreakBetweenLowercaseWordsRegex().Replace(normalized, " ");
 
         normalized = FixKnownGluedWordsRegex().Replace(

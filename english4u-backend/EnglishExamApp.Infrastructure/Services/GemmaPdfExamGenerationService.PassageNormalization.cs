@@ -353,7 +353,7 @@ public sealed partial class GemmaPdfExamGenerationService
 
         var normalized = content;
         var hasStructuredLabels = HasStructuredParagraphLabels(normalized);
-        // Ná»‘i láº¡i cÃ¡c viáº¿t táº¯t bá»‹ vá»¡ dÃ²ng kiá»ƒu "D.\nC." Ä‘á»ƒ trÃ¡nh hiá»ƒu nháº§m "C." lÃ  nhÃ£n Ä‘oáº¡n.
+        // Rejoin line-wrapped abbreviations like "D.\nC." to avoid misinterpreting "C." as a passage label.
         normalized = BrokenAbbreviationAcrossLinesRegex().Replace(normalized, ".");
         if (hasStructuredLabels)
         {

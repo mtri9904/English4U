@@ -390,7 +390,7 @@ public static class DatabaseInitializer
             logger.LogInformation("[+] Verified and refreshed CMS Admin account: {Email} / Admin@123456", adminEmail);
         }
 
-        // Cấp quyền Admin cho tài khoản Google của chủ sở hữu nếu có
+        // Grant Admin role to owner Google account if present
         var ownerEmail = "minhtritamm@gmail.com";
         var existingOwner = await context.Users.Include(u => u.UserRoles).FirstOrDefaultAsync(u => u.Email == ownerEmail);
         if (existingOwner != null)

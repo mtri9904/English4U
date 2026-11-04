@@ -1,8 +1,7 @@
 import type { ClipboardEvent } from 'react';
 
 /**
- * Làm sạch văn bản khi paste: xóa bỏ tất cả các dấu xuống dòng và thay bằng khoảng trắng,
- * thu gọn nhiều khoảng trắng liên tiếp thành một.
+ * Clean pasted text: replace line breaks with spaces and collapse consecutive whitespace into a single space.
  */
 export const cleanUpText = (text: string) => {
     if (!text) return '';
@@ -10,7 +9,7 @@ export const cleanUpText = (text: string) => {
 };
 
 /**
- * Xây dựng giá trị mới sau khi paste dựa trên vị trí con trỏ (selection).
+ * Construct new input value after paste based on selection range.
  */
 export const buildCleanPastedValue = (
     currentValue: string,
@@ -27,8 +26,8 @@ export const buildCleanPastedValue = (
 };
 
 /**
- * Helper cho sự kiện onPaste của Input/TextArea để lấy giá trị đã làm sạch.
- * Trả về null nếu không có văn bản trong clipboard.
+ * Helper for Input/TextArea onPaste event to obtain sanitized text.
+ * Returns null if clipboard does not contain plain text.
  */
 export const getCleanPastedInputValue = (
     event: ClipboardEvent<HTMLInputElement | HTMLTextAreaElement>,

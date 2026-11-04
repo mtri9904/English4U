@@ -111,7 +111,7 @@ export const buildReadingPassageDisplaySegments = (value?: string | null): Readi
     }
 
     // Pass 2: Merge numbered list items (e.g. "1. ", "2) ") into their preceding block
-    // so list items within an assumption/requirement do not become separate "Đoạn" tags
+    // so list items within an assumption/requirement do not become separate paragraph tags
     const mergedBlocks: string[] = [];
     for (const block of preMergedBlocks) {
         const isNumberedListItem = /^\d+[.)]\s+/.test(block);
@@ -123,7 +123,7 @@ export const buildReadingPassageDisplaySegments = (value?: string | null): Readi
     }
 
     // If the passage is fully structured with A, B, C, D... across paragraphs (standard IELTS Matching Headings/Info),
-    // keep each paragraph intact without injecting redundant "Đoạn" tags, as the text already provides section letters.
+    // keep each paragraph intact without injecting redundant paragraph tags, as the text already provides section letters.
     if (isFullAlphabetStructuredPassage(mergedBlocks)) {
         return mergedBlocks.map((block) => {
             if (looksLikeReadingSubheading(block)) {
@@ -140,7 +140,7 @@ export const buildReadingPassageDisplaySegments = (value?: string | null): Readi
     }
 
     // Otherwise, this is a normal passage (or one with only 1-2 bullet points labeled A/B).
-    // Assign standard sequential "Đoạn 1", "Đoạn 2", "Đoạn 3"... to all paragraphs.
+    // Assign standard sequential "Paragraph 1", "Paragraph 2", "Paragraph 3"... to all paragraphs.
     let sequentialNumber = 0;
 
     return mergedBlocks.map((block) => {

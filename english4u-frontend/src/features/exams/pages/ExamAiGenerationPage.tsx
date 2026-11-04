@@ -14,6 +14,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useGenerateExamAiMutation } from '@/features/exams/hooks/useExamQueries';
 import { REALTIME_BROWSER_EVENT } from '@/features/realtime/hooks/useRealtimeSync';
+import { useUnsavedChangesWarning } from '@/shared/hooks';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -50,6 +51,7 @@ export const AdminExamAiGenerationPage = () => {
     const [form] = Form.useForm();
     const [inputMode, setInputMode] = useState<'random' | 'topic' | 'document'>('random');
     const [fileList, setFileList] = useState<any[]>([]);
+    const [hasTopicText, setHasTopicText] = useState(false);
     
 
     const [activeClientId, setActiveClientId] = useState<string | null>(null);
@@ -67,6 +69,19 @@ export const AdminExamAiGenerationPage = () => {
             awl: number;
         }>;
     } | null>(null);
+
+    const isDirty = (
+        progress?.status !== 'completed' &&
+        (isGenerating || progress?.status === 'processing' || fileList.length > 0 || hasTopicText)
+    );
+
+    const { confirmNavigation, ConfirmationModal } = useUnsavedChangesWarning({
+        isDirty,
+        title: 'Xác nhận rời khỏi trang sinh đề AI',
+        message: isGenerating || progress?.status === 'processing'
+            ? 'Tiến trình AI sinh đề thi IELTS đang diễn ra. Nếu rời khỏi trang lúc này, tiến trình có thể bị gián đoạn và dữ liệu chưa được lưu. Bạn có chắc chắn muốn rời đi?'
+            : 'Bạn đã tải lên tệp hoặc nhập thông tin tạo đề. Rời khỏi trang lúc này sẽ làm mất toàn bộ nội dung bạn vừa chuẩn bị. Bạn có chắc chắn muốn rời đi?',
+    });
 
     useEffect(() => {
         const handleRealtimeEvent = (event: Event) => {
@@ -186,7 +201,7 @@ export const AdminExamAiGenerationPage = () => {
     return (
         <div style={{ padding: '24px', maxWidth: '1000px', margin: '0 auto', minHeight: '100vh', background: '#f8fafc' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '28px' }}>
-                <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/admin/exams')} style={{ borderRadius: '10px' }} />
+                <Button icon={<ArrowLeftOutlined />} onClick={() => confirmNavigation(() => navigate('/admin/exams'))} style={{ borderRadius: '10px' }} />
                 <div>
                     <h2 style={{ fontSize: '1.6rem', fontWeight: 900, color: '#0f172a', margin: 0, letterSpacing: '-0.02em' }}>
                         AI IELTS Exam Generator
@@ -195,7 +210,9 @@ export const AdminExamAiGenerationPage = () => {
                         Tự động sinh đề IELTS Academic Reading đạt chuẩn thông qua mô hình Generative AI
                     </span>
                 </div>
+
             </div>
+
 
             <div style={{ display: 'grid', gridTemplateColumns: isGenerating || progress ? '1fr' : '1fr', gap: '24px' }}>
                 <AnimatePresence mode="wait">
@@ -213,7 +230,12 @@ export const AdminExamAiGenerationPage = () => {
                                     border: '1px solid rgba(226, 232, 240, 0.8)',
                                 }}
                             >
-                                <Form form={form} layout="vertical" onFinish={handleStartGeneration}>
+                                <Form
+                                    form={form}
+                                    layout="vertical"
+                                    onFinish={handleStartGeneration}
+                                    onValuesChange={(_, allValues) => setHasTopicText(Boolean(allValues.topicDescription?.trim()))}
+                                >
                                     <Form.Item label={<span style={{ fontWeight: 700, color: '#334155' }}>Chọn chế độ đầu vào</span>}>
                                         <Radio.Group
                                             value={inputMode}
@@ -385,6 +407,7 @@ export const AdminExamAiGenerationPage = () => {
                                         />
                                     </div>
 
+
                                     <Title level={4} style={{ fontWeight: 800, margin: '0 0 8px 0', color: '#1e293b' }}>
                                         {progress?.message || 'Đang xử lý dữ liệu...'}
                                     </Title>
@@ -398,6 +421,7 @@ export const AdminExamAiGenerationPage = () => {
                                                 <div style={{ fontWeight: 700, color: '#1e3a8a' }}>
                                                     Đang xử lý Bài đọc {progress.passageNumber} / {progress.totalPassages}
                                                 </div>
+
                                             }
                                             type="info"
                                             showIcon
@@ -428,6 +452,7 @@ export const AdminExamAiGenerationPage = () => {
                                                     <CheckCircleOutlined style={{ color: '#16a34a', fontSize: '20px' }} />
                                                     <span style={{ fontWeight: 800, color: '#14532d', fontSize: '14px' }}>BÁO CÁO KIỂM ĐỊNH CHẤT LƯỢNG (AI QA PIPELINE)</span>
                                                 </div>
+
                                                 <Space direction="vertical" size="small" style={{ width: '100%', fontSize: '13px' }}>
                                                     <div>
                                                         Độ chính xác giải đề của <strong>Validator Agent</strong>:{' '}
@@ -435,6 +460,7 @@ export const AdminExamAiGenerationPage = () => {
                                                             {qualityMetrics.accuracy?.toFixed(1)}%
                                                         </Tag>
                                                     </div>
+
                                                     
                                                     {qualityMetrics.passages?.map((p) => (
                                                         <div key={p.num} style={{ marginTop: '8px', borderTop: '1px dashed rgba(20, 83, 45, 0.15)', paddingTop: '8px' }}>
@@ -445,10 +471,13 @@ export const AdminExamAiGenerationPage = () => {
                                                                 <div>Words: <strong style={{ color: '#16a34a' }}>{p.words}</strong></div>
                                                                 <div>AWL Ratio: <strong style={{ color: '#16a34a' }}>{p.awl.toFixed(1)}%</strong></div>
                                                             </div>
+
                                                         </div>
+
                                                     ))}
                                                 </Space>
                                             </div>
+
                                         </motion.div>
                                     )}
 
@@ -487,11 +516,13 @@ export const AdminExamAiGenerationPage = () => {
                                         )}
                                     </Space>
                                 </div>
+
                             </Card>
                         </motion.div>
                     )}
                 </AnimatePresence>
             </div>
+            <ConfirmationModal />
         </div>
     );
 };

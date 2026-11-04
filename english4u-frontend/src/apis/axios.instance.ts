@@ -10,15 +10,15 @@ export const axiosInstance = axios.create({
 });
 
 /**
- * Kiểm tra JWT token trong localStorage có hết hạn chưa.
- * Trả về true nếu token không tồn tại hoặc đã hết hạn.
+ * Check whether the JWT token in localStorage has expired.
+ * Returns true if token does not exist or has expired.
  */
 export const isTokenExpired = (): boolean => {
     const token = localStorage.getItem('token');
     if (!token) return true;
     try {
         const payload = JSON.parse(atob(token.split('.')[1]));
-        // exp là Unix timestamp (giây), Date.now() là milliseconds
+        // exp is Unix timestamp (seconds), Date.now() is milliseconds
         return payload.exp * 1000 < Date.now();
     } catch {
         return true;
@@ -48,7 +48,7 @@ const redirectToLogin = () => {
     }
 };
 
-// Flag để tránh nhiều request refresh cùng lúc (chỉ refresh 1 lần)
+// Flag to prevent concurrent refresh requests (refresh only once)
 let isRefreshing = false;
 let pendingRequests: Array<(token: string) => void> = [];
 
@@ -73,21 +73,21 @@ axiosInstance.interceptors.response.use(
     async (error) => {
         const originalRequest = error.config;
 
-        // Bỏ qua nếu không phải 401 hoặc đây là request refresh chính nó
+        // Skip if status is not 401 or if this is the refresh request itself
         if (error.response?.status !== 401 || originalRequest._isRetry) {
             return Promise.reject(error);
         }
 
         const storedRefreshToken = localStorage.getItem('refreshToken');
 
-        // Không có refresh token → logout thẳng
+        // No refresh token available -> logout directly
         if (!storedRefreshToken) {
             clearSession();
             redirectToLogin();
             return Promise.reject(error);
         }
 
-        // Nếu đang refresh, đưa request vào hàng đợi
+        // If already refreshing, enqueue request to resolve queue
         if (isRefreshing) {
             return new Promise((resolve) => {
                 pendingRequests.push((newToken: string) => {
@@ -97,7 +97,7 @@ axiosInstance.interceptors.response.use(
             });
         }
 
-        // Bắt đầu quá trình refresh
+        // Start token refresh flow
         isRefreshing = true;
         originalRequest._isRetry = true;
 
@@ -110,21 +110,21 @@ axiosInstance.interceptors.response.use(
 
             const { token: newToken, refreshToken: newRefreshToken } = response.data;
 
-            // Cập nhật tokens mới
+            // Update newly acquired tokens
             localStorage.setItem('token', newToken);
             localStorage.setItem('refreshToken', newRefreshToken);
 
-            // Cập nhật header mặc định
+            // Update default authorization header
             axiosInstance.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
 
-            // Giải phóng tất cả requests đang chờ
+            // Resolve all queued requests
             processPendingRequests(newToken);
 
-            // Retry request ban đầu với token mới
+            // Retry initial request with new token
             originalRequest.headers.Authorization = `Bearer ${newToken}`;
             return axiosInstance(originalRequest);
         } catch (refreshError) {
-            // Refresh thất bại (refresh token hết hạn hoặc không hợp lệ) → logout
+            // Refresh failed (expired or invalid refresh token) -> logout
             pendingRequests = [];
             clearSession();
             redirectToLogin();

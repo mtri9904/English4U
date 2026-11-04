@@ -82,7 +82,7 @@ export const ClientLayout: React.FC = () => {
     useEffect(() => {
         const token = localStorage.getItem('token');
         if (!token || isTokenExpired()) {
-            // Token không tồn tại hoặc đã hết hạn → clear và redirect
+            // Token missing or expired -> clear session and redirect
             localStorage.removeItem('token');
             localStorage.removeItem('userId');
             navigate('/login', { replace: true });

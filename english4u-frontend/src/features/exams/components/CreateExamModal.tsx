@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { Modal, Input, Select, InputNumber, Button, Divider, message, Tabs } from 'antd';
-import { PlusOutlined } from '@ant-design/icons';
+import { Modal, Input, Select, Button, message, Tabs, Divider } from 'antd';
+import { PlusOutlined, ExclamationCircleFilled } from '@ant-design/icons';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     useCreateExamMutation,
@@ -59,11 +59,14 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
         sections: [emptySection('Reading')],
     });
 
+    const [isDirty, setIsDirty] = useState(false);
+    const initialSnapshotRef = useRef<string>('');
+
     const isEdit = !!initialData;
 
     useEffect(() => {
         if (open && initialData) {
-            setForm({
+            const loadedForm: CreateExamDto = {
                 title: initialData.title,
                 description: initialData.description || '',
                 durationMinutes: initialData.durationMinutes || 60,
@@ -71,7 +74,10 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
                 examType: initialData.examType || 'IELTS',
                 isPublished: initialData.isPublished,
                 sections: initialData.sections as any,
-            });
+            };
+            setForm(loadedForm);
+            initialSnapshotRef.current = JSON.stringify(loadedForm);
+            setIsDirty(false);
 
             // Re-detect global audio url from parts
             const allAudios = (initialData.sections || [])
@@ -79,7 +85,7 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
                 .map((p: any) => p.audioUrl);
             setGlobalAudioUrl(allAudios.find((audio: string) => !!audio)?.trim() || null);
         } else if (open && !initialData) {
-            setForm({
+            const emptyForm: CreateExamDto = {
                 title: '',
                 description: '',
                 durationMinutes: 60,
@@ -87,10 +93,39 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
                 examType: 'IELTS',
                 isPublished: false,
                 sections: [emptySection('Reading')],
-            });
+            };
+            setForm(emptyForm);
+            initialSnapshotRef.current = JSON.stringify(emptyForm);
+            setIsDirty(false);
             setGlobalAudioUrl(null);
         }
     }, [open, initialData]);
+
+    useEffect(() => {
+        if (open && initialSnapshotRef.current) {
+            setIsDirty(JSON.stringify(form) !== initialSnapshotRef.current);
+        }
+    }, [form, open]);
+
+    const handleSafeClose = () => {
+        if (isDirty) {
+            Modal.confirm({
+                title: 'Hủy thao tác tạo đề thi?',
+                icon: <ExclamationCircleFilled style={{ color: '#faad14' }} />,
+                content: 'Bạn đã nhập các thông tin cho đề thi nhưng chưa lưu. Nếu đóng lúc này, mọi dữ liệu vừa nhập sẽ bị mất. Bạn có chắc chắn muốn đóng?',
+                okText: 'Đóng và hủy thay đổi',
+                okType: 'danger',
+                cancelText: 'Tiếp tục chỉnh sửa',
+                centered: true,
+                onOk: () => {
+                    setIsDirty(false);
+                    onClose();
+                },
+            });
+        } else {
+            onClose();
+        }
+    };
 
     const updateForm = (partial: Partial<CreateExamDto>) => setForm((prev) => ({ ...prev, ...partial }));
 
@@ -171,6 +206,7 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
                 await createMutation.mutateAsync(normalizedForm);
                 message.success('Tạo đề thi thành công!');
             }
+            setIsDirty(false);
             onClose();
         } catch {
             message.error(isEdit ? 'Cập nhật đề thi thất bại!' : 'Tạo đề thi thất bại!');
@@ -215,7 +251,6 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
                         globalAudioUrl={globalAudioUrl}
                         setGlobalAudioUrl={setGlobalAudioUrl}
                         handleUploadFile={handleUploadFile}
-                        handleGenerateListeningTranscript={handleGenerateListeningTranscript}
                         activeEditorRef={activeEditorRef}
                     />
                 );
@@ -246,10 +281,10 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
         <Modal
             title={isEdit ? 'Chỉnh sửa đề thi' : 'Tạo đề thi mới'}
             open={open}
-            onCancel={onClose}
+            onCancel={handleSafeClose}
             width={1100}
             footer={[
-                <Button key="back" onClick={onClose}>
+                <Button key="back" onClick={handleSafeClose}>
                     Hủy
                 </Button>,
                 <Button
@@ -332,50 +367,51 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
                     placeholder="Mô tả đề thi..."
                     autoSize={{ minRows: 2, maxRows: 4 }}
                 />
-                <div style={{ display: 'flex', gap: '12px' }}>
-                    <div>
-                        <label style={{ fontWeight: 600, fontSize: '0.8125rem', color: '#334155' }}>
-                            Thời gian (phút)
-                        </label>
-                        <InputNumber
-                            value={form.durationMinutes}
-                            onChange={(v) => updateForm({ durationMinutes: v ?? 60 })}
-                            min={1}
-                            style={{ width: '100%' }}
-                        />
-                    </div>
-                </div>
 
                 <Divider style={{ margin: '8px 0' }} />
 
                 <Tabs
-                    type="card"
+                    type="editable-card"
+                    hideAdd
+                    activeKey={String(form.sections[0]?.skillType || 'Reading')}
                     items={form.sections.map((section, sIdx) => {
-                        const skill = section.skillType as SkillType;
+                        const skill = (normalizeSkillType(section.skillType) || 'Reading') as SkillType;
                         return {
-                            key: String(sIdx),
+                            key: String(section.skillType),
                             label: (
-                                <span style={{ color: SKILL_COLORS[skill], fontWeight: 600 }}>
-                                    {skill === 'Reading' ? '📖' : skill === 'Listening' ? '🎧' : skill === 'Writing' ? '✍️' : '🎤'}{' '}
-                                    {skill}
+                                <span>
+                                    {skill === 'Reading'
+                                        ? '📖'
+                                        : skill === 'Listening'
+                                          ? '🎧'
+                                          : skill === 'Writing'
+                                            ? '✍️'
+                                            : '🎤'}{' '}
+                                    {section.skillType}
                                 </span>
                             ),
                             children: (
                                 <AnimatePresence mode="wait">
                                     <motion.div
-                                        key={sIdx}
-                                        initial={{ opacity: 0, y: 10 }}
+                                        key={section.skillType}
+                                        initial={{ opacity: 0, y: 8 }}
                                         animate={{ opacity: 1, y: 0 }}
-                                        exit={{ opacity: 0 }}
+                                        exit={{ opacity: 0, y: -8 }}
+                                        transition={{ duration: 0.15 }}
                                     >
                                         <div
                                             style={{
                                                 display: 'flex',
-                                                gap: '10px',
-                                                marginBottom: '12px',
-                                                flexWrap: 'wrap',
+                                                justifyContent: 'space-between',
+                                                alignItems: 'center',
+                                                marginBottom: 16,
+                                                padding: '8px 12px',
+                                                background: '#fff',
+                                                borderRadius: 8,
+                                                border: '1px solid #e2e8f0',
                                             }}
                                         >
+                                            <span style={{ fontWeight: 600, color: '#475569' }}>Kỹ năng phần này:</span>
                                             <Select
                                                 value={skill}
                                                 style={{ width: 180 }}

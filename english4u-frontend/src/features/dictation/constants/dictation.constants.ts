@@ -36,7 +36,7 @@ export const TOPIC_PRESETS = [
 ] as const;
 
 export const CURATED_VOICES: VoicePersona[] = [
-    // Mỹ (US)
+    // United States (US)
     {
         id: 'en-US-JennyNeural',
         name: 'Jenny',
@@ -120,7 +120,7 @@ export const CURATED_VOICES: VoicePersona[] = [
         description: 'Nam Anh – Thân thiện, ấm áp, ngữ điệu đời thường',
     },
 
-    // Úc (AU)
+    // Australia (AU)
     {
         id: 'en-AU-NatashaNeural',
         name: 'Natasha',
@@ -156,7 +156,7 @@ export const CURATED_VOICES: VoicePersona[] = [
         description: 'Nam Canada – Trẻ trung, năng động',
     },
 
-    // Ireland (IE) & Ấn Độ (IN)
+    // Ireland (IE) & India (IN)
     {
         id: 'en-IE-EmilyNeural',
         name: 'Emily',

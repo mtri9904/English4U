@@ -16,7 +16,7 @@ export interface AiModelSelectorProps {
 }
 
 /**
- * Component lựa chọn AI Model dùng chung TOÀN HỆ THỐNG
+ * System-wide AI Model Selector Component
  * (Flashcards, Copilot, Exam Grading, IELTS Writing/Speaking, Chat...)
  */
 export const AiModelSelector: React.FC<AiModelSelectorProps> = ({

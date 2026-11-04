@@ -72,7 +72,7 @@ public class TheGuardianNewsService : INewsService
         var normalizedCategory = CategoryMap.ContainsKey(category) ? category : "all";
         var (_, categoryLabel) = CategoryMap[normalizedCategory];
 
-        // 1. Kiểm tra Master Pool trong RAM (0 request The Guardian)
+        // 1. Check Master RAM Pool (0 requests to The Guardian)
         var poolKey = $"guardian_master_pool_{normalizedCategory}";
         if (!forceRefresh && string.IsNullOrWhiteSpace(search) && _cache.TryGetValue(poolKey, out List<NewsArticleDto>? pool) && pool != null && pool.Count > 0)
         {
@@ -627,7 +627,7 @@ public class TheGuardianNewsService : INewsService
             ? $"news_trans_{request.ArticleId}_{request.ParagraphIndex.Value}"
             : $"news_trans_{textHash}";
 
-        // 1. Kiểm tra RAM Cache 7 ngày (0ms response)
+        // 1. Check RAM Cache (7-day validity, 0ms response)
         if (_cache.TryGetValue(cacheKey, out string? cachedTranslation) && !string.IsNullOrWhiteSpace(cachedTranslation))
         {
             return new NewsTranslateResponseDto
@@ -638,12 +638,14 @@ public class TheGuardianNewsService : INewsService
             };
         }
 
-        // 2. Dịch qua Gemma AI theo yêu cầu (chỉ dùng gemma-4-26b-a4b-it và gemma-4-31b-it)
+        // 2. Translate with Gemma AI (models: gemma-4-26b-a4b-it, gemma-4-31b-it)
         var modelsToTry = new[] { "gemma-4-26b-a4b-it", "gemma-4-31b-it" };
-        var prompt = $"Translate the following news paragraph from The Guardian into natural, accurate, and professional Vietnamese.\n\n" +
-                     $"CRITICAL: Respond ONLY with a valid JSON object in this exact schema:\n" +
-                     $"{{\"translation\": \"Bản dịch tiếng Việt tự nhiên và chuẩn xác tại đây\"}}\n\n" +
-                     $"Do NOT output any thought tags, reasoning, notes, markdown formatting, or text outside the JSON.\n\n" +
+        var prompt = $"Translate the following news paragraph from The Guardian into natural, accurate, and fluent Vietnamese.\n\n" +
+                     $"CRITICAL REQUIREMENTS:\n" +
+                     $"1. Respond with ONLY a valid JSON object in this exact schema:\n" +
+                     $"{{\"translation\": \"<Bản dịch tiếng Việt tự nhiên và chuẩn xác tại đây>\"}}\n" +
+                     $"2. Output ONLY the JSON object. Do NOT wrap in markdown code blocks. Do NOT output any thought tags (<thought>, <think>), reasoning, explanations, drafts, or English analysis.\n" +
+                     $"3. The translation field must contain ONLY the Vietnamese translated text.\n\n" +
                      $"Paragraph to translate:\n{cleanText}";
 
         foreach (var model in modelsToTry)
@@ -656,7 +658,7 @@ public class TheGuardianNewsService : INewsService
                     var cleanResult = CleanTranslationResult(translated);
                     if (!string.IsNullOrWhiteSpace(cleanResult))
                     {
-                        // Lưu Cache 7 ngày trong RAM
+                        // Store in 7-day RAM cache
                         _cache.Set(cacheKey, cleanResult, TimeSpan.FromDays(7));
                         return new NewsTranslateResponseDto
                         {
@@ -687,7 +689,7 @@ public class TheGuardianNewsService : INewsService
         var cleanWord = word.Trim().ToLowerInvariant();
         var cacheKey = $"dict_{cleanWord}";
 
-        // 1. Kiểm tra RAM Cache (30 ngày)
+        // 1. Check RAM Cache (30-day retention)
         if (_cache.TryGetValue(cacheKey, out NewsDictionaryDto? cached) && cached != null)
         {
             return cached;
@@ -698,7 +700,7 @@ public class TheGuardianNewsService : INewsService
             Word = cleanWord
         };
 
-        // 2. Gọi API từ điển học thuật công khai (Free Dictionary API)
+        // 2. Query public Free Dictionary API
         try
         {
             var dictUrl = $"https://api.dictionaryapi.dev/api/v2/entries/en/{Uri.EscapeDataString(cleanWord)}";
@@ -759,7 +761,7 @@ public class TheGuardianNewsService : INewsService
             _logger.LogWarning(ex, "Dictionary API lookup failed for word {Word}", cleanWord);
         }
 
-        // 3. Lấy nghĩa tiếng Việt qua AI với timeout ngắn 4s (ưu tiên gemini-2.5-flash-lite)
+        // 3. Obtain Vietnamese meaning via AI with short 4s timeout (priority: gemini-2.5-flash-lite)
         try
         {
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -783,7 +785,7 @@ public class TheGuardianNewsService : INewsService
                 }
                 catch
                 {
-                    // Thử model tiếp theo
+                    // Try next fallback model
                 }
             }
         }
@@ -792,7 +794,7 @@ public class TheGuardianNewsService : INewsService
             _logger.LogWarning(ex, "Failed to get Vietnamese meaning for word {Word}", cleanWord);
         }
 
-        // Lưu Cache 30 ngày
+        // Store in 30-day RAM cache
         _cache.Set(cacheKey, result, TimeSpan.FromDays(30));
         return result;
     }
@@ -802,10 +804,24 @@ public class TheGuardianNewsService : INewsService
         if (string.IsNullOrWhiteSpace(text)) return string.Empty;
         var raw = text.Trim();
 
-        // 1. Loại bỏ triệt để các thẻ suy nghĩ <think>...</think> hoặc <thought>...</thought> (kể cả thẻ chưa kịp đóng)
-        raw = Regex.Replace(raw, @"(?is)<(think|thought)>.*?(</(think|thought)>|$)", string.Empty).Trim();
+        // 1. Thoroughly remove reasoning tags: <think>...</think>, <thought>...</thought>, <reasoning>...</reasoning>
+        raw = Regex.Replace(raw, @"(?is)<(think|thought|reasoning)>.*?(</(think|thought|reasoning)>|$)", string.Empty).Trim();
 
-        // 2. Loại bỏ markdown code blocks
+        // 2. If orphaned closing tag </thought> or </think> remains, strip everything before it
+        var lastCloseIdx = Math.Max(
+            raw.LastIndexOf("</thought>", StringComparison.OrdinalIgnoreCase),
+            raw.LastIndexOf("</think>", StringComparison.OrdinalIgnoreCase)
+        );
+        if (lastCloseIdx >= 0)
+        {
+            var afterTag = raw.IndexOf('>', lastCloseIdx);
+            if (afterTag >= 0 && afterTag < raw.Length - 1)
+            {
+                raw = raw.Substring(afterTag + 1).Trim();
+            }
+        }
+
+        // 3. Strip markdown code fences
         if (raw.StartsWith("```json", StringComparison.OrdinalIgnoreCase))
         {
             raw = raw.Substring(7);
@@ -820,7 +836,7 @@ public class TheGuardianNewsService : INewsService
         }
         raw = raw.Trim();
 
-        // 3. Cố gắng trích xuất trường "translation" hoặc "meaningVi" từ JSON
+        // 4. Attempt to extract "translation" or "meaningVi" property from JSON
         try
         {
             using var doc = JsonDocument.Parse(raw);
@@ -837,14 +853,26 @@ public class TheGuardianNewsService : INewsService
         }
         catch
         {
-            var match = Regex.Match(raw, @"""(?:translation|meaningVi)""\s*:\s*""([^""]+)""");
+            // Extract via regex if JSON payload is surrounded by extraneous text
+            var match = Regex.Match(raw, @"""(?:translation|meaningVi)""\s*:\s*""((?:\\.|[^""\\])*)""");
             if (match.Success && match.Groups.Count > 1)
             {
-                return match.Groups[1].Value.Trim();
+                var val = match.Groups[1].Value;
+                try
+                {
+                    return Regex.Unescape(val).Trim();
+                }
+                catch
+                {
+                    return val.Replace(@"\""", @"""").Replace(@"\n", "\n").Trim();
+                }
             }
         }
 
-        // 4. Fallback loại bỏ dấu ngoặc kép thừa
+        // 5. If plain text without JSON, remove common translation prefixes
+        raw = Regex.Replace(raw, @"^(?:Translation|Bản dịch|Dịch nghĩa|Vietnamese translation):\s*", string.Empty, RegexOptions.IgnoreCase);
+
+        // 6. Fallback: trim redundant outer quotes
         return raw.Trim('"', '\'', '`').Trim();
     }
 }

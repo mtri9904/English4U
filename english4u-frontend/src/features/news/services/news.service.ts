@@ -154,6 +154,39 @@ export interface NewsTranslateResponse {
     modelUsed: string;
 }
 
+export const cleanTranslationText = (text: string): string => {
+    if (!text) return '';
+    let cleaned = text.trim();
+
+    // 1. Remove reasoning tags: <think>, <thought>, <reasoning>
+    cleaned = cleaned.replace(/<(think|thought|reasoning)>[\s\S]*?(<\/(think|thought|reasoning)>|$)/gi, '').trim();
+
+    // 2. Strip orphaned closing tag if present
+    const lastClose = Math.max(cleaned.lastIndexOf('</thought>'), cleaned.lastIndexOf('</think>'));
+    if (lastClose >= 0) {
+        cleaned = cleaned.substring(lastClose + (cleaned.slice(lastClose, lastClose + 10).toLowerCase().startsWith('</thought>') ? 10 : 8)).trim();
+    }
+
+    // 3. Extract translation if model returns raw JSON string
+    if (cleaned.startsWith('{') && cleaned.includes('}')) {
+        try {
+            const parsed = JSON.parse(cleaned);
+            if (parsed.translation) return String(parsed.translation).trim();
+            if (parsed.meaningVi) return String(parsed.meaningVi).trim();
+        } catch {
+            const match = cleaned.match(/"(?:translation|meaningVi)"\s*:\s*"((?:\\.|[^"\\])*)"/);
+            if (match && match[1]) {
+                return match[1].replace(/\\"/g, '"').replace(/\\n/g, '\n').trim();
+            }
+        }
+    }
+
+    // 4. Strip common translation prefixes
+    cleaned = cleaned.replace(/^(?:Translation|Bản dịch|Dịch nghĩa|Vietnamese translation):\s*/i, '');
+
+    return cleaned.replace(/^["'`]|["'`]$/g, '').trim();
+};
+
 export const translateParagraph = async (
     text: string,
     articleId?: string,
@@ -167,7 +200,7 @@ export const translateParagraph = async (
             paragraphIndex,
         });
         if (response.data && response.data.translatedText) {
-            return response.data.translatedText;
+            return cleanTranslationText(response.data.translatedText);
         }
     } catch {
         // Fallback directly to Google GTX
@@ -176,7 +209,7 @@ export const translateParagraph = async (
             const gtxRes = await fetch(gtxUrl);
             const data = await gtxRes.json();
             if (Array.isArray(data) && Array.isArray(data[0])) {
-                return data[0].map((item: any) => item[0]).filter(Boolean).join('');
+                return cleanTranslationText(data[0].map((item: any) => item[0]).filter(Boolean).join(''));
             }
         } catch {
             // ignore

@@ -95,7 +95,7 @@ async def validation_exception_handler(request, exc):
     except Exception:
         body_str = str(body)
     
-    # Ghi log lỗi ra file để agent đọc
+    # Write error log to file for diagnostic inspection
     try:
         import json
         with open("error_debug.txt", "w", encoding="utf-8") as f:

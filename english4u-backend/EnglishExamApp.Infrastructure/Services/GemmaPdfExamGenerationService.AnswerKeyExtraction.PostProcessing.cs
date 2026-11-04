@@ -301,7 +301,7 @@ public sealed partial class GemmaPdfExamGenerationService
 
         if (answerStart <= 0)
         {
-            // Fallback cho file cÃ³ "Solution:1C2F..." dÃ­nh liá»n cÃ¹ng dÃ²ng.
+            // Fallback for files with concatenated "Solution:1C2F..." on the same line.
             var inlineSolutionMatch = InlineSolutionHeadingRegex().Match(normalizedText);
             if (inlineSolutionMatch.Success &&
                 inlineSolutionMatch.Index >= normalizedText.Length * 0.35d)
@@ -312,7 +312,7 @@ public sealed partial class GemmaPdfExamGenerationService
 
         if (answerStart <= 0)
         {
-            // Fallback: láº¥y vÃ¹ng 40% cuá»‘i file náº¿u cÃ³ máº­t Ä‘á»™ answer-pair cao.
+            // Fallback: inspect the last 40% of the file if answer-pair density is high.
             var trailingStart = (int)(normalizedText.Length * 0.60d);
             trailingStart = Math.Clamp(trailingStart, 0, Math.Max(0, normalizedText.Length - 1));
             var trailingChunk = normalizedText[trailingStart..];
@@ -333,7 +333,7 @@ public sealed partial class GemmaPdfExamGenerationService
             }
             else
             {
-                // KhÃ´ng tÃ¬m Ä‘Æ°á»£c vÃ¹ng Ä‘Ã¡p Ã¡n Ä‘á»§ tin cáº­y thÃ¬ khÃ´ng parse Ä‘á»ƒ trÃ¡nh override sai.
+                // Skip parsing if no confident answer zone is found to prevent incorrect overrides.
                 return string.Empty;
             }
         }

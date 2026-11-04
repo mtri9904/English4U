@@ -142,7 +142,7 @@ public sealed partial class GemmaPdfExamGenerationService
             MergeSupplementalUltraCompactAnswerPairs(normalized[trailingStart..], result);
         }
 
-        // Review/Explanations thÆ°á»ng cÃ³ Ä‘á»‹nh dáº¡ng "X Answer: Y" á»•n Ä‘á»‹nh hÆ¡n Solution bá»‹ dÃ­nh chá»¯.
+        // Review/Explanations usually have "X Answer: Y" format, which is more reliable than concatenated Solution text.
         MergeReviewAnswerEntries(answerZone, result);
         if (result.Count < 30)
         {
@@ -166,7 +166,7 @@ public sealed partial class GemmaPdfExamGenerationService
             .OrderBy(number => number)
             .ToList();
 
-        // 1) Clean toÃ n bá»™ answer Ä‘Ã£ parse: bá» page/footer/url, normalize token.
+        // 1) Clean all parsed answers: remove page/footer/url and normalize tokens.
         foreach (var questionNumber in questionNumbers)
         {
             if (!result.TryGetValue(questionNumber, out var rawAnswer))
@@ -183,8 +183,8 @@ public sealed partial class GemmaPdfExamGenerationService
             result[questionNumber] = cleaned;
         }
 
-        // 2) Fallback expansion: náº¿u bá»‹ dá»“n range thÃ nh 1 dÃ²ng kiá»ƒu "18. A,C,D,E,H",
-        // tá»± tÃ¡ch ra 18..22 khi khoáº£ng trá»‘ng key khá»›p vá»›i sá»‘ token.
+        // 2) Fallback expansion: if a range is collapsed into a single line like "18. A,C,D,E,H",
+        // automatically split into 18..22 when available key slots match the token count.
         var ordered = result.Keys
             .Where(number => number is >= 1 and <= 40)
             .Distinct()
@@ -479,7 +479,7 @@ public sealed partial class GemmaPdfExamGenerationService
             .Replace('\r', '\n');
         normalized = Regex.Replace(normalized, @"\s+", " ").Trim();
 
-        // OCR/PDF thÆ°á»ng lÃ m dÃ­nh chá»¯ Ä‘Ã¡p Ã¡n vá»›i marker giáº£i thÃ­ch: "ADHDThe keywords", "ADHDpage 18".
+        // OCR/PDF often merges answer text with explanation markers: "ADHDThe keywords", "ADHDpage 18".
         normalized = GluedReviewMarkerRegex().Replace(normalized, " ");
         normalized = Regex.Replace(normalized, @"\s+", " ").Trim();
 
@@ -527,7 +527,7 @@ public sealed partial class GemmaPdfExamGenerationService
                    endQuestion <= 40;
         }
 
-        // OCR fallback: "18-22" cÃ³ thá»ƒ bá»‹ dÃ­nh thÃ nh "1822".
+        // OCR fallback: "18-22" may get merged as "1822".
         if (normalized.Length == 4 &&
             int.TryParse(normalized[..2], out var firstTwoDigits) &&
             int.TryParse(normalized[2..], out var lastTwoDigits) &&
@@ -540,7 +540,7 @@ public sealed partial class GemmaPdfExamGenerationService
             return true;
         }
 
-        // OCR fallback: "9-13" cÃ³ thá»ƒ bá»‹ dÃ­nh thÃ nh "913".
+        // OCR fallback: "9-13" may get merged as "913".
         if (normalized.Length == 3 &&
             int.TryParse(normalized[..1], out var firstOneDigit) &&
             int.TryParse(normalized[1..], out var lastTwoDigitsFromThree) &&

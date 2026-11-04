@@ -1,6 +1,6 @@
 /**
- * Chuyển đổi số nguyên dương sang số La Mã (chữ thường).
- * Ví dụ: 1 -> i, 2 -> ii, 3 -> iii, 4 -> iv, 5 -> v, ...
+ * Convert a positive integer to lowercase Roman numerals.
+ * Example: 1 -> i, 2 -> ii, 3 -> iii, 4 -> iv, 5 -> v, ...
  */
 export const toRoman = (num: number): string => {
     if (num <= 0) return '';
@@ -31,7 +31,7 @@ export const toRoman = (num: number): string => {
 };
 
 /**
- * Chuyển đổi index sang nhãn lựa chọn (A, B, C... hoặc i, ii, iii...).
+ * Convert index to option label (A, B, C... or i, ii, iii...).
  */
 export const getOptionLabel = (index: number, type: 'alpha' | 'roman' = 'alpha'): string => {
     if (type === 'roman') {
@@ -41,7 +41,7 @@ export const getOptionLabel = (index: number, type: 'alpha' | 'roman' = 'alpha')
 };
 
 /**
- * Loại bỏ nhãn lựa chọn dẫn đầu (ví dụ: A. hoặc A- hoặc A:) ra khỏi text của option nếu có.
+ * Strip leading option label prefix (e.g. A. or A- or A:) from option text if present.
  */
 export const stripOptionLeadingLabel = (
     optionText: string | null | undefined,

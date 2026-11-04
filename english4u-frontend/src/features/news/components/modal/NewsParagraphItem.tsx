@@ -1,5 +1,6 @@
 import React from 'react';
 import { Spin } from 'antd';
+import { cleanTranslationText } from '../../services/news.service';
 
 interface NewsParagraphItemProps {
     blockId: number;
@@ -122,7 +123,7 @@ export const NewsParagraphItem: React.FC<NewsParagraphItemProps> = ({
                         </button>
                     </div>
                     <div style={{ fontSize: '15px', lineHeight: 1.7, color: '#166534', fontWeight: 500 }}>
-                        {translatedText}
+                        {cleanTranslationText(translatedText)}
                     </div>
                 </div>
             )}

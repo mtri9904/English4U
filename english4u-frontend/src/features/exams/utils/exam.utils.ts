@@ -7,20 +7,20 @@ import {
 } from '../constants/exam.constants';
 
 /**
- * Lấy theme màu sắc cho thẻ đề thi trong MyExamsPage
+ * Get color theme for exam cards on MyExamsPage
  */
 export const getMyExamsSkillTheme = (skillType?: string | null): { color: string; bg: string; border: string } => (
     MY_EXAMS_SKILL_THEME_MAP[normalizeSkillToken(skillType)] ?? { color: '#0f172a', bg: '#f8fafc', border: '#e2e8f0' }
 );
 
 /**
- * Chuẩn hóa chuỗi kỹ năng (loại bỏ khoảng trắng, viết hoa)
+ * Normalize skill token (trim and uppercase)
  */
 export const normalizeSkillToken = (value?: string | null): string =>
     (value ?? '').trim().toUpperCase();
 
 /**
- * Định dạng nhãn kỹ năng (Capitalize chữ đầu: "Reading", "Listening", ...)
+ * Format skill label (capitalized: "Reading", "Listening", ...)
  */
 export const formatSkillLabel = (value?: string | null): string => {
     const normalized = (value ?? '').trim().toLowerCase();
@@ -29,7 +29,7 @@ export const formatSkillLabel = (value?: string | null): string => {
 };
 
 /**
- * Lấy kỹ năng chính của đề thi (Admin)
+ * Get primary skill of the exam (Admin)
  */
 export const getPrimarySkill = (exam: ExamDto): string => {
     const firstSkill = exam.skillTypes?.find((skill) => skill?.trim());
@@ -38,7 +38,7 @@ export const getPrimarySkill = (exam: ExamDto): string => {
 };
 
 /**
- * Lấy kỹ năng chính của đề thi trong danh mục luyện tập (Client)
+ * Get primary skill of the exam in practice catalog (Client)
  */
 export const getCatalogPrimarySkill = (exam: PracticeExamListItemDto): string => {
     const firstSkill = exam.skillTypes.find((skill) => normalizeSkillToken(skill).length > 0);
@@ -109,7 +109,7 @@ export const getExamVolume = (exam: PracticeExamListItemDto, skill: string): { l
 };
 
 /**
- * Lấy cấu hình giao diện theo kỹ năng đề thi
+ * Get visual theme configuration by exam skill
  */
 export const getSkillTheme = (skill: string): SkillTheme => (
     EXAM_SKILL_THEME_MAP[normalizeSkillToken(skill)] ?? {
@@ -124,7 +124,7 @@ export const getSkillTheme = (skill: string): SkillTheme => (
 );
 
 /**
- * Lấy điểm band tổng hoặc điểm kỹ năng của phiên làm bài
+ * Get overall band score or skill score of practice session
  */
 export const getSessionBandScore = (session: PracticeSessionListItemDto): number | null =>
     session.totalBandScore
@@ -133,7 +133,7 @@ export const getSessionBandScore = (session: PracticeSessionListItemDto): number
     ?? null;
 
 /**
- * Lấy timestamp bắt đầu phiên thi dạng milliseconds
+ * Get session start timestamp in milliseconds
  */
 export const getSessionStartedAtMs = (session: PracticeSessionListItemDto): number => {
     const timestamp = Date.parse(session.startedAt);
@@ -141,7 +141,7 @@ export const getSessionStartedAtMs = (session: PracticeSessionListItemDto): numb
 };
 
 /**
- * Lọc giữ lại phiên thi Speaking mới nhất cho từng đề thi
+ * Filter to retain only the latest Speaking session per exam
  */
 export const keepLatestSpeakingSessionPerExam = (
     sessions: PracticeSessionListItemDto[]

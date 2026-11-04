@@ -110,7 +110,7 @@ public sealed partial class GemmaPdfExamGenerationService
             var answerZone = ExtractAnswerZone(normalizedEvidenceText);
             if (string.IsNullOrWhiteSpace(answerZone))
             {
-                // Một số PDF không có heading "Solution" rõ ràng; fallback sang review zone để tránh answer-zone = 0 chars.
+                // Some PDFs lack an explicit "Solution" heading; fallback to the review zone to avoid empty answer-zone.
                 answerZone = ExtractReviewAndExplanationsZone(normalizedEvidenceText);
             }
 

@@ -103,7 +103,7 @@ export interface AiEnrichWordResponse {
 }
 
 export interface SentenceExampleItem {
-    level: string; // 'Dễ' | 'Trung bình' | 'Khó'
+    level: string; // 'Easy' | 'Medium' | 'Hard'
     levelLabel: string;
     sentence: string;
     meaningVi: string;

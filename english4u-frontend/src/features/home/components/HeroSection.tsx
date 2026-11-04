@@ -145,7 +145,7 @@ function RocketButton() {
         setIsAnimating(true);
         setTimeout(() => {
             setIsAnimating(false);
-            // Nếu đã đăng nhập và token còn hạn → vào trang học luôn
+            // If already authenticated and token is valid -> navigate directly to study dashboard
             if (!isTokenExpired()) {
                 navigate('/app');
             } else {

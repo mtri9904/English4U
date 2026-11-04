@@ -12,9 +12,9 @@ public record UserOverviewDto(
     string? LastLoginAt,
     string? LastSeenAt,
     string RoleName,
-    string? SubscriptionName, // Gói: Premium, Pro, Free
-    string? CurrentLevel,     // Trình độ: B2, B1, A2...
-    double AverageScore       // Điểm TB
+    string? SubscriptionName, // Plan: Premium, Pro, Free
+    string? CurrentLevel,     // Level: B2, B1, A2...
+    double AverageScore       // Average Score
 );
 
 public record UserDetailDto(

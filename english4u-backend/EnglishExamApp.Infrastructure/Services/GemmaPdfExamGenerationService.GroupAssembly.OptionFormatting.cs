@@ -498,7 +498,7 @@ public sealed partial class GemmaPdfExamGenerationService
             }
         }
 
-        // TrÆ°á»ng há»£p OCR cho ra "A A ..." => bá» nhÃ£n trÃ¹ng láº§n 2.
+        // Handle OCR artifact "A A ..." => remove duplicated label.
         var duplicateLabelMatch = OptionStartsWithLetterSpaceRegex().Match(text);
         if (duplicateLabelMatch.Success &&
             string.Equals(duplicateLabelMatch.Groups["label"].Value, expectedLabel, StringComparison.OrdinalIgnoreCase))

@@ -274,24 +274,24 @@ public class FlashcardService(
         var item = await context.FlashcardItems.FirstOrDefaultAsync(i => i.Id == cardId && (i.UserId == userId || i.Deck.IsPublic), cancellationToken);
         if (item == null) return null;
 
-        // Rating: 1 = Khó (Hard/Again), 2 = Trung bình (Medium/Good), 3 = Dễ (Easy), 4 = Dễ (Legacy)
+        // Rating: 1 = Hard/Again, 2 = Medium/Good, 3 = Easy, 4 = Easy (Legacy)
         var reps = item.Repetitions;
         var ease = item.EaseFactor;
         var interval = item.IntervalDays;
 
-        if (rating == 1) // Khó: Cần ôn lại ngay, đặt lại chu kỳ 1 ngày
+        if (rating == 1) // Hard: Review immediately, reset interval to 1 day
         {
             reps = 0;
             interval = 1;
             ease = Math.Max(1.3, ease - 0.2);
         }
-        else if (rating == 2) // Trung bình: Vừa sức, tăng chu kỳ theo hệ số nhớ
+        else if (rating == 2) // Medium: Manageable, increase interval by retention factor
         {
             reps++;
             interval = reps == 1 ? 1 : reps == 2 ? 3 : Math.Max(1, (int)(interval * ease));
             ease = Math.Max(1.3, ease - 0.05);
         }
-        else // Dễ: Nhớ sâu, tăng chu kỳ nhanh và cộng thêm ease factor
+        else // Easy: Well remembered, increase interval rapidly and add ease factor bonus
         {
             reps++;
             interval = reps == 1 ? 3 : reps == 2 ? 7 : Math.Max(1, (int)(interval * ease * 1.3));

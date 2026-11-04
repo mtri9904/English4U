@@ -18,7 +18,7 @@ public class NewsController : ControllerBase
     }
 
     /// <summary>
-    /// Lấy danh sách tin tức theo chuyên mục (travel, culture, lifestyle, business, science, technology, all)
+    /// Fetch news list by category (travel, culture, lifestyle, business, science, technology, all)
     /// </summary>
     [HttpGet]
     public async Task<IActionResult> GetNews(
@@ -32,7 +32,7 @@ public class NewsController : ControllerBase
     }
 
     /// <summary>
-    /// Lấy chi tiết toàn bộ bài báo gồm Full HTML và toàn bộ hình ảnh minh họa
+    /// Fetch full article detail including full HTML content and all illustration images
     /// </summary>
     [HttpGet("article")]
     public async Task<IActionResult> GetArticleDetail([FromQuery] string id)
@@ -52,7 +52,7 @@ public class NewsController : ControllerBase
     }
 
     /// <summary>
-    /// Kiểm tra trạng thái hạn mức request The Guardian trong ngày
+    /// Check daily request quota status for The Guardian API
     /// </summary>
     [HttpGet("quota")]
     public IActionResult GetQuota()
@@ -62,7 +62,7 @@ public class NewsController : ControllerBase
     }
 
     /// <summary>
-    /// Dịch đoạn văn song ngữ (Gemma 4 AI + Cache 7 ngày + Fallback)
+    /// Translate news paragraph into natural Vietnamese (Gemma 4 AI + 7-day Cache)
     /// </summary>
     [HttpPost("translate")]
     public async Task<IActionResult> TranslateParagraph(
@@ -79,7 +79,7 @@ public class NewsController : ControllerBase
     }
 
     /// <summary>
-    /// Tra cứu từ điển học thuật và nghĩa tiếng Việt (Phonetic, Audio, Definition)
+    /// Lookup academic dictionary and Vietnamese definition (Phonetic, Audio, Definition)
     /// </summary>
     [HttpGet("dictionary")]
     public async Task<IActionResult> LookupWord(

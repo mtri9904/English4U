@@ -1,5 +1,5 @@
 /**
- * Lấy màu trạng thái tiến độ học
+ * Get progress status color
  */
 export const getSkillProgressColor = (progress: number): string => {
     if (progress >= 80) return '#10b981';
@@ -8,7 +8,7 @@ export const getSkillProgressColor = (progress: number): string => {
 };
 
 /**
- * Tính phần trăm tiết kiệm khi thanh toán theo năm
+ * Calculate annual billing savings percentage
  */
 export const calculateAnnualSavings = (monthlyPrice: number, yearlyMonthlyPrice: number): number => {
     if (monthlyPrice <= 0) return 0;
@@ -17,7 +17,7 @@ export const calculateAnnualSavings = (monthlyPrice: number, yearlyMonthlyPrice:
 };
 
 /**
- * Đếm số từ trong văn bản
+ * Count words in text
  */
 export const countWords = (text: string): number => {
     if (!text) return 0;

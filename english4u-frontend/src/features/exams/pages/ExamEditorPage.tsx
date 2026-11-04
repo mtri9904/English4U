@@ -4,6 +4,7 @@ import { ArrowLeftOutlined, SaveOutlined, VerticalAlignTopOutlined } from '@ant-
 import { motion } from 'framer-motion';
 import { useNavigate, useParams } from 'react-router-dom';
 import { PageLoadingState, PageErrorState } from '@/components';
+import { useUnsavedChangesWarning } from '@/shared/hooks';
 import {
     useCreateExamMutation,
     useExamDetailQuery,
@@ -91,12 +92,26 @@ export const ExamEditorPage = () => {
         sections: [emptySection('Reading')],
     });
 
+    // Unsaved changes dirty tracking & blocker
+    const [isDirty, setIsDirty] = useState(false);
+    const initialFormSnapshotRef = useRef<string>('');
+    const isSavedRef = useRef<boolean>(false);
+
+    const { ConfirmationModal, confirmNavigation } = useUnsavedChangesWarning({
+        isDirty,
+        enabled: !isSavedRef.current,
+        title: isEdit ? 'Hủy chỉnh sửa đề thi?' : 'Hủy tạo đề thi mới?',
+        message: 'Bạn có các thay đổi chưa được lưu trong đề thi. Nếu rời khỏi trang lúc này, tất cả dữ liệu câu hỏi và nội dung vừa nhập sẽ bị mất hoàn toàn. Bạn có chắc chắn muốn rời đi?',
+        confirmText: 'Rời khỏi trang',
+        cancelText: 'Tiếp tục chỉnh sửa',
+    });
+
     useEffect(() => {
         if (isEdit && initialData) {
             const rawFirstSection = (initialData.sections?.[0] as CreateSectionDto | undefined) ?? emptySection('Reading');
             const firstSectionSkill = (normalizeSkillType(rawFirstSection.skillType) || 'Reading') as SkillType;
             const firstSection = normalizeSectionQuestionTypes({ ...rawFirstSection, skillType: firstSectionSkill });
-            setForm({
+            const loadedForm: CreateExamDto = {
                 title: initialData.title,
                 description: initialData.description || '',
                 durationMinutes: initialData.durationMinutes || 60,
@@ -104,13 +119,36 @@ export const ExamEditorPage = () => {
                 examType: initialData.examType || 'IELTS',
                 isPublished: initialData.isPublished,
                 sections: [{ ...firstSection, orderIndex: 0 }],
-            });
+            };
+            setForm(loadedForm);
+            initialFormSnapshotRef.current = JSON.stringify(loadedForm);
+            setIsDirty(false);
 
             const allAudios = (firstSection.listeningParts || [])
                 .map((part: any) => part.audioUrl);
             setGlobalAudioUrl(allAudios.find((audio: string) => !!audio)?.trim() || null);
+        } else if (!isEdit) {
+            const defaultEmptyForm: CreateExamDto = {
+                title: '',
+                description: '',
+                durationMinutes: 60,
+                totalPoints: 0,
+                examType: 'IELTS',
+                isPublished: false,
+                sections: [emptySection('Reading')],
+            };
+            initialFormSnapshotRef.current = JSON.stringify(defaultEmptyForm);
+            setIsDirty(false);
         }
     }, [isEdit, initialData]);
+
+    // Check dirty state when form values change
+    useEffect(() => {
+        if (initialFormSnapshotRef.current && !isSavedRef.current) {
+            const currentSnapshot = JSON.stringify(form);
+            setIsDirty(currentSnapshot !== initialFormSnapshotRef.current);
+        }
+    }, [form]);
 
     const updateForm = (partial: Partial<CreateExamDto>) => setForm((prev) => ({ ...prev, ...partial }));
 
@@ -256,6 +294,8 @@ export const ExamEditorPage = () => {
                 await createMutation.mutateAsync(submitData);
                 message.success('Tạo đề thi thành công!');
             }
+            isSavedRef.current = true;
+            setIsDirty(false);
             navigate('/admin/exams');
         } catch (error: any) {
             const apiMessage = error?.response?.data?.message;
@@ -378,7 +418,10 @@ export const ExamEditorPage = () => {
             )}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                    <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/admin/exams')} />
+                    <Button
+                        icon={<ArrowLeftOutlined />}
+                        onClick={() => confirmNavigation(() => navigate('/admin/exams'))}
+                    />
                     <div>
                         <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
                             {isEdit ? 'Chỉnh sửa bài thi' : 'Tạo đề thi mới'}
@@ -391,7 +434,7 @@ export const ExamEditorPage = () => {
                 <div style={{ display: 'flex', gap: '12px' }}>
                     <Button
                         disabled={isGeneratingTranscript || createMutation.isPending || updateMutation.isPending}
-                        onClick={() => navigate('/admin/exams')}
+                        onClick={() => confirmNavigation(() => navigate('/admin/exams'))}
                         style={{ height: '40px', fontWeight: 600, padding: '0 24px' }}
                     >
                         Hủy
@@ -495,18 +538,13 @@ export const ExamEditorPage = () => {
                     </div>
 
                     {hasLegacyMultiSection && (
-                        <div
-                            style={{
-                                padding: '12px 14px',
-                                borderRadius: 12,
-                                background: '#fff7ed',
-                                border: '1px solid #fdba74',
-                                color: '#9a3412',
-                                fontSize: '0.875rem',
-                            }}
-                        >
-                            Đề này đang có dữ liệu nhiều section từ cấu trúc cũ. CMS hiện chỉ chỉnh sửa section đầu tiên để đồng bộ với mô hình một đề một kỹ năng.
-                        </div>
+                        <Alert
+                            type="info"
+                            showIcon
+                            style={{ borderRadius: 12 }}
+                            message="Đề thi tích hợp nhiều kỹ năng"
+                            description={`Hệ thống quản lý đề thi theo chuẩn từng kỹ năng riêng biệt. Bạn đang chỉnh sửa phần thi chính (${activeSkill}).`}
+                        />
                     )}
 
                     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
@@ -514,6 +552,9 @@ export const ExamEditorPage = () => {
                     </motion.div>
                 </div>
             </Card>
+
+            {/* Unsaved Changes Confirmation Modal */}
+            <ConfirmationModal />
 
             <FloatButton.BackTop
                 type="primary"

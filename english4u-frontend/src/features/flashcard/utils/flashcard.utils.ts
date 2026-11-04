@@ -1,5 +1,5 @@
 /**
- * Phát âm thanh bằng Web Speech API
+ * Play audio pronunciation using Web Speech API
  */
 export const playSpeechSynthesis = (text: string, lang = 'en-US', rate = 0.9): void => {
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
@@ -12,7 +12,7 @@ export const playSpeechSynthesis = (text: string, lang = 'en-US', rate = 0.9): v
 };
 
 /**
- * Phát âm thanh flashcard: ưu tiên audio URL của Pixabay/Cambridge, fallback sang Web Speech API
+ * Play flashcard audio: prioritize audio URL from dictionary/cloud, fallback to Web Speech API
  */
 export const playFlashcardAudio = (text: string, audioUrl?: string): void => {
     if (audioUrl) {

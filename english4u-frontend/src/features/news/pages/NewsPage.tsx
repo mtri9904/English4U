@@ -26,7 +26,7 @@ export const NewsPage: React.FC = () => {
     const [selectedArticle, setSelectedArticle] = useState<NewsItem | null>(null);
     const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
 
-    // Debounce search input để tránh gọi API liên tục khi gõ
+    // Debounce search input to avoid redundant API queries while typing
     useEffect(() => {
         const timer = setTimeout(() => {
             setDebouncedKeyword(searchKeyword);
@@ -40,7 +40,7 @@ export const NewsPage: React.FC = () => {
         setIsLoading(true);
         setCurrentPage(1);
         try {
-            // Trang đầu tiên: 10 bài viết (1 bài tiêu điểm Hero + 9 bài lưới 3x3)
+            // First page: 10 articles (1 Hero featured article + 9 grid articles)
             const newsData = await fetchNewsFromBackend(category, 1, PAGE_SIZE, search);
             const items = newsData.items || [];
             setArticles(items);
@@ -63,7 +63,7 @@ export const NewsPage: React.FC = () => {
         const nextPage = currentPage + 1;
 
         try {
-            // Tải tiếp trang tiếp theo từ backend API
+            // Fetch next page from backend API
             const newsData = await fetchNewsFromBackend(selectedCategory, nextPage, PAGE_SIZE, debouncedKeyword);
             const newItems = newsData.items || [];
 

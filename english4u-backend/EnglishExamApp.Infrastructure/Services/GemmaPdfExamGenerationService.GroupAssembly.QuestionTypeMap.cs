@@ -128,7 +128,7 @@ public sealed partial class GemmaPdfExamGenerationService
             TryReadOptionProperty(optionObject, "value");
         var optionText = TryReadOptionProperty(optionObject, "optionText");
 
-        // Æ¯u tiÃªn text Ä‘áº§y Ä‘á»§, trÃ¡nh trÆ°á»ng há»£p optionText chá»‰ lÃ  "A/B/C".
+        // Prefer complete text, avoiding cases where optionText is merely "A/B/C".
         if (!string.IsNullOrWhiteSpace(text) && !IsSingleLetterOptionLabel(text))
         {
             return text;

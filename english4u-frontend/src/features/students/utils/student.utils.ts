@@ -1,7 +1,7 @@
 import { STUDENT_ROLE_VISUAL_MAP } from '../constants/student.constants';
 
 /**
- * Trả về mã màu tương ứng với thang điểm IELTS của học viên
+ * Return color code for student IELTS score tier
  */
 export const getScoreColor = (score: number): string => {
     if (score >= 8.0) return '#16a34a';
@@ -10,7 +10,7 @@ export const getScoreColor = (score: number): string => {
 };
 
 /**
- * Lấy cấu hình visual hiển thị vai trò người dùng (label, màu nền, viền)
+ * Get visual badge configuration for user role (label, background, border)
  */
 export const getRoleVisual = (role: string) =>
     STUDENT_ROLE_VISUAL_MAP[role] || {
@@ -30,7 +30,7 @@ export const fadeUp = (delay = 0) => ({
 });
 
 /**
- * Tổng hợp thông điệp khích lệ theo chuỗi ngày học (streak)
+ * Generate motivational message based on learning streak
  */
 export const getStreakSummary = (streak: number) => {
     if (streak >= 14) {

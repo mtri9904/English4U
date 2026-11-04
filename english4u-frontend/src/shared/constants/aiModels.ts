@@ -10,9 +10,9 @@ export interface AiModelConfig {
 }
 
 /**
- * CẤU HÌNH DANH SÁCH AI MODEL TOÀN HỆ THỐNG (SINGLE SOURCE OF TRUTH)
- * Toàn bộ các trang/modal/tính năng AI trong dự án đều dùng chung danh sách này.
- * Khi cần thêm/bớt/đổi model, chỉ cần chỉnh sửa mảng AI_MODELS duy nhất tại file này.
+ * SYSTEM-WIDE AI MODEL CONFIGURATION (SINGLE SOURCE OF TRUTH)
+ * Shared across all pages, modals, and AI services.
+ * To add/remove/reorder models, modify the AI_MODELS array here.
  */
 export const AI_MODELS: AiModelConfig[] = [
     {

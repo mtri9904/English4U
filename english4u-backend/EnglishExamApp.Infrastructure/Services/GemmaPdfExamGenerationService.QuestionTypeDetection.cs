@@ -297,22 +297,22 @@ public sealed partial class GemmaPdfExamGenerationService
             return "MatchingHeadings";
         }
 
-        // Dáº¡ng Matching Headings thÆ°á»ng cÃ³ instruction kiá»ƒu:
-        // "The text has 7 paragraphs (A-G)" hoáº·c cÃ¢u há»i "Paragraph A/B/C..."
+        // Matching Headings questions typically have instructions like:
+        // "The text has 7 paragraphs (A-G)" or questions like "Paragraph A/B/C..."
         if (MatchingHeadingsInstructionRegex().IsMatch(questionText))
         {
             return "MatchingHeadings";
         }
 
-        // Dáº¡ng choose N statements:
+        // Choose N statements question type:
         // "FIVE of the following statements are true ... in any order"
         if (ChooseNStatementsInstructionRegex().IsMatch(questionText))
         {
             return "McqChooseN";
         }
 
-        // TrÆ°á»ng há»£p model bÃ³p mÃ©o choose-N thÃ nh tá»«ng question statement:
-        // náº¿u question text trÃ¹ng vá»›i má»™t option vÃ  Ä‘Ã¡p Ã¡n lÃ  1 letter A-H.
+        // Handle cases where model decomposes choose-N into individual question statements:
+        // when question text matches an option and the answer is a single letter A-H.
         if (IsLikelyChooseNStatementRow(questionText, options, answerText))
         {
             return "McqChooseN";
