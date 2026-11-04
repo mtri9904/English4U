@@ -6,30 +6,55 @@ interface NewsParagraphItemProps {
     blockId: number;
     text: string;
     html: string;
+    isBlockquote?: boolean;
     isOpen: boolean;
     isTranslating: boolean;
     translatedText?: string;
     onToggleTranslate: (blockId: number, text: string) => void;
-    onParagraphClick: (e: React.MouseEvent<HTMLParagraphElement>, text: string) => void;
+    onParagraphClick: (e: React.MouseEvent<HTMLElement>, text: string) => void;
 }
 
 export const NewsParagraphItem: React.FC<NewsParagraphItemProps> = ({
     blockId,
     text,
     html,
+    isBlockquote,
     isOpen,
     isTranslating,
     translatedText,
     onToggleTranslate,
     onParagraphClick,
 }) => {
+    const handleParagraphClickInternal = (e: React.MouseEvent<HTMLElement>) => {
+        const anchor = (e.target as HTMLElement).closest('a');
+        if (anchor && anchor.getAttribute('href')) {
+            e.preventDefault();
+            e.stopPropagation();
+            window.open(anchor.href, '_blank', 'noopener,noreferrer');
+            return;
+        }
+        onParagraphClick(e, text);
+    };
+
     return (
         <div className="guardian-paragraph-wrapper" style={{ marginBottom: '20px' }}>
-            <p
-                className="guardian-interactive-p"
-                onClick={(e) => onParagraphClick(e, text)}
+            <div
+                className={`guardian-interactive-p ${isBlockquote ? 'guardian-interactive-blockquote' : ''}`}
+                onClick={handleParagraphClickInternal}
                 dangerouslySetInnerHTML={{ __html: html }}
-                style={{ margin: 0 }}
+                style={{
+                    margin: 0,
+                    ...(isBlockquote
+                        ? {
+                              borderLeft: '4px solid #2563eb',
+                              background: '#f8fbff',
+                              padding: '12px 18px',
+                              borderRadius: '0 10px 10px 0',
+                              color: '#1e3a8a',
+                              fontStyle: 'italic',
+                          }
+                        : {}),
+                }}
                 title="Click vào bất kỳ từ nào để tra từ điển & lưu Flashcard"
             />
 

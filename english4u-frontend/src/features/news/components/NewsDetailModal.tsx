@@ -112,42 +112,160 @@ export const NewsDetailModal: React.FC<NewsDetailModalProps> = ({ item, open, on
         if (!displayItem) return [];
         const raw = displayItem.bodyHtml || `<p>${displayItem.description}</p>`;
         const doc = new DOMParser().parseFromString(raw, 'text/html');
-        const nodes = Array.from(doc.body.childNodes);
+
+        // Ensure all hyperlinks inside the article open safely in a new tab
+        doc.querySelectorAll('a').forEach((anchor) => {
+            anchor.setAttribute('target', '_blank');
+            anchor.setAttribute('rel', 'noopener noreferrer');
+        });
+
         const parsed: Array<{
             id: number;
             tagName: string;
             isParagraph: boolean;
+            isBlockquote?: boolean;
+            isTimestamp?: boolean;
             html: string;
             text: string;
         }> = [];
 
         let pIndex = 0;
-        nodes.forEach((node, idx) => {
-            if (node.nodeType === Node.ELEMENT_NODE) {
-                const el = node as HTMLElement;
-                const isP = el.tagName.toUpperCase() === 'P';
-                const text = el.textContent?.trim() || '';
+        let blockIndex = 1000;
 
-                if (isP && text) {
+        const isTimestampText = (text: string) => {
+            const cleaned = text.trim();
+            if (!cleaned || cleaned.length > 50) return false;
+            return (
+                /^(?:(?:updated|published|posted)\s+at\s+)?\d{1,2}[:.]\d{2}\s*(?:am|pm)?(?:\s+[a-z]{2,5})?$/i.test(cleaned) ||
+                /^(?:(?:updated|published|posted)\s+at\s+)?\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{4}/i.test(cleaned)
+            );
+        };
+
+        const processNode = (node: Node) => {
+            if (node.nodeType !== Node.ELEMENT_NODE) return;
+            const el = node as HTMLElement;
+            const tag = el.tagName.toUpperCase();
+            const text = el.textContent?.trim() || '';
+
+            // 1. Headings (H1 - H6)
+            if (/^H[1-6]$/.test(tag)) {
+                if (text) {
+                    blockIndex++;
+                    parsed.push({
+                        id: blockIndex,
+                        tagName: tag,
+                        isParagraph: false,
+                        html: el.outerHTML,
+                        text,
+                    });
+                }
+                return;
+            }
+
+            // 2. Media Figures
+            if (tag === 'FIGURE') {
+                if (el.querySelector('img, picture, svg, video, iframe')) {
+                    blockIndex++;
+                    parsed.push({
+                        id: blockIndex,
+                        tagName: 'FIGURE',
+                        isParagraph: false,
+                        html: el.outerHTML,
+                        text,
+                    });
+                    return;
+                }
+            }
+
+            // 3. Blockquotes
+            if (tag === 'BLOCKQUOTE') {
+                if (text) {
+                    pIndex++;
+                    parsed.push({
+                        id: pIndex,
+                        tagName: 'BLOCKQUOTE',
+                        isParagraph: true,
+                        isBlockquote: true,
+                        html: el.innerHTML,
+                        text,
+                    });
+                }
+                return;
+            }
+
+            // 4. Paragraphs
+            if (tag === 'P') {
+                if (!text) return;
+
+                if (isTimestampText(text) || el.classList.contains('block-time') || el.querySelector('time')) {
+                    blockIndex++;
+                    parsed.push({
+                        id: blockIndex,
+                        tagName: 'TIME',
+                        isParagraph: false,
+                        isTimestamp: true,
+                        html: el.innerHTML,
+                        text,
+                    });
+                    return;
+                }
+
+                pIndex++;
+                parsed.push({
+                    id: pIndex,
+                    tagName: 'P',
+                    isParagraph: true,
+                    html: el.innerHTML,
+                    text,
+                });
+                return;
+            }
+
+            // 5. Container elements (DIV, SECTION, ARTICLE, ASIDE, MAIN, UL, OL, LI, etc.)
+            const hasBlockChildren = Array.from(el.children).some((child) =>
+                /^(P|H[1-6]|FIGURE|BLOCKQUOTE|DIV|SECTION|ARTICLE|ASIDE|UL|OL|LI)$/i.test(child.tagName)
+            );
+
+            if (hasBlockChildren) {
+                Array.from(el.childNodes).forEach(processNode);
+                return;
+            }
+
+            // Standalone element without block children
+            if (text) {
+                if (isTimestampText(text) || tag === 'TIME' || el.classList.contains('block-time')) {
+                    blockIndex++;
+                    parsed.push({
+                        id: blockIndex,
+                        tagName: 'TIME',
+                        isParagraph: false,
+                        isTimestamp: true,
+                        html: el.innerHTML,
+                        text,
+                    });
+                } else if (text.length > 20) {
                     pIndex++;
                     parsed.push({
                         id: pIndex,
                         tagName: 'P',
                         isParagraph: true,
                         html: el.innerHTML,
-                        text: text,
+                        text,
                     });
-                } else if (el.innerHTML.trim() || el.tagName.toUpperCase() === 'FIGURE') {
+                } else if (el.innerHTML.trim()) {
+                    blockIndex++;
                     parsed.push({
-                        id: idx + 1000,
-                        tagName: el.tagName.toUpperCase(),
+                        id: blockIndex,
+                        tagName: tag,
                         isParagraph: false,
                         html: el.outerHTML,
-                        text: text,
+                        text,
                     });
                 }
             }
-        });
+        };
+
+        Array.from(doc.body.childNodes).forEach(processNode);
 
         if (parsed.length === 0 && displayItem.description) {
             parsed.push({
@@ -207,6 +325,16 @@ export const NewsDetailModal: React.FC<NewsDetailModalProps> = ({ item, open, on
         },
         [closeWordLookup, handleOpenFlashcardModal]
     );
+
+    // Intercept clicks on links inside the article to always open in a new tab
+    const handleArticleContentClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+        const anchor = (e.target as HTMLElement).closest('a');
+        if (anchor && anchor.getAttribute('href')) {
+            e.preventDefault();
+            e.stopPropagation();
+            window.open(anchor.href, '_blank', 'noopener,noreferrer');
+        }
+    }, []);
 
     if (!item) return null;
 
@@ -311,6 +439,7 @@ export const NewsDetailModal: React.FC<NewsDetailModalProps> = ({ item, open, on
                 ) : (
                     <div
                         className="guardian-full-article"
+                        onClick={handleArticleContentClick}
                         style={{
                             ...fontSizeStyles,
                             color: '#334155',
@@ -324,6 +453,7 @@ export const NewsDetailModal: React.FC<NewsDetailModalProps> = ({ item, open, on
                                         blockId={block.id}
                                         text={block.text}
                                         html={block.html}
+                                        isBlockquote={block.isBlockquote}
                                         isOpen={Boolean(openedParagraphs[block.id])}
                                         isTranslating={Boolean(translatingParagraphs[block.id])}
                                         translatedText={translatedParagraphs[block.id]}
@@ -333,7 +463,33 @@ export const NewsDetailModal: React.FC<NewsDetailModalProps> = ({ item, open, on
                                 );
                             }
 
-                            // Render non-paragraph block (figure, heading, blockquote)
+                            if (block.isTimestamp) {
+                                return (
+                                    <div
+                                        key={block.id}
+                                        style={{
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '6px',
+                                            fontSize: '11px',
+                                            fontWeight: 700,
+                                            color: '#64748b',
+                                            background: '#f1f5f9',
+                                            border: '1px solid #e2e8f0',
+                                            padding: '3px 10px',
+                                            borderRadius: '12px',
+                                            marginTop: '6px',
+                                            marginBottom: '14px',
+                                            letterSpacing: '0.02em',
+                                        }}
+                                    >
+                                        <span>🕒</span>
+                                        <span>{block.text}</span>
+                                    </div>
+                                );
+                            }
+
+                            // Render non-paragraph block (figure, heading)
                             return (
                                 <div
                                     key={block.id}

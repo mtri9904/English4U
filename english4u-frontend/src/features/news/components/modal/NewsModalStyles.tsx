@@ -54,6 +54,12 @@ export const NewsModalStyles: React.FC = () => {
             .guardian-full-article a {
                 color: #2563eb;
                 text-decoration: underline;
+                text-underline-offset: 3px;
+                transition: color 0.15s ease;
+                cursor: pointer;
+            }
+            .guardian-full-article a:hover {
+                color: #1d4ed8;
             }
         `}</style>
     );

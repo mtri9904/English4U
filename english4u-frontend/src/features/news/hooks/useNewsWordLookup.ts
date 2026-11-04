@@ -46,7 +46,7 @@ export function useNewsWordLookup(open: boolean) {
     }, [activeWordLookup]);
 
     const handleParagraphClick = useCallback(
-        (e: React.MouseEvent<HTMLParagraphElement>, paragraphText: string) => {
+        (e: React.MouseEvent<HTMLElement>, paragraphText: string) => {
             const target = e.target as HTMLElement;
             if (target.tagName.toUpperCase() === 'A') {
                 return;

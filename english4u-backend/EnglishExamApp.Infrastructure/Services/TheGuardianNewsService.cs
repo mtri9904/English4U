@@ -437,6 +437,9 @@ public class TheGuardianNewsService : INewsService
         var cleaned = Regex.Replace(html, "<script\\b[^<]*(?:(?!</script>)<[^<]*)*</script>", "", RegexOptions.IgnoreCase);
         cleaned = Regex.Replace(cleaned, "<style\\b[^<]*(?:(?!</style>)<[^<]*)*</style>", "", RegexOptions.IgnoreCase);
 
+        // Ensure all hyperlinks open in new tab with secure rel
+        cleaned = Regex.Replace(cleaned, @"<a\b(?![^>]*\btarget=)([^>]*)>", @"<a target=""_blank"" rel=""noopener noreferrer""$1>", RegexOptions.IgnoreCase);
+
         return cleaned;
     }
 
@@ -550,7 +553,7 @@ public class TheGuardianNewsService : INewsService
                     Id = id,
                     Title = title,
                     Description = cleanDesc,
-                    BodyHtml = rawDesc,
+                    BodyHtml = SanitizeArticleBodyHtml(rawDesc),
                     Link = link,
                     Author = creator,
                     PublishDate = pubDate,
