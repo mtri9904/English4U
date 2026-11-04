@@ -26,6 +26,7 @@ import {
     useClientNotificationsQuery,
     useMarkAllClientNotificationsReadMutation,
     useUpdateClientNotificationReadMutation,
+    useBrowserNotification,
 } from '@/features/notifications';
 import { getStreakDisplayMeta } from '@/features/gamification';
 import { useRealtimeSync } from '@/features/realtime/hooks/useRealtimeSync';
@@ -71,6 +72,24 @@ export const ClientLayout: React.FC = () => {
     const notificationItems = clientNotificationsPaged?.items ?? [];
     const streakCount = profile?.gamification.dailyStreakCount ?? 0;
     const streakMeta = getStreakDisplayMeta(streakCount);
+
+    const {
+        permission: browserPermission,
+        isRinging: isBellRinging,
+        requestPermission: handleRequestBrowserPermission,
+        showNotification: sendBrowserNotification,
+        stopRinging,
+    } = useBrowserNotification({
+        unreadCount: clientNotificationStats?.unread,
+        latestNotification: notificationItems[0] ?? null,
+        onNotificationClick: () => setIsNotificationOpen(true),
+    });
+
+    useEffect(() => {
+        if (isNotificationOpen) {
+            stopRinging();
+        }
+    }, [isNotificationOpen, stopRinging]);
 
     useEffect(() => {
         const checkMobile = () => setIsMobile(window.innerWidth < 768);
@@ -140,6 +159,91 @@ export const ClientLayout: React.FC = () => {
                     </Button>
                 </div>
             </div>
+
+            {browserPermission === 'default' && (
+                <div
+                    style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 8,
+                        padding: '8px 10px',
+                        background: 'linear-gradient(135deg, #eff6ff 0%, #f0fdf4 100%)',
+                        borderRadius: 8,
+                        border: '1px solid #bfdbfe',
+                        marginTop: 8,
+                        marginBottom: 4,
+                    }}
+                >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', color: '#1e40af' }}>
+                        <span>🔔</span>
+                        <span style={{ fontWeight: 600 }}>Bật thông báo trên máy tính</span>
+                    </div>
+                    <Button
+                        type="primary"
+                        size="small"
+                        onClick={handleRequestBrowserPermission}
+                        style={{ fontSize: '0.75rem', height: 26, borderRadius: 6, background: '#2563eb' }}
+                    >
+                        Bật ngay
+                    </Button>
+                </div>
+            )}
+
+            {browserPermission === 'granted' && (
+                <div
+                    style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '4px 6px',
+                        fontSize: '0.72rem',
+                        color: '#059669',
+                        marginTop: 4,
+                        marginBottom: 2,
+                    }}
+                >
+                    <span>✅ Đã bật thông báo trên trình duyệt</span>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            sendBrowserNotification('English4U - Thông báo thử nghiệm 🔔', {
+                                body: 'Thông báo trên trình duyệt đang hoạt động rất tốt!',
+                            });
+                        }}
+                        style={{
+                            background: 'none',
+                            border: 'none',
+                            color: '#2563eb',
+                            cursor: 'pointer',
+                            fontSize: '0.72rem',
+                            textDecoration: 'underline',
+                            padding: 0,
+                        }}
+                    >
+                        Thử chuông
+                    </button>
+                </div>
+            )}
+
+            {browserPermission === 'denied' && (
+                <div
+                    style={{
+                        padding: '6px 10px',
+                        fontSize: '0.72rem',
+                        color: '#b45309',
+                        background: '#fffbeb',
+                        borderRadius: 6,
+                        border: '1px solid #fef3c7',
+                        marginTop: 4,
+                        marginBottom: 4,
+                        lineHeight: 1.35,
+                    }}
+                >
+                    ⚠️ Thông báo trên trình duyệt đang bị chặn. Bấm vào icon ổ khóa 🔒 trên thanh địa chỉ để cho phép lại.
+                </div>
+            )}
+
             <Divider style={{ margin: '10px 0' }} />
 
             {isNotificationsLoading || isNotificationStatsLoading ? (
@@ -486,8 +590,16 @@ export const ClientLayout: React.FC = () => {
                             onOpenChange={setIsNotificationOpen}
                             content={notificationPopoverContent}
                         >
-                            <Badge count={clientNotificationStats?.unread ?? 0} size="small">
-                                <Button type="text" icon={<BellOutlined />} style={{ fontSize: 16 }} />
+                            <Badge
+                                count={clientNotificationStats?.unread ?? 0}
+                                size="small"
+                                className={isBellRinging ? 'bell-badge-pulse' : ''}
+                            >
+                                <Button
+                                    type="text"
+                                    icon={<BellOutlined className={isBellRinging ? 'bell-ringing-active' : ''} />}
+                                    style={{ fontSize: 16 }}
+                                />
                             </Badge>
                         </Popover>
 

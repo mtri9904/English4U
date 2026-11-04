@@ -12,6 +12,7 @@ export * from './services/notification.service';
 
 // Hooks
 export * from './hooks/useNotificationQueries';
+export * from './hooks/useBrowserNotification';
 
 // Pages
 export { NotificationManagementPage } from './pages/NotificationManagementPage';
