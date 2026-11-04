@@ -11,6 +11,7 @@ export interface ActiveWordLookup {
     meaningVi?: string;
     definitionEn?: string;
     audioUrl?: string;
+    example?: string;
     isLoading?: boolean;
 }
 
@@ -108,6 +109,7 @@ export function useNewsWordLookup(open: boolean) {
                                           meaningVi: dictData.meaningVi,
                                           definitionEn: dictData.definitionEn,
                                           audioUrl: dictData.audioUrl,
+                                          example: dictData.example,
                                           isLoading: false,
                                       }
                                     : prev

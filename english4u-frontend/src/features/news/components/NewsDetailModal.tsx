@@ -362,7 +362,13 @@ export const NewsDetailModal: React.FC<NewsDetailModalProps> = ({ item, open, on
                     lookup={activeWordLookup}
                     popoverRef={lookupPopoverRef}
                     onClose={closeWordLookup}
-                    onPlayAudio={playSpeech}
+                    onPlayAudio={(word, audioUrl) => {
+                        if (audioUrl) {
+                            new Audio(audioUrl).play().catch(() => playSpeech(word));
+                        } else {
+                            playSpeech(word);
+                        }
+                    }}
                     onOpenFlashcard={handleOpenFlashcardFromLookup}
                 />
             )}

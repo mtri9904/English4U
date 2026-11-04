@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -686,7 +687,11 @@ public class TheGuardianNewsService : INewsService
     public async Task<NewsDictionaryDto?> LookupWordAsync(string word, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(word)) return null;
-        var cleanWord = word.Trim().ToLowerInvariant();
+
+        // Clean punctuation, quotes and whitespace surrounding the word
+        var cleanWord = Regex.Replace(word.Trim(), @"^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$", string.Empty).ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(cleanWord)) return null;
+
         var cacheKey = $"dict_{cleanWord}";
 
         // 1. Check RAM Cache (30-day retention)
@@ -704,7 +709,10 @@ public class TheGuardianNewsService : INewsService
         try
         {
             var dictUrl = $"https://api.dictionaryapi.dev/api/v2/entries/en/{Uri.EscapeDataString(cleanWord)}";
-            var response = await _httpClient.GetAsync(dictUrl, cancellationToken);
+            using var dictCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            dictCts.CancelAfter(TimeSpan.FromSeconds(3));
+
+            var response = await _httpClient.GetAsync(dictUrl, dictCts.Token);
             if (response.IsSuccessStatusCode)
             {
                 var json = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -712,7 +720,7 @@ public class TheGuardianNewsService : INewsService
                 if (doc.RootElement.ValueKind == JsonValueKind.Array && doc.RootElement.GetArrayLength() > 0)
                 {
                     var firstEntry = doc.RootElement[0];
-                    if (firstEntry.TryGetProperty("phonetic", out var phEl))
+                    if (firstEntry.TryGetProperty("phonetic", out var phEl) && !string.IsNullOrWhiteSpace(phEl.GetString()))
                     {
                         result.Phonetic = phEl.GetString();
                     }
@@ -721,35 +729,48 @@ public class TheGuardianNewsService : INewsService
                     {
                         foreach (var p in phoneticsEl.EnumerateArray())
                         {
-                            if (string.IsNullOrWhiteSpace(result.Phonetic) && p.TryGetProperty("text", out var tEl))
+                            if (string.IsNullOrWhiteSpace(result.Phonetic) && p.TryGetProperty("text", out var tEl) && !string.IsNullOrWhiteSpace(tEl.GetString()))
                             {
                                 result.Phonetic = tEl.GetString();
                             }
-                            if (p.TryGetProperty("audio", out var aEl) && !string.IsNullOrWhiteSpace(aEl.GetString()))
+                            if (string.IsNullOrWhiteSpace(result.AudioUrl) && p.TryGetProperty("audio", out var aEl) && !string.IsNullOrWhiteSpace(aEl.GetString()))
                             {
-                                result.AudioUrl = aEl.GetString();
-                                break;
+                                var audio = aEl.GetString()!;
+                                if (audio.StartsWith("//"))
+                                {
+                                    audio = "https:" + audio;
+                                }
+                                result.AudioUrl = audio;
                             }
                         }
                     }
 
                     if (firstEntry.TryGetProperty("meanings", out var meaningsEl) && meaningsEl.ValueKind == JsonValueKind.Array && meaningsEl.GetArrayLength() > 0)
                     {
-                        var firstMeaning = meaningsEl[0];
-                        if (firstMeaning.TryGetProperty("partOfSpeech", out var posEl))
+                        foreach (var meaning in meaningsEl.EnumerateArray())
                         {
-                            result.PartOfSpeech = posEl.GetString();
-                        }
-                        if (firstMeaning.TryGetProperty("definitions", out var defsEl) && defsEl.ValueKind == JsonValueKind.Array && defsEl.GetArrayLength() > 0)
-                        {
-                            var firstDef = defsEl[0];
-                            if (firstDef.TryGetProperty("definition", out var dEl))
+                            if (string.IsNullOrWhiteSpace(result.PartOfSpeech) && meaning.TryGetProperty("partOfSpeech", out var posEl) && !string.IsNullOrWhiteSpace(posEl.GetString()))
                             {
-                                result.DefinitionEn = dEl.GetString();
+                                result.PartOfSpeech = posEl.GetString();
                             }
-                            if (firstDef.TryGetProperty("example", out var exEl))
+
+                            if (meaning.TryGetProperty("definitions", out var defsEl) && defsEl.ValueKind == JsonValueKind.Array)
                             {
-                                result.Example = exEl.GetString();
+                                foreach (var def in defsEl.EnumerateArray())
+                                {
+                                    if (string.IsNullOrWhiteSpace(result.DefinitionEn) && def.TryGetProperty("definition", out var dEl) && !string.IsNullOrWhiteSpace(dEl.GetString()))
+                                    {
+                                        result.DefinitionEn = dEl.GetString();
+                                    }
+                                    if (string.IsNullOrWhiteSpace(result.Example) && def.TryGetProperty("example", out var exEl) && !string.IsNullOrWhiteSpace(exEl.GetString()))
+                                    {
+                                        result.Example = exEl.GetString();
+                                    }
+                                    if (!string.IsNullOrWhiteSpace(result.DefinitionEn) && !string.IsNullOrWhiteSpace(result.Example))
+                                    {
+                                        break;
+                                    }
+                                }
                             }
                         }
                     }
@@ -761,42 +782,249 @@ public class TheGuardianNewsService : INewsService
             _logger.LogWarning(ex, "Dictionary API lookup failed for word {Word}", cleanWord);
         }
 
-        // 3. Obtain Vietnamese meaning via AI with short 4s timeout (priority: gemini-2.5-flash-lite)
-        try
+        // 3. Fallback native pronunciation audio via Google TTS if not provided by Free Dictionary API
+        if (string.IsNullOrWhiteSpace(result.AudioUrl))
         {
-            using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            cts.CancelAfter(TimeSpan.FromSeconds(4));
+            result.AudioUrl = $"https://translate.google.com/translate_tts?ie=UTF-8&tl=en&client=tw-ob&q={Uri.EscapeDataString(cleanWord)}";
+        }
 
-            var prompt = $"Give the primary Vietnamese meaning of the English word '{cleanWord}'. " +
-                         $"Respond ONLY with a JSON object: {{\"translation\": \"nghĩa tiếng Việt ngắn gọn\"}}";
+        // 4. Enrich via AI: obtain Vietnamese meaning and fill any missing dictionary fields
+        bool needsEnrichment = string.IsNullOrWhiteSpace(result.MeaningVi)
+            || string.IsNullOrWhiteSpace(result.Phonetic)
+            || string.IsNullOrWhiteSpace(result.PartOfSpeech)
+            || string.IsNullOrWhiteSpace(result.DefinitionEn)
+            || string.IsNullOrWhiteSpace(result.Example);
 
-            var wordModels = new[] { "gemini-2.5-flash-lite", "gemini-2.5-flash" };
-            foreach (var wModel in wordModels)
+        if (needsEnrichment)
+        {
+            try
             {
-                try
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                cts.CancelAfter(TimeSpan.FromSeconds(5));
+
+                var prompt = $@"You are a concise English-Vietnamese dictionary assistant. Provide dictionary details for the English word/phrase: ""{cleanWord}"".
+Respond ONLY with a JSON object:
+{{
+  ""meaningVi"": ""nghĩa tiếng Việt ngắn gọn và chính xác"",
+  ""phonetic"": ""/phiên âm IPA/"",
+  ""partOfSpeech"": ""noun/verb/adjective/adverb..."",
+  ""definitionEn"": ""concise English definition"",
+  ""example"": ""a natural example sentence in English""
+}}";
+
+                var wordModels = new[] { "gemini-2.5-flash-lite", "gemini-2.5-flash" };
+                foreach (var wModel in wordModels)
                 {
-                    var aiRes = await _gemmaClient.CompleteWithModelAsync(prompt, wModel, cts.Token);
-                    var cleanAi = CleanTranslationResult(aiRes);
-                    if (!string.IsNullOrWhiteSpace(cleanAi))
+                    try
                     {
-                        result.MeaningVi = cleanAi;
-                        break;
+                        var aiRes = await _gemmaClient.CompleteWithModelAsync(prompt, wModel, cts.Token);
+                        if (!string.IsNullOrWhiteSpace(aiRes))
+                        {
+                            PopulateMissingFieldsFromAi(result, aiRes);
+                            if (!string.IsNullOrWhiteSpace(result.MeaningVi))
+                            {
+                                break;
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        // Try next fallback model
                     }
                 }
-                catch
-                {
-                    // Try next fallback model
-                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to get AI dictionary details for word {Word}", cleanWord);
             }
         }
-        catch (Exception ex)
+
+        // 5. Fallback for MeaningVi via Google Translate if AI timed out or failed
+        if (string.IsNullOrWhiteSpace(result.MeaningVi))
         {
-            _logger.LogWarning(ex, "Failed to get Vietnamese meaning for word {Word}", cleanWord);
+            result.MeaningVi = await FetchGoogleTranslateAsync(cleanWord, "vi", cancellationToken);
+        }
+
+        // 6. Ensure default sensible values for remaining fields so all fields are populated
+        if (string.IsNullOrWhiteSpace(result.PartOfSpeech))
+        {
+            result.PartOfSpeech = "vocabulary";
+        }
+        if (string.IsNullOrWhiteSpace(result.DefinitionEn))
+        {
+            result.DefinitionEn = !string.IsNullOrWhiteSpace(result.MeaningVi) ? result.MeaningVi : cleanWord;
         }
 
         // Store in 30-day RAM cache
         _cache.Set(cacheKey, result, TimeSpan.FromDays(30));
         return result;
+    }
+
+    private static void PopulateMissingFieldsFromAi(NewsDictionaryDto result, string aiText)
+    {
+        if (string.IsNullOrWhiteSpace(aiText)) return;
+        var raw = aiText.Trim();
+
+        // 1. Remove reasoning tags
+        raw = Regex.Replace(raw, @"(?is)<(think|thought|reasoning)>.*?(</(think|thought|reasoning)>|$)", string.Empty).Trim();
+
+        // 2. Strip orphaned closing tag
+        var lastCloseIdx = Math.Max(
+            raw.LastIndexOf("</thought>", StringComparison.OrdinalIgnoreCase),
+            raw.LastIndexOf("</think>", StringComparison.OrdinalIgnoreCase)
+        );
+        if (lastCloseIdx >= 0)
+        {
+            var afterTag = raw.IndexOf('>', lastCloseIdx);
+            if (afterTag >= 0 && afterTag < raw.Length - 1)
+            {
+                raw = raw.Substring(afterTag + 1).Trim();
+            }
+        }
+
+        // 3. Strip markdown code fences
+        if (raw.StartsWith("```json", StringComparison.OrdinalIgnoreCase))
+        {
+            raw = raw.Substring(7);
+        }
+        else if (raw.StartsWith("```"))
+        {
+            raw = raw.Substring(3);
+        }
+        if (raw.EndsWith("```"))
+        {
+            raw = raw.Substring(0, raw.Length - 3);
+        }
+        raw = raw.Trim();
+
+        // 4. Try parsing JSON object
+        try
+        {
+            using var doc = JsonDocument.Parse(raw);
+            var root = doc.RootElement;
+            if (root.ValueKind == JsonValueKind.Object)
+            {
+                if (string.IsNullOrWhiteSpace(result.MeaningVi))
+                {
+                    if (root.TryGetProperty("meaningVi", out var mVi) && !string.IsNullOrWhiteSpace(mVi.GetString()))
+                        result.MeaningVi = mVi.GetString()!.Trim();
+                    else if (root.TryGetProperty("translation", out var trans) && !string.IsNullOrWhiteSpace(trans.GetString()))
+                        result.MeaningVi = trans.GetString()!.Trim();
+                }
+
+                if (string.IsNullOrWhiteSpace(result.Phonetic) && root.TryGetProperty("phonetic", out var ph) && !string.IsNullOrWhiteSpace(ph.GetString()))
+                {
+                    result.Phonetic = ph.GetString()!.Trim();
+                }
+
+                if (string.IsNullOrWhiteSpace(result.PartOfSpeech) && root.TryGetProperty("partOfSpeech", out var pos) && !string.IsNullOrWhiteSpace(pos.GetString()))
+                {
+                    result.PartOfSpeech = pos.GetString()!.Trim();
+                }
+
+                if (string.IsNullOrWhiteSpace(result.DefinitionEn) && root.TryGetProperty("definitionEn", out var defEn) && !string.IsNullOrWhiteSpace(defEn.GetString()))
+                {
+                    result.DefinitionEn = defEn.GetString()!.Trim();
+                }
+
+                if (string.IsNullOrWhiteSpace(result.Example) && root.TryGetProperty("example", out var ex) && !string.IsNullOrWhiteSpace(ex.GetString()))
+                {
+                    result.Example = ex.GetString()!.Trim();
+                }
+
+                return;
+            }
+        }
+        catch
+        {
+            // Fallback to regex extraction
+        }
+
+        // Regex fallback
+        if (string.IsNullOrWhiteSpace(result.MeaningVi))
+        {
+            var matchVi = Regex.Match(raw, @"""(?:meaningVi|translation)""\s*:\s*""((?:\\.|[^""\\])*)""");
+            if (matchVi.Success) result.MeaningVi = UnescapeJsonString(matchVi.Groups[1].Value);
+        }
+        if (string.IsNullOrWhiteSpace(result.Phonetic))
+        {
+            var matchPh = Regex.Match(raw, @"""phonetic""\s*:\s*""((?:\\.|[^""\\])*)""");
+            if (matchPh.Success) result.Phonetic = UnescapeJsonString(matchPh.Groups[1].Value);
+        }
+        if (string.IsNullOrWhiteSpace(result.PartOfSpeech))
+        {
+            var matchPos = Regex.Match(raw, @"""partOfSpeech""\s*:\s*""((?:\\.|[^""\\])*)""");
+            if (matchPos.Success) result.PartOfSpeech = UnescapeJsonString(matchPos.Groups[1].Value);
+        }
+        if (string.IsNullOrWhiteSpace(result.DefinitionEn))
+        {
+            var matchDef = Regex.Match(raw, @"""definitionEn""\s*:\s*""((?:\\.|[^""\\])*)""");
+            if (matchDef.Success) result.DefinitionEn = UnescapeJsonString(matchDef.Groups[1].Value);
+        }
+        if (string.IsNullOrWhiteSpace(result.Example))
+        {
+            var matchEx = Regex.Match(raw, @"""example""\s*:\s*""((?:\\.|[^""\\])*)""");
+            if (matchEx.Success) result.Example = UnescapeJsonString(matchEx.Groups[1].Value);
+        }
+
+        if (string.IsNullOrWhiteSpace(result.MeaningVi))
+        {
+            var fallback = CleanTranslationResult(raw);
+            if (!string.IsNullOrWhiteSpace(fallback))
+            {
+                result.MeaningVi = fallback;
+            }
+        }
+    }
+
+    private static string UnescapeJsonString(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return string.Empty;
+        try
+        {
+            return Regex.Unescape(value).Trim();
+        }
+        catch
+        {
+            return value.Replace(@"\""", @"""").Replace(@"\n", "\n").Trim();
+        }
+    }
+
+    private async Task<string> FetchGoogleTranslateAsync(string text, string targetLang = "vi", CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var url = $"https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl={targetLang}&dt=t&q={Uri.EscapeDataString(text)}";
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            cts.CancelAfter(TimeSpan.FromSeconds(3));
+
+            using var response = await _httpClient.GetAsync(url, cts.Token);
+            if (!response.IsSuccessStatusCode) return string.Empty;
+
+            var json = await response.Content.ReadAsStringAsync(cts.Token);
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind == JsonValueKind.Array && doc.RootElement.GetArrayLength() > 0)
+            {
+                var firstArray = doc.RootElement[0];
+                if (firstArray.ValueKind == JsonValueKind.Array)
+                {
+                    var sb = new StringBuilder();
+                    foreach (var seg in firstArray.EnumerateArray())
+                    {
+                        if (seg.ValueKind == JsonValueKind.Array && seg.GetArrayLength() > 0)
+                        {
+                            sb.Append(seg[0].GetString());
+                        }
+                    }
+                    return sb.ToString().Trim();
+                }
+            }
+        }
+        catch
+        {
+            // Ignore fallback failure
+        }
+        return string.Empty;
     }
 
     private static string CleanTranslationResult(string text)

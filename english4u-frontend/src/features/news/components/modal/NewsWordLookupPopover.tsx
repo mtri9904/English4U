@@ -93,8 +93,13 @@ export const NewsWordLookupPopover: React.FC<NewsWordLookupPopoverProps> = ({
                             </div>
                         )}
                         {lookup.definitionEn && (
-                            <div style={{ fontSize: '12px', color: '#475569', lineHeight: 1.45, fontStyle: 'italic' }}>
+                            <div style={{ fontSize: '12px', color: '#475569', lineHeight: 1.45, fontStyle: 'italic', marginBottom: lookup.example ? '6px' : '0' }}>
                                 💡 {lookup.definitionEn}
+                            </div>
+                        )}
+                        {lookup.example && (
+                            <div style={{ fontSize: '12px', color: '#475569', background: '#f8fafc', padding: '6px 10px', borderRadius: '6px', borderLeft: '3px solid #3b82f6', lineHeight: 1.45, marginTop: '6px' }}>
+                                <span style={{ fontWeight: 600, color: '#1e293b' }}>Ví dụ: </span>"{lookup.example}"
                             </div>
                         )}
                     </div>
