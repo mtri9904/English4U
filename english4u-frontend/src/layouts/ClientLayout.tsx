@@ -77,7 +77,6 @@ export const ClientLayout: React.FC = () => {
         permission: browserPermission,
         isRinging: isBellRinging,
         requestPermission: handleRequestBrowserPermission,
-        showNotification: sendBrowserNotification,
         stopRinging,
     } = useBrowserNotification({
         unreadCount: clientNotificationStats?.unread,
@@ -195,7 +194,7 @@ export const ClientLayout: React.FC = () => {
                     style={{
                         display: 'flex',
                         alignItems: 'center',
-                        justifyContent: 'space-between',
+                        gap: 6,
                         padding: '4px 6px',
                         fontSize: '0.72rem',
                         color: '#059669',
@@ -204,25 +203,6 @@ export const ClientLayout: React.FC = () => {
                     }}
                 >
                     <span>✅ Đã bật thông báo trên trình duyệt</span>
-                    <button
-                        type="button"
-                        onClick={() => {
-                            sendBrowserNotification('English4U - Thông báo thử nghiệm 🔔', {
-                                body: 'Thông báo trên trình duyệt đang hoạt động rất tốt!',
-                            });
-                        }}
-                        style={{
-                            background: 'none',
-                            border: 'none',
-                            color: '#2563eb',
-                            cursor: 'pointer',
-                            fontSize: '0.72rem',
-                            textDecoration: 'underline',
-                            padding: 0,
-                        }}
-                    >
-                        Thử chuông
-                    </button>
                 </div>
             )}
 

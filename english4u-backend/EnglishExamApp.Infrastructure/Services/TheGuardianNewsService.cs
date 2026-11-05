@@ -697,10 +697,13 @@ public class TheGuardianNewsService : INewsService
 
         var cacheKey = $"dict_{cleanWord}";
 
-        // 1. Check RAM Cache (30-day retention)
+        // 1. Check RAM Cache (Only return cached result if it has valid phonetic and meaning)
         if (_cache.TryGetValue(cacheKey, out NewsDictionaryDto? cached) && cached != null)
         {
-            return cached;
+            if (!string.IsNullOrWhiteSpace(cached.Phonetic) && !string.IsNullOrWhiteSpace(cached.MeaningVi))
+            {
+                return cached;
+            }
         }
 
         var result = new NewsDictionaryDto
@@ -708,22 +711,92 @@ public class TheGuardianNewsService : INewsService
             Word = cleanWord
         };
 
-        // 2. Query public Free Dictionary API
+        // 2. Primary Fast Academic Lookup: Datamuse API (0.05s) for standard IPA phonetic, part of speech & definition
+        try
+        {
+            var datamuseUrl = $"https://api.datamuse.com/words?sp={Uri.EscapeDataString(cleanWord)}&md=dpr&ipa=1&max=1";
+            using var dmCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            dmCts.CancelAfter(TimeSpan.FromSeconds(3));
+
+            using var dmResp = await _httpClient.GetAsync(datamuseUrl, dmCts.Token);
+            if (dmResp.IsSuccessStatusCode)
+            {
+                var dmJson = await dmResp.Content.ReadAsStringAsync(dmCts.Token);
+                using var dmDoc = JsonDocument.Parse(dmJson);
+                if (dmDoc.RootElement.ValueKind == JsonValueKind.Array && dmDoc.RootElement.GetArrayLength() > 0)
+                {
+                    var item0 = dmDoc.RootElement[0];
+                    if (item0.TryGetProperty("tags", out var tags) && tags.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var tag in tags.EnumerateArray())
+                        {
+                            var tStr = tag.GetString() ?? "";
+                            if (tStr.StartsWith("ipa_pron:", StringComparison.OrdinalIgnoreCase))
+                            {
+                                var ipa = tStr.Substring("ipa_pron:".Length).Trim();
+                                if (!string.IsNullOrWhiteSpace(ipa))
+                                {
+                                    result.Phonetic = $"/{ipa}/";
+                                }
+                            }
+                            else if (string.IsNullOrWhiteSpace(result.PartOfSpeech))
+                            {
+                                if (tStr == "n") result.PartOfSpeech = "noun";
+                                else if (tStr == "v") result.PartOfSpeech = "verb";
+                                else if (tStr == "adj") result.PartOfSpeech = "adjective";
+                                else if (tStr == "adv") result.PartOfSpeech = "adverb";
+                            }
+                        }
+                    }
+
+                    if (item0.TryGetProperty("defs", out var defs) && defs.ValueKind == JsonValueKind.Array && defs.GetArrayLength() > 0)
+                    {
+                        var firstDef = defs[0].GetString() ?? "";
+                        var tabIdx = firstDef.IndexOf('\t');
+                        if (tabIdx >= 0 && tabIdx < firstDef.Length - 1)
+                        {
+                            var posShort = firstDef.Substring(0, tabIdx).Trim();
+                            var defText = firstDef.Substring(tabIdx + 1).Trim();
+                            if (string.IsNullOrWhiteSpace(result.DefinitionEn) && !string.IsNullOrWhiteSpace(defText))
+                            {
+                                result.DefinitionEn = defText;
+                            }
+                            if (string.IsNullOrWhiteSpace(result.PartOfSpeech))
+                            {
+                                if (posShort == "n") result.PartOfSpeech = "noun";
+                                else if (posShort == "v") result.PartOfSpeech = "verb";
+                                else if (posShort == "adj") result.PartOfSpeech = "adjective";
+                                else if (posShort == "adv") result.PartOfSpeech = "adverb";
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Datamuse lookup failed for {Word}", cleanWord);
+        }
+
+        // 3. Query public Free Dictionary API for Audio pronunciation, Examples & Definitions
         try
         {
             var dictUrl = $"https://api.dictionaryapi.dev/api/v2/entries/en/{Uri.EscapeDataString(cleanWord)}";
             using var dictCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            dictCts.CancelAfter(TimeSpan.FromSeconds(3));
+            dictCts.CancelAfter(TimeSpan.FromSeconds(4));
 
-            var response = await _httpClient.GetAsync(dictUrl, dictCts.Token);
+            using var req = new HttpRequestMessage(HttpMethod.Get, dictUrl);
+            req.Headers.TryAddWithoutValidation("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) English4U/1.0");
+
+            var response = await _httpClient.SendAsync(req, dictCts.Token);
             if (response.IsSuccessStatusCode)
             {
-                var json = await response.Content.ReadAsStringAsync(cancellationToken);
+                var json = await response.Content.ReadAsStringAsync(dictCts.Token);
                 using var doc = JsonDocument.Parse(json);
                 if (doc.RootElement.ValueKind == JsonValueKind.Array && doc.RootElement.GetArrayLength() > 0)
                 {
                     var firstEntry = doc.RootElement[0];
-                    if (firstEntry.TryGetProperty("phonetic", out var phEl) && !string.IsNullOrWhiteSpace(phEl.GetString()))
+                    if (string.IsNullOrWhiteSpace(result.Phonetic) && firstEntry.TryGetProperty("phonetic", out var phEl) && !string.IsNullOrWhiteSpace(phEl.GetString()))
                     {
                         result.Phonetic = phEl.GetString();
                     }
@@ -782,16 +855,16 @@ public class TheGuardianNewsService : INewsService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Dictionary API lookup failed for word {Word}", cleanWord);
+            _logger.LogDebug(ex, "Dictionary API lookup failed for word {Word}", cleanWord);
         }
 
-        // 3. Fallback native pronunciation audio via Google TTS if not provided by Free Dictionary API
+        // 4. Fallback native pronunciation audio via Google TTS if not provided by Free Dictionary API
         if (string.IsNullOrWhiteSpace(result.AudioUrl))
         {
             result.AudioUrl = $"https://translate.google.com/translate_tts?ie=UTF-8&tl=en&client=tw-ob&q={Uri.EscapeDataString(cleanWord)}";
         }
 
-        // 4. Enrich via AI: obtain Vietnamese meaning and fill any missing dictionary fields
+        // 5. Enrich via AI: obtain Vietnamese meaning and fill any missing dictionary fields
         bool needsEnrichment = string.IsNullOrWhiteSpace(result.MeaningVi)
             || string.IsNullOrWhiteSpace(result.Phonetic)
             || string.IsNullOrWhiteSpace(result.PartOfSpeech)
@@ -815,24 +888,35 @@ Respond ONLY with a JSON object:
   ""example"": ""a natural example sentence in English""
 }}";
 
-                var wordModels = new[] { "gemini-2.5-flash-lite", "gemini-2.5-flash" };
-                foreach (var wModel in wordModels)
+                try
                 {
-                    try
+                    var aiRes = await _gemmaClient.CompleteAsync(prompt, cts.Token);
+                    if (!string.IsNullOrWhiteSpace(aiRes))
                     {
-                        var aiRes = await _gemmaClient.CompleteWithModelAsync(prompt, wModel, cts.Token);
-                        if (!string.IsNullOrWhiteSpace(aiRes))
+                        PopulateMissingFieldsFromAi(result, aiRes);
+                    }
+                }
+                catch
+                {
+                    var wordModels = new[] { "gemini-3.1-flash-lite", "gemma-4-31b-it", "gemini-1.5-flash" };
+                    foreach (var wModel in wordModels)
+                    {
+                        try
                         {
-                            PopulateMissingFieldsFromAi(result, aiRes);
-                            if (!string.IsNullOrWhiteSpace(result.MeaningVi))
+                            var aiRes = await _gemmaClient.CompleteWithModelAsync(prompt, wModel, cts.Token);
+                            if (!string.IsNullOrWhiteSpace(aiRes))
                             {
-                                break;
+                                PopulateMissingFieldsFromAi(result, aiRes);
+                                if (!string.IsNullOrWhiteSpace(result.MeaningVi))
+                                {
+                                    break;
+                                }
                             }
                         }
-                    }
-                    catch
-                    {
-                        // Try next fallback model
+                        catch
+                        {
+                            // Try next fallback model
+                        }
                     }
                 }
             }
@@ -842,13 +926,13 @@ Respond ONLY with a JSON object:
             }
         }
 
-        // 5. Fallback for MeaningVi via Google Translate if AI timed out or failed
+        // 6. Fallback for MeaningVi via Google Translate if AI timed out or failed
         if (string.IsNullOrWhiteSpace(result.MeaningVi))
         {
             result.MeaningVi = await FetchGoogleTranslateAsync(cleanWord, "vi", cancellationToken);
         }
 
-        // 6. Ensure default sensible values for remaining fields so all fields are populated
+        // 7. Ensure default sensible values for remaining fields so all fields are populated
         if (string.IsNullOrWhiteSpace(result.PartOfSpeech))
         {
             result.PartOfSpeech = "vocabulary";
@@ -858,8 +942,12 @@ Respond ONLY with a JSON object:
             result.DefinitionEn = !string.IsNullOrWhiteSpace(result.MeaningVi) ? result.MeaningVi : cleanWord;
         }
 
-        // Store in 30-day RAM cache
-        _cache.Set(cacheKey, result, TimeSpan.FromDays(30));
+        // Cache policy: 30 days if full data (with phonetic), or 2 minutes if temporary partial result
+        var cacheDuration = !string.IsNullOrWhiteSpace(result.Phonetic) && !string.IsNullOrWhiteSpace(result.MeaningVi)
+            ? TimeSpan.FromDays(30)
+            : TimeSpan.FromMinutes(2);
+
+        _cache.Set(cacheKey, result, cacheDuration);
         return result;
     }
 

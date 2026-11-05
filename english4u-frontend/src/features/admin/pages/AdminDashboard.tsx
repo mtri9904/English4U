@@ -23,7 +23,6 @@ export const AdminDashboard = () => {
     const completedAttempts = dashboard?.completedAttempts ?? 0;
     const inProgressAttempts = dashboard?.inProgressAttempts ?? 0;
     const abandonedAttempts = dashboard?.abandonedAttempts ?? 0;
-    const examByType = dashboard?.examByType ?? [];
     const attemptsBySkill = dashboard?.attemptsBySkill ?? [];
     const topExams = dashboard?.topExams ?? [];
     const recentAttempts = dashboard?.recentAttempts ?? [];
@@ -45,8 +44,6 @@ export const AdminDashboard = () => {
             />
 
             <AdminAnalyticsCharts
-                isExamsLoading={isLoading}
-                examByType={examByType}
                 isAttemptsLoading={isLoading}
                 attemptsBySkill={attemptsBySkill}
             />
