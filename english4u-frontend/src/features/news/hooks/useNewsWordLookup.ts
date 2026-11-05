@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { lookupWordDictionary, translateParagraph, type NewsDictionaryResult } from '../services/news.service';
+import { lookupWordDictionary, type NewsDictionaryResult } from '../services/news.service';
 
 export interface ActiveWordLookup {
     word: string;
@@ -96,8 +96,8 @@ export function useNewsWordLookup(open: boolean) {
                     isLoading: true,
                 });
 
-                // Call academic dictionary endpoint
-                lookupWordDictionary(word)
+                // Call academic dictionary endpoint with context
+                lookupWordDictionary(word, paragraphText)
                     .then((dictData: NewsDictionaryResult | null) => {
                         if (dictData) {
                             setActiveWordLookup((prev) =>
@@ -115,14 +115,7 @@ export function useNewsWordLookup(open: boolean) {
                                     : prev
                             );
                         } else {
-                            // Quick fallback to simple translation
-                            translateParagraph(word).then((meaning) => {
-                                setActiveWordLookup((prev) =>
-                                    prev && prev.word.toLowerCase() === word.toLowerCase()
-                                        ? { ...prev, meaningVi: meaning, isLoading: false }
-                                        : prev
-                                );
-                            });
+                            setActiveWordLookup((prev) => (prev ? { ...prev, isLoading: false } : prev));
                         }
                     })
                     .catch(() => {

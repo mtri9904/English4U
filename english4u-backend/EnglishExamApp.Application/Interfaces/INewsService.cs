@@ -10,6 +10,6 @@ public interface INewsService
     Task<NewsArticleDto?> GetArticleDetailAsync(string articleId);
     NewsQuotaStatusDto GetQuotaStatus();
     Task<NewsTranslateResponseDto> TranslateParagraphAsync(NewsTranslateRequestDto request, CancellationToken cancellationToken = default);
-    Task<NewsDictionaryDto?> LookupWordAsync(string word, CancellationToken cancellationToken = default);
+    Task<NewsDictionaryDto?> LookupWordAsync(string word, string? context = null, CancellationToken cancellationToken = default);
 }
 

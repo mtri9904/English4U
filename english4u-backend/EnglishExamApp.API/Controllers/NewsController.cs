@@ -84,14 +84,15 @@ public class NewsController : ControllerBase
     [HttpGet("dictionary")]
     public async Task<IActionResult> LookupWord(
         [FromQuery] string word,
-        System.Threading.CancellationToken cancellationToken)
+        [FromQuery] string? context = null,
+        System.Threading.CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(word))
         {
             return BadRequest(new { message = "Từ vựng tra cứu không được để trống." });
         }
 
-        var result = await _newsService.LookupWordAsync(word, cancellationToken);
+        var result = await _newsService.LookupWordAsync(word, context, cancellationToken);
         if (result == null)
         {
             return NotFound(new { message = "Không tìm thấy thông tin từ điển." });

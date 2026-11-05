@@ -228,11 +228,14 @@ export interface NewsDictionaryResult {
     example?: string;
 }
 
-export const lookupWordDictionary = async (word: string): Promise<NewsDictionaryResult | null> => {
+export const lookupWordDictionary = async (word: string, context?: string): Promise<NewsDictionaryResult | null> => {
     if (!word?.trim()) return null;
     try {
         const response = await axiosInstance.get<NewsDictionaryResult>(ApiRouters.NEWS.DICTIONARY, {
-            params: { word: word.trim() },
+            params: {
+                word: word.trim(),
+                context: context?.trim() || undefined,
+            },
         });
         if (response.data && response.data.word) {
             return response.data;
