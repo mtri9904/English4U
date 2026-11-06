@@ -218,6 +218,16 @@ public class ExamController(
             return TypedResults.Unauthorized();
         }
 
+        var existingActiveJob = pdfGenerationProgressTracker.GetActiveJobByUserId(createdBy);
+        if (existingActiveJob is not null)
+        {
+            return TypedResults.Conflict(new
+            {
+                message = $"Bạn đang có một tiến trình tạo đề từ PDF đang diễn ra ({existingActiveJob.ProgressPercent}%). Vui lòng đợi hoàn tất hoặc hủy tiến trình trước khi bắt đầu tạo đề mới.",
+                activeJob = existingActiveJob
+            });
+        }
+
         if (file is null || file.Length == 0)
         {
             return TypedResults.BadRequest(new { message = "PDF file is required." });
@@ -228,9 +238,12 @@ public class ExamController(
             return TypedResults.BadRequest(new { message = "Only PDF files are supported." });
         }
 
+        var uploadId = Guid.NewGuid();
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        pdfGenerationProgressTracker.RegisterCancellationTokenSource(uploadId, clientRequestId, cts);
+
         try
         {
-            var uploadId = Guid.NewGuid();
             if (!string.IsNullOrWhiteSpace(clientRequestId))
             {
                 pdfGenerationProgressTracker.Upsert(new PdfGenerationProgressStatusDto(
@@ -254,7 +267,7 @@ public class ExamController(
                 createdBy,
                 clientRequestId,
                 uploadId,
-                cancellationToken);
+                cts.Token);
 
             await PublishExamChangedAsync(cancellationToken);
             return TypedResults.Created(
@@ -269,7 +282,8 @@ public class ExamController(
         }
         catch (OperationCanceledException)
         {
-            throw;
+            logger.LogInformation("Generate exam from PDF was canceled for clientRequestId {ClientRequestId}, uploadId {UploadId}", clientRequestId, uploadId);
+            return TypedResults.Ok(new { message = "Tiến trình tạo đề đã được hủy thành công." });
         }
         catch (InvalidOperationException ex)
         {
@@ -284,6 +298,71 @@ public class ExamController(
                 detail: "Unexpected server error while processing the uploaded PDF.",
                 statusCode: StatusCodes.Status500InternalServerError);
         }
+        finally
+        {
+            pdfGenerationProgressTracker.UnregisterCancellationTokenSource(uploadId, clientRequestId);
+        }
+    }
+
+    [HttpGet("generate-from-pdf/active-job")]
+    public IResult GetActivePdfGenerationJob()
+    {
+        if (!currentUser.TryGetUserId(out var requestedBy))
+        {
+            return TypedResults.Unauthorized();
+        }
+
+        var activeJob = pdfGenerationProgressTracker.GetActiveJobByUserId(requestedBy);
+        if (activeJob is null)
+        {
+            return TypedResults.NotFound(new { message = "Không có tiến trình tạo đề nào đang chạy." });
+        }
+
+        return TypedResults.Ok(activeJob);
+    }
+
+    [HttpPost("generate-from-pdf/cancel")]
+    public async Task<IResult> CancelGenerateExamFromPdf(
+        [FromQuery] string? clientRequestId,
+        [FromQuery] Guid? uploadId,
+        CancellationToken cancellationToken)
+    {
+        if (!currentUser.TryGetUserId(out var requestedBy))
+        {
+            return TypedResults.Unauthorized();
+        }
+
+        if (string.IsNullOrWhiteSpace(clientRequestId) && !uploadId.HasValue)
+        {
+            return TypedResults.BadRequest(new { message = "clientRequestId hoặc uploadId là bắt buộc." });
+        }
+
+        var canceled = pdfGenerationProgressTracker.TryCancelJob(clientRequestId, uploadId, requestedBy);
+        if (!canceled)
+        {
+            return TypedResults.NotFound(new { message = "Không tìm thấy tiến trình đang chạy hoặc bạn không có quyền hủy." });
+        }
+
+        var snapshot = !string.IsNullOrWhiteSpace(clientRequestId)
+            ? pdfGenerationProgressTracker.GetByClientRequestId(clientRequestId)
+            : uploadId.HasValue ? pdfGenerationProgressTracker.GetByUploadId(uploadId.Value) : null;
+
+        if (snapshot is not null)
+        {
+            try
+            {
+                await realtimeDispatcher.PublishAsync(
+                    RealtimeEventTypes.ExamPdfGenerationProgress,
+                    snapshot,
+                    cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                logger.LogDebug(ex, "Failed to publish cancellation realtime event");
+            }
+        }
+
+        return TypedResults.Ok(new { message = "Đã hủy tiến trình tạo đề thành công." });
     }
 
     [HttpGet("generate-from-pdf/progress")]

@@ -13,6 +13,32 @@ public class LeaderboardService(
     // In-memory store for claimed quests per user per week: "userId_weekNumber_questId"
     private static readonly ConcurrentDictionary<string, DateTime> ClaimedQuests = new();
 
+    private sealed record LeaderboardUserEntry(
+        Guid Id,
+        string DisplayName,
+        string Email,
+        string? AvatarUrl,
+        int ExperiencePoints,
+        int DailyStreakCount,
+        int LongestStreakCount,
+        DateTime? LastActivityAt);
+
+    private static string ResolveUserDisplayName(string? displayName, string email)
+    {
+        if (!string.IsNullOrWhiteSpace(displayName))
+        {
+            return displayName.Trim();
+        }
+
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return "User";
+        }
+
+        var atIndex = email.IndexOf('@');
+        return atIndex > 0 ? email[..atIndex] : email;
+    }
+
     public async Task<LeaderboardOverviewDto> GetLeaderboardOverviewAsync(
         Guid currentUserId,
         string category = "diligence",
@@ -25,13 +51,13 @@ public class LeaderboardService(
         var (startDate, endDate) = GetPeriodRange(period);
 
         // 1. Fetch 100% real users from database
-        var users = await context.Users
+        var rawUsers = await context.Users
             .AsNoTracking()
             .Where(u => u.IsActive)
             .Select(u => new
             {
                 u.Id,
-                DisplayName = !string.IsNullOrWhiteSpace(u.DisplayName) ? u.DisplayName : u.Email.Split('@', StringSplitOptions.None)[0],
+                u.DisplayName,
                 u.Email,
                 u.AvatarUrl,
                 u.ExperiencePoints,
@@ -41,16 +67,28 @@ public class LeaderboardService(
             })
             .ToListAsync(cancellationToken);
 
+        var users = rawUsers
+            .Select(u => new LeaderboardUserEntry(
+                u.Id,
+                ResolveUserDisplayName(u.DisplayName, u.Email),
+                u.Email,
+                u.AvatarUrl,
+                u.ExperiencePoints,
+                u.DailyStreakCount,
+                u.LongestStreakCount,
+                u.LastActivityAt))
+            .ToList();
+
         // If current user is not in active users list, try finding them to ensure they can see their position
         if (currentUserId != Guid.Empty && !users.Any(u => u.Id == currentUserId))
         {
-            var currentUser = await context.Users
+            var currentUserRaw = await context.Users
                 .AsNoTracking()
                 .Where(u => u.Id == currentUserId)
                 .Select(u => new
                 {
                     u.Id,
-                    DisplayName = !string.IsNullOrWhiteSpace(u.DisplayName) ? u.DisplayName : u.Email.Split('@', StringSplitOptions.None)[0],
+                    u.DisplayName,
                     u.Email,
                     u.AvatarUrl,
                     u.ExperiencePoints,
@@ -60,9 +98,17 @@ public class LeaderboardService(
                 })
                 .FirstOrDefaultAsync(cancellationToken);
 
-            if (currentUser != null)
+            if (currentUserRaw != null)
             {
-                users.Add(currentUser);
+                users.Add(new LeaderboardUserEntry(
+                    currentUserRaw.Id,
+                    ResolveUserDisplayName(currentUserRaw.DisplayName, currentUserRaw.Email),
+                    currentUserRaw.Email,
+                    currentUserRaw.AvatarUrl,
+                    currentUserRaw.ExperiencePoints,
+                    currentUserRaw.DailyStreakCount,
+                    currentUserRaw.LongestStreakCount,
+                    currentUserRaw.LastActivityAt));
             }
         }
 
@@ -586,13 +632,13 @@ public class LeaderboardService(
         var (startDate, endDate) = GetPeriodRange(period);
 
         // 1. Fetch all real active users
-        var users = await context.Users
+        var rawUsers = await context.Users
             .AsNoTracking()
             .Where(u => u.IsActive)
             .Select(u => new
             {
                 u.Id,
-                DisplayName = !string.IsNullOrWhiteSpace(u.DisplayName) ? u.DisplayName : u.Email.Split('@', StringSplitOptions.None)[0],
+                u.DisplayName,
                 u.Email,
                 u.AvatarUrl,
                 u.ExperiencePoints,
@@ -601,6 +647,18 @@ public class LeaderboardService(
                 u.LastActivityAt
             })
             .ToListAsync(cancellationToken);
+
+        var users = rawUsers
+            .Select(u => new LeaderboardUserEntry(
+                u.Id,
+                ResolveUserDisplayName(u.DisplayName, u.Email),
+                u.Email,
+                u.AvatarUrl,
+                u.ExperiencePoints,
+                u.DailyStreakCount,
+                u.LongestStreakCount,
+                u.LastActivityAt))
+            .ToList();
 
         // 2. Fetch completed sessions within the period
         var sessionsQuery = context.ExamSessions

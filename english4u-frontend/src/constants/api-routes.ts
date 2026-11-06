@@ -24,6 +24,8 @@ export const ApiRouters = {
         GENERATE_FROM_PDF: '/exam/generate-from-pdf',
         GENERATE_AI: '/exam/generate-ai',
         GENERATE_PDF_PROGRESS: '/exam/generate-from-pdf/progress',
+        GENERATE_PDF_ACTIVE_JOB: '/exam/generate-from-pdf/active-job',
+        GENERATE_PDF_CANCEL: '/exam/generate-from-pdf/cancel',
         GENERATE_LISTENING_TRANSCRIPT: '/exam/generate-listening-transcript',
         ALIGN_LISTENING_TRANSCRIPT: '/exam/align-listening-transcript',
         EXTRACT_WRITING_VISUAL_DATA: '/exam/extract-writing-visual-data',

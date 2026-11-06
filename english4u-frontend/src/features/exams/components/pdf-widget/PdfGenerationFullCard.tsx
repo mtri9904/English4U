@@ -10,6 +10,7 @@ export interface PdfGenerationFullCardProps {
     onClose: () => void;
     onViewExam: (examId: string) => void;
     onRetry: () => void;
+    onCancel?: () => void;
 }
 
 export const PdfGenerationFullCard: React.FC<PdfGenerationFullCardProps> = ({
@@ -18,6 +19,7 @@ export const PdfGenerationFullCard: React.FC<PdfGenerationFullCardProps> = ({
     onClose,
     onViewExam,
     onRetry,
+    onCancel,
 }) => {
     const progressPercent = Math.round(job.progressPercent);
 
@@ -166,6 +168,20 @@ export const PdfGenerationFullCard: React.FC<PdfGenerationFullCardProps> = ({
                         </div>
                     ) : null}
                 </div>
+
+                {job.status === 'processing' && onCancel ? (
+                    <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end' }}>
+                        <Button
+                            type="text"
+                            danger
+                            size="small"
+                            onClick={onCancel}
+                            style={{ fontSize: '0.78rem', fontWeight: 600, padding: 0 }}
+                        >
+                            Hủy theo dõi tiến trình
+                        </Button>
+                    </div>
+                ) : null}
 
                 {job.status === 'completed' && job.examId ? (
                     <div style={{ marginTop: 16 }}>

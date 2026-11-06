@@ -18,7 +18,6 @@ import {
 import { useAdminUsersQuery, type UserOverviewDto } from '@/features/students';
 import {
     DEFAULT_FORM,
-    LIVE_MS,
     type RoleFilter,
     type ReadFilter,
     type EditorMode,
@@ -145,12 +144,10 @@ export const NotificationManagementPage = () => {
         isFetching,
         refetch,
     } = useAdminNotificationsQuery(queryParams, {
-        refetchInterval: LIVE_MS,
         refetchOnWindowFocus: true,
     });
 
     const { data: stats, isLoading: isStatsLoading } = useAdminNotificationStatsQuery({
-        refetchInterval: LIVE_MS,
         refetchOnWindowFocus: true,
     });
 

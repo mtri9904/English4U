@@ -158,6 +158,31 @@ export const examService = {
         );
     },
 
+    getActivePdfGenerationJob: async (): Promise<PdfGenerationProgressStatus | null> => {
+        return callApi<PdfGenerationProgressStatus | null>(
+            ApiRouters.EXAM.GENERATE_PDF_ACTIVE_JOB,
+            undefined,
+            'get'
+        );
+    },
+
+    cancelPdfGeneration: async ({
+        clientRequestId,
+        uploadId,
+    }: {
+        clientRequestId?: string | null;
+        uploadId?: string | null;
+    }): Promise<{ success: boolean; message: string }> => {
+        return callApi<{ success: boolean; message: string }>(
+            ApiRouters.EXAM.GENERATE_PDF_CANCEL,
+            {
+                clientRequestId: clientRequestId || undefined,
+                uploadId: uploadId || undefined,
+            },
+            'post'
+        );
+    },
+
     extractWritingVisualData: async ({
         imageUrl,
         promptText,

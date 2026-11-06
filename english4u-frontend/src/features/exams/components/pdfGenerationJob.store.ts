@@ -26,10 +26,38 @@ type PdfGenerationStoreState = {
 
 type Listener = () => void;
 
+const PDF_JOB_STORAGE_KEY = 'english4u_active_pdf_job';
+
+const loadPersistedJob = (): PdfGenerationJobState | null => {
+    try {
+        const raw = sessionStorage.getItem(PDF_JOB_STORAGE_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw) as PdfGenerationJobState;
+        if (parsed && typeof parsed === 'object' && parsed.status) {
+            return parsed;
+        }
+        return null;
+    } catch {
+        return null;
+    }
+};
+
+const persistJob = (job: PdfGenerationJobState | null) => {
+    try {
+        if (!job) {
+            sessionStorage.removeItem(PDF_JOB_STORAGE_KEY);
+        } else {
+            sessionStorage.setItem(PDF_JOB_STORAGE_KEY, JSON.stringify(job));
+        }
+    } catch {
+        // Ignore storage write issues (e.g. private mode quota)
+    }
+};
+
 const listeners = new Set<Listener>();
 
 let storeState: PdfGenerationStoreState = {
-    job: null,
+    job: loadPersistedJob(),
     isCollapsed: false,
     file: null,
     retryCount: 0,
@@ -43,6 +71,7 @@ const emitChange = () => {
 
 const setStoreState = (updater: (current: PdfGenerationStoreState) => PdfGenerationStoreState) => {
     storeState = updater(storeState);
+    persistJob(storeState.job);
     emitChange();
 };
 
@@ -59,6 +88,7 @@ export const pdfGenerationJobStore = {
     subscribe,
     getSnapshot,
     getState: () => storeState,
+    getJob: () => storeState.job,
     setFile: (file: File | null) => {
         setStoreState((current) => ({
             ...current,
@@ -108,6 +138,18 @@ export const pdfGenerationJobStore = {
             openUploadModalTrigger,
         }));
     },
+    cancelJob: () => {
+        storeState = {
+            job: null,
+            isCollapsed: false,
+            file: null,
+            retryCount: 0,
+            isRetrying: false,
+            openUploadModalTrigger: false,
+        };
+        persistJob(null);
+        emitChange();
+    },
     clear: () => {
         storeState = {
             job: null,
@@ -117,6 +159,7 @@ export const pdfGenerationJobStore = {
             isRetrying: false,
             openUploadModalTrigger: false,
         };
+        persistJob(null);
         emitChange();
     },
 };

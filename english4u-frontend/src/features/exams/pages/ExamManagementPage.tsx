@@ -17,6 +17,8 @@ import {
     usePdfGenerationJobStore,
     formatPdfGenerationErrorMessage,
 } from '@/features/exams/components/pdfGenerationJob.store';
+import { mapProgressStatus } from '@/features/exams/components/pdf-widget';
+import { examService } from '@/features/exams/services/exam.service';
 import { ExamManagementHeader } from '../components/management/ExamManagementHeader';
 import { ExamOverviewStats } from '../components/management/ExamOverviewStats';
 import { ExamFilterBar, type PublishFilter } from '../components/management/ExamFilterBar';
@@ -183,6 +185,28 @@ export const ExamManagement = () => {
                     message.success('Tạo đề từ PDF thành công.');
                 },
                 onError: (error: any) => {
+                    if (error?.response?.status === 409) {
+                        message.warning('Bạn đang có một tiến trình tạo đề khác đang chạy. Hệ thống đang đồng bộ tiến trình đó.');
+                        void examService.getActivePdfGenerationJob().then((active) => {
+                            if (active) {
+                                const mappedStatus = mapProgressStatus(active.status);
+                                pdfGenerationJobStore.setJob({
+                                    clientRequestId: active.clientRequestId ?? null,
+                                    uploadId: active.uploadId ?? null,
+                                    fileName: 'uploaded.pdf',
+                                    status: mappedStatus,
+                                    progressPercent: Math.max(0, Math.min(100, active.progressPercent ?? 0)),
+                                    stage: active.stage ?? 'processing',
+                                    message: active.message ? formatPdfGenerationErrorMessage(active.message) : 'Đang xử lý PDF.',
+                                    examId: active.examId ?? null,
+                                    passageNumber: active.passageNumber ?? null,
+                                    totalPassages: active.totalPassages ?? null,
+                                });
+                            }
+                        }).catch(() => {});
+                        return;
+                    }
+
                     const apiMessage = error?.response?.data?.message;
                     const rawMessage = typeof apiMessage === 'string' ? apiMessage : 'Tạo đề từ PDF thất bại.';
                     const is503Error =

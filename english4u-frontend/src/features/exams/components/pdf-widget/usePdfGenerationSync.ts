@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { REALTIME_BROWSER_EVENT } from '@/features/realtime/hooks/useRealtimeSync';
 import { examApi } from '@/features/exams/hooks/useExamQueries';
 import {
@@ -6,6 +6,7 @@ import {
     usePdfGenerationJobStore,
     formatPdfGenerationErrorMessage,
     type PdfJobStatus,
+    type PdfGenerationJobState,
 } from '../pdfGenerationJob.store';
 import {
     mapProgressStatus,
@@ -14,10 +15,56 @@ import {
     type RealtimeEnvelope,
 } from './pdfProgress.utils';
 
+const WATCHDOG_CHECK_INTERVAL_MS = 4_000;
+const WATCHDOG_TIMEOUT_THRESHOLD_MS = 8_000;
+
 export const usePdfGenerationSync = () => {
     const { job: pdfGenerationJob, isCollapsed } = usePdfGenerationJobStore();
+    const jobRef = useRef<PdfGenerationJobState | null>(pdfGenerationJob);
+    jobRef.current = pdfGenerationJob;
 
-    const triggerRetry = async (file: File) => {
+    const lastEventTimeRef = useRef<number>(Date.now());
+
+    // 0. Auto-discover active server job on fresh mount (new tab / cleared session)
+    useEffect(() => {
+        if (jobRef.current) return;
+        const token = localStorage.getItem('accessToken');
+        if (!token) return;
+
+        let disposed = false;
+        const discoverActiveJob = async () => {
+            try {
+                const active = await examApi.getActivePdfGenerationJob();
+                if (disposed || !active || jobRef.current) return;
+
+                const mappedStatus = mapProgressStatus(active.status);
+                if (mappedStatus === 'processing') {
+                    pdfGenerationJobStore.setJob({
+                        clientRequestId: active.clientRequestId ?? null,
+                        uploadId: active.uploadId ?? null,
+                        fileName: 'uploaded.pdf',
+                        status: mappedStatus,
+                        progressPercent: Math.max(0, Math.min(100, active.progressPercent ?? 0)),
+                        stage: active.stage ?? 'processing',
+                        message: active.message ? formatPdfGenerationErrorMessage(active.message) : 'Đang xử lý PDF.',
+                        examId: active.examId ?? null,
+                        passageNumber: active.passageNumber ?? null,
+                        totalPassages: active.totalPassages ?? null,
+                    });
+                }
+            } catch {
+                // Silently ignore if not authorized or offline
+            }
+        };
+
+        void discoverActiveJob();
+
+        return () => {
+            disposed = true;
+        };
+    }, []);
+
+    const triggerRetry = useCallback(async (file: File) => {
         const store = pdfGenerationJobStore.getState();
         if (store.isRetrying || store.retryCount >= 3) {
             return false;
@@ -71,8 +118,9 @@ export const usePdfGenerationSync = () => {
         } finally {
             pdfGenerationJobStore.setIsRetrying(false);
         }
-    };
+    }, []);
 
+    // 1. Realtime WebSocket listener (Primary fast-path)
     useEffect(() => {
         const handleRealtimeEvent = (event: Event) => {
             const customEvent = event as CustomEvent<RealtimeEnvelope>;
@@ -85,7 +133,7 @@ export const usePdfGenerationSync = () => {
             const eventClientRequestId = payload.clientRequestId?.trim() || null;
             const currentUserId = normalizeGuidLike(localStorage.getItem('userId'));
             const eventUploadedBy = normalizeGuidLike(payload.uploadedBy);
-            const activeJob = pdfGenerationJobStore.getState().job;
+            const activeJob = jobRef.current;
             const activeClientRequestId = activeJob?.clientRequestId?.trim() || null;
             const eventUploadId = normalizeGuidLike(payload.uploadId);
             const activeUploadId = normalizeGuidLike(activeJob?.uploadId);
@@ -116,6 +164,9 @@ export const usePdfGenerationSync = () => {
             if (!isAllowed) {
                 return;
             }
+
+            // Mark timestamp of received socket event to keep watchdog quiet
+            lastEventTimeRef.current = Date.now();
 
             const normalizedStatus: PdfJobStatus =
                 payload.status === 'completed'
@@ -180,54 +231,41 @@ export const usePdfGenerationSync = () => {
         };
     }, []);
 
+    // 2. Auto-retry on 503 overload errors
+    const jobStatus = pdfGenerationJob?.status;
+    const jobMessage = pdfGenerationJob?.message;
     useEffect(() => {
-        if (!pdfGenerationJob) return;
-
         if (
-            pdfGenerationJob.status === 'failed' &&
-            (pdfGenerationJob.message?.includes('503') || pdfGenerationJob.message?.includes('Gemini native PDF extraction failed'))
+            jobStatus === 'failed' &&
+            (jobMessage?.includes('503') || jobMessage?.includes('Gemini native PDF extraction failed'))
         ) {
             const store = pdfGenerationJobStore.getState();
             if (store.file && store.retryCount < 3 && !store.isRetrying) {
                 void triggerRetry(store.file);
             }
         }
-    }, [pdfGenerationJob]);
+    }, [jobMessage, jobStatus, triggerRetry]);
 
-    const activeJobClientRequestId = pdfGenerationJob?.clientRequestId?.trim() || null;
-    const activeJobUploadId = pdfGenerationJob?.uploadId?.trim() || null;
-    const activeJobStatus = pdfGenerationJob?.status;
-
+    // 3. Watchdog Fallback & Initial Mount Recovery (F5 friendly, 0 spam)
     useEffect(() => {
-        if (activeJobStatus !== 'processing') {
-            return;
-        }
-
-        const clientRequestId = activeJobClientRequestId;
-        const uploadId = activeJobUploadId;
-        if (!clientRequestId && !uploadId) {
+        if (jobStatus !== 'processing') {
             return;
         }
 
         let disposed = false;
-        let pollTimer: number | null = null;
 
-        const scheduleNextPoll = (delayMs: number) => {
-            if (disposed) {
+        const fetchLatestSnapshot = async () => {
+            const currentJob = jobRef.current;
+            const clientRequestId = currentJob?.clientRequestId?.trim() || null;
+            const uploadId = currentJob?.uploadId?.trim() || null;
+
+            if (!clientRequestId && !uploadId) {
                 return;
             }
 
-            pollTimer = window.setTimeout(() => {
-                void pollProgress();
-            }, delayMs);
-        };
-
-        const pollProgress = async () => {
             try {
                 const snapshot = await examApi.getPdfGenerationProgress({ clientRequestId, uploadId });
-                if (disposed) {
-                    return;
-                }
+                if (disposed) return;
 
                 const mappedStatus = mapProgressStatus(snapshot.status);
 
@@ -256,32 +294,33 @@ export const usePdfGenerationSync = () => {
                         totalPassages: snapshot.totalPassages ?? previous.totalPassages ?? null,
                     };
                 });
-
-                if (snapshot.status === 'completed' || snapshot.status === 'failed') {
-                    return;
-                }
             } catch {
-                if (disposed) {
-                    return;
-                }
+                // Ignore transient network errors during fallback probe
             }
-
-            scheduleNextPoll(2000);
         };
 
-        scheduleNextPoll(uploadId ? 0 : 750);
+        // Call once on mount / status transition to immediately sync state after F5
+        void fetchLatestSnapshot();
+
+        // Watchdog interval: only queries if NO realtime event arrived for >= WATCHDOG_TIMEOUT_THRESHOLD_MS
+        const watchdogInterval = window.setInterval(() => {
+            if (disposed) return;
+
+            const timeSinceLastEvent = Date.now() - lastEventTimeRef.current;
+            if (timeSinceLastEvent >= WATCHDOG_TIMEOUT_THRESHOLD_MS) {
+                lastEventTimeRef.current = Date.now();
+                void fetchLatestSnapshot();
+            }
+        }, WATCHDOG_CHECK_INTERVAL_MS);
 
         return () => {
             disposed = true;
-            if (pollTimer !== null) {
-                window.clearTimeout(pollTimer);
-            }
+            window.clearInterval(watchdogInterval);
         };
-    }, [activeJobClientRequestId, activeJobStatus, activeJobUploadId]);
+    }, [jobStatus]);
 
     return {
         job: pdfGenerationJob,
         isCollapsed,
     };
 };
-

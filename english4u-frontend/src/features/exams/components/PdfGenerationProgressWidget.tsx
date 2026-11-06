@@ -1,4 +1,6 @@
 import { useNavigate } from 'react-router-dom';
+import { Modal, message } from 'antd';
+import { examApi } from '../services/exam.service';
 import { pdfGenerationJobStore } from './pdfGenerationJob.store';
 import {
     getStatusTone,
@@ -38,6 +40,32 @@ export const PdfGenerationProgressWidget = () => {
         navigate('/admin/exams');
     };
 
+    const handleCancel = () => {
+        Modal.confirm({
+            title: 'Hủy tiến trình tạo đề?',
+            content: 'Bạn có chắc chắn muốn hủy tiến trình tạo đề này? Thao tác này sẽ dừng tác vụ xử lý trên server.',
+            okText: 'Hủy tiến trình',
+            okType: 'danger',
+            cancelText: 'Đóng',
+            centered: true,
+            onOk: async () => {
+                const currentJob = pdfGenerationJobStore.getJob();
+                try {
+                    if (currentJob) {
+                        await examApi.cancelPdfGeneration({
+                            clientRequestId: currentJob.clientRequestId,
+                            uploadId: currentJob.uploadId,
+                        });
+                    }
+                } catch {
+                    // Ignore transient errors on cancellation
+                }
+                pdfGenerationJobStore.cancelJob();
+                message.info('Đã hủy tiến trình tạo đề.');
+            },
+        });
+    };
+
     if (isCollapsed) {
         return (
             <PdfGenerationCollapsedChip
@@ -54,6 +82,7 @@ export const PdfGenerationProgressWidget = () => {
             onClose={handleCloseWidget}
             onViewExam={handleViewExam}
             onRetry={handleRetry}
+            onCancel={handleCancel}
         />
     );
 };
