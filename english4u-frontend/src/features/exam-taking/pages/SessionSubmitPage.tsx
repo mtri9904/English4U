@@ -1,12 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-    Button,
     Card,
     Col,
-    Empty,
     Row,
     Space,
-    Typography,
     message,
 } from 'antd';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -61,7 +58,6 @@ import { SessionOverviewCard } from '../components/submit/SessionOverviewCard';
 import { WritingCriteriaCard } from '../components/submit/WritingCriteriaCard';
 import { useWritingReviewCopilot } from '../hooks/useWritingReviewCopilot';
 
-const { Paragraph } = Typography;
 
 const CLIENT_LAYOUT_CONTENT_GUTTER = 24;
 

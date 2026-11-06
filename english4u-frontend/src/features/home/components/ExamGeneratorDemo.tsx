@@ -6,6 +6,14 @@ import { FadeIn } from './FeaturesSection'
 type Tab = 'upload' | 'topic' | 'random'
 type Step = 1 | 2 | 3
 
+const DEMO_LOGS = [
+    '📂 [OCR Parser] Đang trích xuất nội dung từ tài liệu PDF khoa học...',
+    '📝 [Metrics Estimator] Đang tính toán chỉ số Flesch-Kincaid & Gunning Fog...',
+    '🤖 [QA Generator] Khởi chạy Gemma-2b sinh câu hỏi IELTS Reading và giải thích đáp án...',
+    '🔍 [Validator Agent] Đang khởi chạy Agent giải đề độc lập đối chứng độ chính xác...',
+    '✨ [Quality Control] Đề thi được duyệt thành công với độ chính xác >90%!'
+]
+
 export function ExamGeneratorDemo() {
     const [tab, setTab] = useState<Tab>('upload')
     const [step, setStep] = useState<Step>(1)
@@ -14,14 +22,6 @@ export function ExamGeneratorDemo() {
     const [topicInput, setTopicInput] = useState('')
     const [selectedSkill, setSelectedSkill] = useState('Reading')
     const [selectedDifficulty, setSelectedDifficulty] = useState('Medium')
-
-    const logs = [
-        '📂 [OCR Parser] Đang trích xuất nội dung từ tài liệu PDF khoa học...',
-        '📝 [Metrics Estimator] Đang tính toán chỉ số Flesch-Kincaid & Gunning Fog...',
-        '🤖 [QA Generator] Khởi chạy Gemma-2b sinh câu hỏi IELTS Reading và giải thích đáp án...',
-        '🔍 [Validator Agent] Đang khởi chạy Agent giải đề độc lập đối chứng độ chính xác...',
-        '✨ [Quality Control] Đề thi được duyệt thành công với độ chính xác >90%!'
-    ]
 
     useEffect(() => {
         let timer: any
@@ -46,7 +46,7 @@ export function ExamGeneratorDemo() {
             let idx = 0
             logTimer = setInterval(() => {
                 idx++
-                if (idx < logs.length) {
+                if (idx < DEMO_LOGS.length) {
                     setLogIndex(idx)
                 }
             }, 600)
@@ -350,7 +350,7 @@ export function ExamGeneratorDemo() {
                                             Đang chạy AI QA Pipeline...
                                         </h3>
                                         <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-secondary)', minHeight: 40, margin: '0 0 16px' }}>
-                                            {logs[logIndex]}
+                                            {DEMO_LOGS[logIndex]}
                                         </p>
                                         <div style={{ maxWidth: 280, margin: '0 auto' }}>
                                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--color-text-muted)', marginBottom: 6, fontWeight: 700 }}>

@@ -15,7 +15,6 @@ import type { AdminAttemptAnswerDto } from '../types/attempt.types';
 import { formatDateTimeToMinute } from '@/shared/lib/dateTime';
 
 
-const PAGE_SIZE = 10;
 
 import { STATUS_OPTIONS } from '../constants/attempt.constants';
 import { formatSeconds, getStatus, getSkill } from '../utils/attempt.utils';
@@ -56,7 +55,7 @@ interface MiniStatProps {
     color: string;
     isLoading?: boolean;
 }
-function MiniStat({ label, value, icon: Icon, color, isLoading = false }: MiniStatProps) {
+function MiniStat({ label, value, icon: Icon, color, isLoading: _isLoading = false }: MiniStatProps) {
     return (
         <div style={{
             flex: 1, minWidth: 140,
@@ -136,7 +135,6 @@ export const AttemptManagementPage = () => {
     }, [attemptStats]);
 
 
-    const totalPages = Math.ceil(totalCount / PAGE_SIZE);
     const paginated = attempts;
 
 

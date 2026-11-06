@@ -192,15 +192,19 @@ export const usePdfGenerationSync = () => {
                 void triggerRetry(store.file);
             }
         }
-    }, [pdfGenerationJob?.status, pdfGenerationJob?.message]);
+    }, [pdfGenerationJob]);
+
+    const activeJobClientRequestId = pdfGenerationJob?.clientRequestId?.trim() || null;
+    const activeJobUploadId = pdfGenerationJob?.uploadId?.trim() || null;
+    const activeJobStatus = pdfGenerationJob?.status;
 
     useEffect(() => {
-        if (!pdfGenerationJob || pdfGenerationJob.status !== 'processing') {
+        if (activeJobStatus !== 'processing') {
             return;
         }
 
-        const clientRequestId = pdfGenerationJob.clientRequestId?.trim() || null;
-        const uploadId = pdfGenerationJob.uploadId?.trim() || null;
+        const clientRequestId = activeJobClientRequestId;
+        const uploadId = activeJobUploadId;
         if (!clientRequestId && !uploadId) {
             return;
         }
@@ -273,11 +277,7 @@ export const usePdfGenerationSync = () => {
                 window.clearTimeout(pollTimer);
             }
         };
-    }, [
-        pdfGenerationJob?.clientRequestId,
-        pdfGenerationJob?.status,
-        pdfGenerationJob?.uploadId,
-    ]);
+    }, [activeJobClientRequestId, activeJobStatus, activeJobUploadId]);
 
     return {
         job: pdfGenerationJob,

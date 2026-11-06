@@ -149,12 +149,15 @@ export const DictationRunner: React.FC<DictationRunnerProps> = ({
         }
     };
 
+    const handleNextRef = useRef(handleNext);
+    handleNextRef.current = handleNext;
+
     // Hotkey listener (Ctrl+Space: Play/Replay, Enter: Check/Next)
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.key === 'Enter' && (e.ctrlKey || e.metaKey || isChecked)) {
                 e.preventDefault();
-                handleNext();
+                handleNextRef.current();
             } else if ((e.ctrlKey || e.altKey) && e.code === 'Space') {
                 e.preventDefault();
                 if (currentItem) {
@@ -165,7 +168,7 @@ export const DictationRunner: React.FC<DictationRunnerProps> = ({
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [currentItem, isChecked, isLast, evaluations, inputs, handleNext, speak]);
+    }, [currentItem, isChecked, speak]);
 
     const handleVoiceSelect = (voiceId: string) => {
         setSelectedVoiceId(voiceId);

@@ -91,6 +91,7 @@ builder.Services.AddHttpClient("CloudinaryMain");
 builder.Services.AddHttpClient("CloudinaryFeedback");
 builder.Services.AddHttpClient("CloudinaryDestroy");
 builder.Services.AddScoped<IFeedbackService, FeedbackService>();
+builder.Services.AddScoped<ILeaderboardService, LeaderboardService>();
 builder.Services.AddHttpClient<IFlashcardService, FlashcardService>();
 builder.Services.AddHttpClient<IDictationService, DictationService>();
 builder.Services.AddHttpClient<INewsService, TheGuardianNewsService>();

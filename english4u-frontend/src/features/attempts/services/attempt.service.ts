@@ -18,6 +18,10 @@ export const attemptService = {
         return callApi<PagedResult<AdminAttemptListItemDto>>('/admin/attempts', params, 'get');
     },
 
+    getStats: async (): Promise<AdminAttemptStatsDto> => {
+        return callApi<AdminAttemptStatsDto>('/admin/attempts/stats', undefined, 'get');
+    },
+
     getDetail: async (sessionId: string): Promise<AdminAttemptDetailDto> => {
         return callApi<AdminAttemptDetailDto>(`/admin/attempts/${sessionId}`, undefined, 'get', undefined, {
             timeout: 60 * 1000,

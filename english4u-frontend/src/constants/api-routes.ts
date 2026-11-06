@@ -125,4 +125,12 @@ export const ApiRouters = {
         TRANSLATE: '/news/translate',
         DICTIONARY: '/news/dictionary',
     },
+
+    LEADERBOARD: {
+        BASE: '/leaderboard',
+        ADMIN_SUMMARY: '/leaderboard/admin-summary',
+        BADGES: '/leaderboard/badges',
+        QUESTS: '/leaderboard/quests',
+        CLAIM_QUEST: (questId: string) => `/leaderboard/quests/${questId}/claim`,
+    },
 };

@@ -40,7 +40,7 @@ export const ClientWritingSessionPage: FC = () => {
         timerValueRef.current = session.timeRemaining ?? null;
         lastPersistedTimeRef.current = session.timeRemaining ?? null;
         setAutosaveLabel('Đã đồng bộ với server');
-    }, [session?.sessionId]);
+    }, [session]);
 
     useEffect(() => {
         setHeaderSlot(document.getElementById('client-page-header-slot'));
@@ -71,7 +71,7 @@ export const ClientWritingSessionPage: FC = () => {
         });
     }, [writingTasks.length]);
 
-    const flushAnswers = (includeTimerOnly = false) => {
+    const flushAnswers = useCallback((includeTimerOnly = false) => {
         if (!sessionId) {
             return;
         }
@@ -114,7 +114,7 @@ export const ClientWritingSessionPage: FC = () => {
                 setAutosaveLabel('Lưu tạm thất bại');
             },
         });
-    };
+    }, [sessionId, updateAnswersMutation]);
 
     useEffect(() => {
         const timeout = window.setInterval(() => {
@@ -122,7 +122,7 @@ export const ClientWritingSessionPage: FC = () => {
         }, 15000);
 
         return () => window.clearInterval(timeout);
-    }, [sessionId]);
+    }, [flushAnswers]);
 
     useEffect(() => {
         if (!session || session.status !== 'InProgress' || timeRemaining == null) {
@@ -146,11 +146,11 @@ export const ClientWritingSessionPage: FC = () => {
         }, 1000);
 
         return () => window.clearInterval(interval);
-    }, [session?.status, timeRemaining, navigate, sessionId]);
+    }, [session, session?.status, timeRemaining, navigate, sessionId, flushAnswers]);
 
     useEffect(() => () => {
         flushAnswers();
-    }, []);
+    }, [flushAnswers]);
 
     useEffect(() => {
         if (Object.keys(dirtyAnswersRef.current).length === 0) {
@@ -162,7 +162,7 @@ export const ClientWritingSessionPage: FC = () => {
         }, 900);
 
         return () => window.clearTimeout(timeout);
-    }, [answerMap]);
+    }, [answerMap, flushAnswers]);
 
     const handleAnswerChange = (writingTaskId: string, nextValue: string) => {
         setAnswerMap((current) => ({ ...current, [writingTaskId]: nextValue }));

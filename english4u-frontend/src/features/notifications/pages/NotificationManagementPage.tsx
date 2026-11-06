@@ -18,7 +18,6 @@ import {
 import { useAdminUsersQuery, type UserOverviewDto } from '@/features/students';
 import {
     DEFAULT_FORM,
-    PAGE_SIZE,
     LIVE_MS,
     type RoleFilter,
     type ReadFilter,
@@ -161,7 +160,6 @@ export const NotificationManagementPage = () => {
 
     const notifications = paged?.items ?? [];
     const totalCount = paged?.totalCount ?? 0;
-    const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
     const isSaving = broadcastMutation.isPending || updateMutation.isPending;
 
     const openCreate = () => {

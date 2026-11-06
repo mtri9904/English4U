@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { Card, Empty, Modal, Table, message } from 'antd';
 import { ExclamationCircleFilled } from '@ant-design/icons';
@@ -91,7 +91,7 @@ export const ExamManagement = () => {
         pageSize: filters.pageSize,
     });
 
-    const exams = pagedData?.items ?? [];
+    const exams = useMemo(() => pagedData?.items ?? [], [pagedData?.items]);
     const totalCount = pagedData?.totalCount ?? 0;
 
     const { data: examStats, isLoading: isStatsLoading } = useExamStatsQuery();
@@ -220,7 +220,7 @@ export const ExamManagement = () => {
         );
     };
 
-    const handleEdit = (id: string) => {
+    const handleEdit = useCallback((id: string) => {
         const targetExam = exams.find((e) => e.id === id);
         if (targetExam?.isPublished) {
             Modal.warning({
@@ -237,9 +237,9 @@ export const ExamManagement = () => {
             return;
         }
         navigate(`/admin/exams/edit/${id}`);
-    };
+    }, [exams, navigate]);
 
-    const handleToggleStatus = (id: string, isPublished: boolean) => {
+    const handleToggleStatus = useCallback((id: string, isPublished: boolean) => {
         updateStatusMutation.mutate(
             { id, isPublished },
             {
@@ -250,9 +250,9 @@ export const ExamManagement = () => {
                 },
             }
         );
-    };
+    }, [updateStatusMutation]);
 
-    const handleDelete = (exam: ExamDto) => {
+    const handleDelete = useCallback((exam: ExamDto) => {
         Modal.confirm({
             title: 'Xác nhận xóa đề thi',
             icon: <ExclamationCircleFilled />,
@@ -284,7 +284,7 @@ export const ExamManagement = () => {
                 }
             },
         });
-    };
+    }, [deleteMutation]);
 
     const columns = useMemo(
         () =>
@@ -298,7 +298,7 @@ export const ExamManagement = () => {
                 isDeleting: (id) =>
                     deleteMutation.isPending && deleteMutation.variables === id,
             }),
-        [navigate, updateStatusMutation, deleteMutation]
+        [navigate, updateStatusMutation, deleteMutation, handleEdit, handleDelete, handleToggleStatus]
     );
 
     return (

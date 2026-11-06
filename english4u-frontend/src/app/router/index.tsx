@@ -47,6 +47,7 @@ import {
 } from '@/features/flashcard';
 import { DictationPage } from '@/features/dictation';
 import { NewsPage } from '@/features/news';
+import { LeaderboardPage, AdminLeaderboardPage } from '@/features/leaderboard';
 import { ROUTE_PATHS } from '@/constants/route-paths';
 import { RequirePolicy } from '@/components/RequirePolicy';
 
@@ -143,6 +144,14 @@ export const appRouter = createBrowserRouter([
                 element: <AttemptManagementPage />,
             },
             {
+                path: 'leaderboard',
+                element: <AdminLeaderboardPage />,
+            },
+            {
+                path: 'gamification',
+                element: <AdminLeaderboardPage />,
+            },
+            {
                 path: 'exams/create',
                 element: <ExamEditorPage />,
             },
@@ -227,6 +236,10 @@ export const appRouter = createBrowserRouter([
             {
                 path: 'progress',
                 element: <ProgressPage />,
+            },
+            {
+                path: 'leaderboard',
+                element: <LeaderboardPage />,
             },
             {
                 path: 'dictation',

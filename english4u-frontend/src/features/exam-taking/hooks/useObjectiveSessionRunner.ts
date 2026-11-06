@@ -96,7 +96,7 @@ export const useObjectiveSessionRunner = ({
             audioResumeAppliedRef.current = false;
             lastStoredAudioSecondRef.current = -1;
         }
-    }, [expectedSkill, session?.sessionId]);
+    }, [expectedSkill, session]);
 
     useEffect(() => {
         if (!session?.sessionId) {
@@ -132,7 +132,7 @@ export const useObjectiveSessionRunner = ({
                 data: { highlights: localHighlights },
             });
         }
-    }, [serverHighlights, session?.sessionId, session?.status]);
+    }, [serverHighlights, session?.sessionId, session?.status, updateHighlightsMutation]);
 
     useEffect(() => {
         setHeaderSlot(document.getElementById('client-page-header-slot'));
@@ -163,7 +163,7 @@ export const useObjectiveSessionRunner = ({
         });
     }, [navigationItemsCount]);
 
-    const flushAnswers = (includeTimerOnly = false) => {
+    const flushAnswers = useCallback((includeTimerOnly = false) => {
         if (!sessionId) {
             return;
         }
@@ -206,7 +206,7 @@ export const useObjectiveSessionRunner = ({
                 setAutosaveLabel('Lưu tạm thất bại');
             },
         });
-    };
+    }, [sessionId, updateAnswersMutation]);
 
     useEffect(() => {
         const timeout = window.setInterval(() => {
@@ -214,7 +214,7 @@ export const useObjectiveSessionRunner = ({
         }, 15000);
 
         return () => window.clearInterval(timeout);
-    }, [sessionId]);
+    }, [flushAnswers]);
 
     useEffect(() => {
         if (!session || session.status !== 'InProgress' || timeRemaining == null) {
@@ -238,11 +238,11 @@ export const useObjectiveSessionRunner = ({
         }, 1000);
 
         return () => window.clearInterval(interval);
-    }, [session?.status, timeRemaining, navigate, sessionId]);
+    }, [session, session?.status, timeRemaining, navigate, sessionId, flushAnswers]);
 
     useEffect(() => () => {
         flushAnswers();
-    }, []);
+    }, [flushAnswers]);
 
     const handleAnswerChange = (questionId: string, nextValue: string) => {
         setAnswerMap((current) => ({ ...current, [questionId]: nextValue }));
@@ -306,7 +306,7 @@ export const useObjectiveSessionRunner = ({
         }, 900);
 
         return () => window.clearTimeout(timeout);
-    }, [answerMap]);
+    }, [answerMap, flushAnswers]);
 
     useEffect(() => {
         if (expectedSkill !== 'LISTENING' || !sessionId || !sharedListeningAudioUrl) {

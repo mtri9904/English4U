@@ -12,6 +12,7 @@ import {
     CheckCircleOutlined,
     ReloadOutlined,
     BugOutlined,
+    TrophyOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useUserProfileQuery, studentService as userApi } from '@/features/students';
@@ -300,6 +301,11 @@ export const AdminLayout: React.FC = () => {
             key: '/admin/attempts',
             icon: <PlaySquareOutlined />,
             label: 'Lượt thi',
+        },
+        {
+            key: '/admin/leaderboard',
+            icon: <TrophyOutlined />,
+            label: 'Bảng xếp hạng & Thi đua',
         },
         {
             key: '/admin/notifications',

@@ -31,7 +31,6 @@ import {
 } from '../constants/exam.constants';
 import {
     normalizeSkillToken as normalizeSkill,
-    getSessionBandScore,
     getMyExamsSkillTheme as getSkillTheme,
 } from '../utils/exam.utils';
 

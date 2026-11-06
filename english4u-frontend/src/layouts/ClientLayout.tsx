@@ -16,6 +16,7 @@ import {
     ThunderboltOutlined,
     CustomerServiceOutlined,
     GlobalOutlined,
+    TrophyOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useUserProfileQuery, studentService as userApi } from '@/features/students';
@@ -314,6 +315,11 @@ export const ClientLayout: React.FC = () => {
             key: '/app/progress',
             icon: <RiseOutlined />,
             label: 'Tiến trình học',
+        },
+        {
+            key: '/app/leaderboard',
+            icon: <TrophyOutlined />,
+            label: 'Bảng xếp hạng',
         },
         {
             key: '/app/news',

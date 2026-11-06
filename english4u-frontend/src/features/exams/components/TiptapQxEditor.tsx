@@ -4,7 +4,7 @@ import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import { Table, TableRow, TableCell, TableHeader } from '@tiptap/extension-table';
 import { mergeAttributes } from '@tiptap/core';
-import { forwardRef, useImperativeHandle, useEffect } from 'react';
+import { forwardRef, useImperativeHandle, useEffect, useCallback } from 'react';
 
 // Custom Node for [Qx]
 const QxNode = Node.create({
@@ -88,6 +88,23 @@ export interface TiptapQxEditorRef {
     isTableActive: () => boolean;
 }
 
+const escapeHtml = (text: string) => text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+const convertTextPartToHtml = (text: string) =>
+    escapeHtml(text)
+        .split(/(\[Q\d+\])/g)
+        .map((part) => {
+            const match = part.match(/^\[(Q\d+)\]$/);
+            if (match) {
+                return `<span data-qx data-label="${match[1]}">[${match[1]}]</span>`;
+            }
+            return part.replace(/\n/g, '<br />');
+        })
+        .join('');
+
 export const TiptapQxEditor = forwardRef<TiptapQxEditorRef, TiptapQxEditorProps>(({
     value,
     onChange,
@@ -102,24 +119,7 @@ export const TiptapQxEditor = forwardRef<TiptapQxEditorRef, TiptapQxEditorProps>
 }, ref) => {
     const normalizeEditorText = (text?: string | null) => normalizeMarkdownBoldText(text);
 
-    const escapeHtml = (text: string) => text
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
-
-    const convertTextPartToHtml = (text: string) =>
-        escapeHtml(text)
-            .split(/(\[Q\d+\])/g)
-            .map((part) => {
-                const match = part.match(/^\[(Q\d+)\]$/);
-                if (match) {
-                    return `<span data-qx data-label="${match[1]}">[${match[1]}]</span>`;
-                }
-                return part.replace(/\n/g, '<br />');
-            })
-            .join('');
-
-    const parseInlineTextToHtml = (text: string) => {
+    const parseInlineTextToHtml = useCallback((text: string) => {
         const normalized = normalizeEditorText(text);
         if (!enableMarkdownBold) {
             return convertTextPartToHtml(normalized);
@@ -134,7 +134,7 @@ export const TiptapQxEditor = forwardRef<TiptapQxEditorRef, TiptapQxEditorProps>
                 return convertTextPartToHtml(segment);
             })
             .join('');
-    };
+    }, [enableMarkdownBold]);
 
     const isMarkdownTableLine = (line: string) => {
         const trimmed = line.trim();
@@ -165,7 +165,7 @@ export const TiptapQxEditor = forwardRef<TiptapQxEditorRef, TiptapQxEditorProps>
     };
 
     // Convert text and markdown tables to Tiptap HTML nodes
-    const parseTextToNodes = (text: string) => {
+    const parseTextToNodes = useCallback((text: string) => {
         const sourceText = convertLegacyMixedJson(text || '');
         const lines = sourceText.split(/\r?\n/);
         const htmlParts: string[] = [];
@@ -216,10 +216,10 @@ export const TiptapQxEditor = forwardRef<TiptapQxEditorRef, TiptapQxEditorProps>
         flushTable();
 
         return htmlParts.join('') || '<p></p>';
-    };
+    }, [parseInlineTextToHtml]);
 
     // Convert HTML back to text with Markdown tables and [Qx]
-    const serializeToText = (html: string) => {
+    const serializeToText = useCallback((html: string) => {
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, 'text/html');
 
@@ -271,7 +271,7 @@ export const TiptapQxEditor = forwardRef<TiptapQxEditorRef, TiptapQxEditorProps>
         }
 
         return lines.join('\n');
-    };
+    }, [enableMarkdownBold]);
 
     const editor = useEditor({
         editable,
@@ -408,7 +408,7 @@ export const TiptapQxEditor = forwardRef<TiptapQxEditorRef, TiptapQxEditorProps>
         if (normalizedValue !== currentSerialized || shouldNormalizeMarkdownBold || (hasTableInValue !== hasTableInHtml)) {
             editor.commands.setContent(parseTextToNodes(normalizedValue));
         }
-    }, [value, editor, enableMarkdownBold]);
+    }, [value, editor, enableMarkdownBold, parseTextToNodes, serializeToText]);
 
     useEffect(() => {
         if (editor && editor.isEditable !== editable) {

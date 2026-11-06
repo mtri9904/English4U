@@ -29,7 +29,7 @@ export const ObjectiveRunnerHeaderToolbar: React.FC<ObjectiveRunnerHeaderToolbar
     examTitle,
     skillType,
     timerText,
-    autosaveLabel,
+    autosaveLabel: _autosaveLabel,
     isListeningSession,
     sharedListeningAudioUrl,
     listeningAttemptMode,

@@ -20,7 +20,7 @@ export const WritingRunnerHeaderToolbar: React.FC<WritingRunnerHeaderToolbarProp
     examTitle,
     skillType,
     timerText,
-    autosaveLabel,
+    autosaveLabel: _autosaveLabel,
     isPending,
     onBack,
     onFinish,

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
     Card,
     Button,
@@ -107,6 +107,9 @@ export const FlashcardStudyPage: React.FC = () => {
         }
     };
 
+    const handleRateRef = useRef(handleRate);
+    handleRateRef.current = handleRate;
+
     // Keyboard shortcuts for Flashcard Flip
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
@@ -115,15 +118,15 @@ export const FlashcardStudyPage: React.FC = () => {
                 e.preventDefault();
                 setIsFlipped((prev) => !prev);
             } else if (isFlipped) {
-                if (e.key === '1') handleRate(1);
-                if (e.key === '2') handleRate(2);
-                if (e.key === '3') handleRate(3);
+                if (e.key === '1') handleRateRef.current(1);
+                if (e.key === '2') handleRateRef.current(2);
+                if (e.key === '3') handleRateRef.current(3);
             }
         };
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [isFlipped, mode, currentIndex, currentCard]);
+    }, [isFlipped, mode]);
 
     // Sentence Writing with AI
     const handleCheckSentence = async () => {

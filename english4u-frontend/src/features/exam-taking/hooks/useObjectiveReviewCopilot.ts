@@ -204,6 +204,9 @@ export const useObjectiveReviewCopilot = ({
         setCopilotOpen(false);
     };
 
+    const openCopilotRef = useRef(openCopilot);
+    openCopilotRef.current = openCopilot;
+
     useEffect(() => {
         const handleInsertSelectionShortcut = (event: KeyboardEvent) => {
             if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'l') {
@@ -218,7 +221,7 @@ export const useObjectiveReviewCopilot = ({
             event.preventDefault();
             setCopilotSelectedText(nextSelectedText);
             if (!copilotOpen) {
-                openCopilot();
+                openCopilotRef.current();
                 return;
             }
             setCopilotComposerFocusSignal((current) => current + 1);

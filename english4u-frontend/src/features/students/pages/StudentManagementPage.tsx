@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import {
     Avatar,
@@ -106,16 +106,16 @@ export const StudentManagementPage = () => {
     const deleteMutation = useDeleteAdminUserMutation();
     const updateUserRoleMutation = useUpdateUserRoleMutation();
 
-    const handleToggleStatus = async (id: string, currentStatus: boolean) => {
+    const handleToggleStatus = useCallback(async (id: string, currentStatus: boolean) => {
         try {
             await toggleStatusMutation.mutateAsync({ id, payload: { isLocked: currentStatus } });
             message.success('Đã cập nhật trạng thái học viên');
         } catch {
             message.error('Cập nhật thất bại');
         }
-    };
+    }, [toggleStatusMutation]);
 
-    const handleDeleteUser = (id: string, email: string) => {
+    const handleDeleteUser = useCallback((id: string, email: string) => {
         confirm({
             title: 'Xóa tài khoản học viên',
             content: `Bạn có chắc chắn muốn xóa vĩnh viễn tài khoản ${email}? Hành động này không thể hoàn tác.`,
@@ -131,16 +131,16 @@ export const StudentManagementPage = () => {
                 }
             },
         });
-    };
+    }, [deleteMutation]);
 
-    const handleUpdateRole = async (id: string, newRole: string) => {
+    const handleUpdateRole = useCallback(async (id: string, newRole: string) => {
         try {
             await updateUserRoleMutation.mutateAsync({ id, payload: { role: newRole } });
             message.success(`Đã cập nhật vai trò: ${getRoleVisual(newRole).label}`);
         } catch {
             message.error('Cập nhật vai trò thất bại');
         }
-    };
+    }, [updateUserRoleMutation]);
 
     const columns = useMemo(
         () =>
@@ -158,6 +158,9 @@ export const StudentManagementPage = () => {
             updateUserRoleMutation.isPending,
             updateUserRoleMutation.variables,
             toggleStatusMutation.isPending,
+            handleToggleStatus,
+            handleDeleteUser,
+            handleUpdateRole,
         ]
     );
 

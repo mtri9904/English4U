@@ -104,7 +104,7 @@ export interface TablePaginationOptions {
 }
 
 /**
- * 2. Pagination configuration helper for Ant Design Table: <Table pagination={createTablePagination({...})} />
+ * Pagination configuration helper for Ant Design Table: <Table pagination={createTablePagination({...})} />
  */
 export const createTablePagination = ({
     current,

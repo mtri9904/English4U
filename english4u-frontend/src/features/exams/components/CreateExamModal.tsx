@@ -4,7 +4,6 @@ import { PlusOutlined, ExclamationCircleFilled } from '@ant-design/icons';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     useCreateExamMutation,
-    useGenerateListeningTranscriptMutation,
     useUpdateExamMutation,
 } from '@/features/exams/hooks/useExamQueries';
 import { uploadToCloudinary } from '@/shared/lib/cloudinary';
@@ -31,7 +30,6 @@ import {
     SpeakingSectionEditor,
     WritingSectionEditor,
 } from './exam-editor/SectionEditors';
-import { serializeListeningTranscriptData, splitListeningTranscriptSegmentsByPart } from '@/shared/lib/listeningTranscript';
 import type { TiptapQxEditorRef } from './TiptapQxEditor';
 import { normalizeSkillType } from '@/shared/lib/examDisplay';
 
@@ -44,7 +42,6 @@ interface Props {
 export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
     const createMutation = useCreateExamMutation();
     const updateMutation = useUpdateExamMutation();
-    const generateListeningTranscriptMutation = useGenerateListeningTranscriptMutation();
     const activeEditorRef = useRef<TiptapQxEditorRef | null>(null);
     const [uploading, setUploading] = useState(false);
     const [globalAudioUrl, setGlobalAudioUrl] = useState<string | null>(null);
@@ -134,37 +131,6 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
             ...prev,
             sections: prev.sections.map((s, i) => (i === sIdx ? { ...s, ...partial } : s)),
         }));
-    };
-
-    const handleGenerateListeningTranscript = async (
-        audioUrl: string,
-        listeningParts?: CreateSectionDto['listeningParts'],
-    ) => {
-        if (!audioUrl.trim()) {
-            throw new Error('Chưa có audio URL để tạo transcript.');
-        }
-
-        try {
-            const result = await generateListeningTranscriptMutation.mutateAsync({
-                audioUrl: audioUrl.trim(),
-                language: 'en',
-            });
-
-            const partCount = Math.max(1, listeningParts?.length ?? 1);
-            const splitResult = splitListeningTranscriptSegmentsByPart(result.segments, partCount);
-            message.success(
-                splitResult.usedDetectedBoundaries
-                    ? `Đã sinh ${result.segmentCount} transcript segments và chia thành ${partCount} part. AI review sẽ tự suy luận evidence/replay theo part + câu hỏi + đáp án.`
-                    : `Đã sinh ${result.segmentCount} transcript segments. Chưa thấy marker chia part rõ, AI review sẽ fallback suy luận trong transcript audio.`,
-            );
-            return splitResult.segmentsByPart.map((partSegments) =>
-                serializeListeningTranscriptData({
-                    segments: partSegments,
-                }),
-            );
-        } catch (error: any) {
-            throw new Error(error?.response?.data?.message || 'Không thể generate transcript từ audio.');
-        }
     };
 
     const handleAddSection = (skill: SkillType) => {
