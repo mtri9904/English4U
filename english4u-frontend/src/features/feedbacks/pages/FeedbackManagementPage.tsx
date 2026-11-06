@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Button } from 'antd';
 import { RotateCw } from 'lucide-react';
+import { PageErrorState } from '@/components';
 import { useUrlFilters } from '@/shared/hooks';
 import type { FeedbackListItem } from '../types/feedback.types';
 import {
@@ -42,6 +43,7 @@ export const FeedbackManagementPage: React.FC = () => {
     const {
         data: pagedData,
         isLoading: isListLoading,
+        isError: isListError,
         isFetching: isListFetching,
         refetch: refetchList,
     } = useAdminFeedbacksQuery({
@@ -91,14 +93,23 @@ export const FeedbackManagementPage: React.FC = () => {
             />
 
             {/* Table */}
-            <AdminFeedbackTable
-                pagedData={pagedData}
-                isLoading={isListLoading}
-                page={filters.page}
-                pageSize={filters.pageSize}
-                onPageChange={(page, pageSize) => setFilters({ page, pageSize })}
-                onSelectFeedback={(item: FeedbackListItem) => setSelectedFeedbackId(item.id)}
-            />
+            {isListError ? (
+                <PageErrorState
+                    title="Không thể tải danh sách phản hồi"
+                    subTitle="Đã có sự cố khi kết nối tới máy chủ. Vui lòng bấm thử lại."
+                    status="warning"
+                    onRetry={() => handleRefresh()}
+                />
+            ) : (
+                <AdminFeedbackTable
+                    pagedData={pagedData}
+                    isLoading={isListLoading}
+                    page={filters.page}
+                    pageSize={filters.pageSize}
+                    onPageChange={(page, pageSize) => setFilters({ page, pageSize })}
+                    onSelectFeedback={(item: FeedbackListItem) => setSelectedFeedbackId(item.id)}
+                />
+            )}
 
             {/* Resolution Drawer */}
             <AdminFeedbackDrawer

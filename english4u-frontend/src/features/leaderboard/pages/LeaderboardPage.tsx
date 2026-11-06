@@ -1,6 +1,7 @@
 import React from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Tabs, Segmented, Spin, Alert, Empty } from 'antd';
+import { Tabs, Segmented, Spin, Empty } from 'antd';
+import { PageErrorState } from '@/components';
 import {
     TrophyFilled,
     FireFilled,
@@ -199,17 +200,13 @@ export const LeaderboardPage: React.FC = () => {
                                         <Spin size="large" tip="Đang tải dữ liệu Bảng xếp hạng..." />
                                     </div>
                                 ) : isError ? (
-                                    <Alert
-                                        type="error"
-                                        message="Không thể tải Bảng xếp hạng"
-                                        description="Đã xảy ra sự cố kết nối. Vui lòng bấm thử lại."
-                                        action={
-                                            <a onClick={() => refetch()} style={{ fontWeight: 700 }}>
-                                                Thử lại
-                                            </a>
-                                        }
-                                        showIcon
-                                    />
+                                    <div style={{ padding: '24px 0' }}>
+                                        <PageErrorState
+                                            title="Úi, có lỗi rồi!"
+                                            subTitle="Bảng xếp hạng chưa tải được. Đừng lo, kết quả học tập của bạn vẫn an toàn!"
+                                            onRetry={() => refetch()}
+                                        />
+                                    </div>
                                 ) : rankings.length === 0 ? (
                                     <Empty description="Chưa có dữ liệu xếp hạng trong thời gian này." />
                                 ) : (

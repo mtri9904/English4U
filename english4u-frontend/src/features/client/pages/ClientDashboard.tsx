@@ -187,18 +187,16 @@ export const ClientDashboard: React.FC = () => {
 
     if (isError) {
         return (
-            <div className="dashboard-shell">
+            <div className="dashboard-shell" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 'calc(80vh - 120px)' }}>
                 <style>{dashboardStyles}</style>
-                <div style={{ maxWidth: 640, margin: '60px auto' }}>
-                    <PageErrorState
-                        title="Không thể tải bảng điều khiển"
-                        subTitle="Đã có lỗi xảy ra khi nạp thông tin học viên. Vui lòng thử lại."
-                        onRetry={() => {
-                            refetchProfile();
-                            refetchDashboard();
-                        }}
-                    />
-                </div>
+                <PageErrorState
+                    title="Không thể tải bảng điều khiển"
+                    subTitle="Đã có lỗi xảy ra khi nạp thông tin học viên. Vui lòng thử lại."
+                    onRetry={() => {
+                        refetchProfile();
+                        refetchDashboard();
+                    }}
+                />
             </div>
         );
     }

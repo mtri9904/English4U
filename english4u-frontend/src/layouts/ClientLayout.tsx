@@ -92,6 +92,12 @@ export const ClientLayout: React.FC = () => {
     }, [isNotificationOpen, stopRinging]);
 
     useEffect(() => {
+        const handleOpenFeedback = () => setIsFeedbackModalOpen(true);
+        window.addEventListener('english4u:open-feedback', handleOpenFeedback);
+        return () => window.removeEventListener('english4u:open-feedback', handleOpenFeedback);
+    }, []);
+
+    useEffect(() => {
         const checkMobile = () => setIsMobile(window.innerWidth < 768);
         checkMobile();
         window.addEventListener('resize', checkMobile);

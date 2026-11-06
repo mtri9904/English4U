@@ -22,6 +22,7 @@ import {
 } from '@ant-design/icons';
 import { Activity, Crown, Sparkles, Users } from 'lucide-react';
 import { createTablePagination } from '@/components/AppPagination';
+import { PageErrorState } from '@/components';
 import {
     useAdminStatsQuery,
     useAdminUsersQuery,
@@ -92,7 +93,7 @@ export const StudentManagementPage = () => {
     const { data: stats, isLoading: isStatsLoading } = useAdminStatsQuery({
         refetchOnWindowFocus: false,
     });
-    const { data: pagedData, isLoading: isTableLoading } = useAdminUsersQuery(queryParams, {
+    const { data: pagedData, isLoading: isTableLoading, isError: isTableError, refetch: refetchUsers } = useAdminUsersQuery(queryParams, {
         refetchOnWindowFocus: false,
     });
     const { data: selectedStudent, isLoading: isDetailLoading } = useAdminUserDetailQuery(
@@ -300,22 +301,32 @@ export const StudentManagementPage = () => {
 
             <motion.div variants={itemVariants}>
                 <Card styles={{ body: { padding: '16px 20px 20px 20px' } }} style={{ borderRadius: '14px', border: '1px solid #e2e8f0', background: '#fff' }}>
-                    <Table
-                        columns={columns}
-                        dataSource={pagedData?.items || []}
-                        loading={isTableLoading}
-                        rowKey="id"
-                        pagination={createTablePagination({
-                            current: filters.page,
-                            pageSize: filters.pageSize,
-                            total: pagedData?.totalCount || 0,
-                            onChange: (p, s) => {
-                                setFilters({ page: p, pageSize: s });
-                            },
-                            entityLabel: 'học viên',
-                        })}
-                        scroll={{ x: 'max-content' }}
-                    />
+                    {isTableError ? (
+                        <PageErrorState
+                            title="Không thể tải danh sách học viên"
+                            subTitle="Đã có lỗi khi kết nối tới máy chủ. Vui lòng bấm thử lại."
+                            status="warning"
+                            onRetry={() => refetchUsers()}
+                            bordered={false}
+                        />
+                    ) : (
+                        <Table
+                            columns={columns}
+                            dataSource={pagedData?.items || []}
+                            loading={isTableLoading}
+                            rowKey="id"
+                            pagination={createTablePagination({
+                                current: filters.page,
+                                pageSize: filters.pageSize,
+                                total: pagedData?.totalCount || 0,
+                                onChange: (p, s) => {
+                                    setFilters({ page: p, pageSize: s });
+                                },
+                                entityLabel: 'học viên',
+                            })}
+                            scroll={{ x: 'max-content' }}
+                        />
+                    )}
                 </Card>
             </motion.div>
 

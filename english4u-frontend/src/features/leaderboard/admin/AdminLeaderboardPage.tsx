@@ -1,6 +1,7 @@
 import React from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Segmented, Button, Tabs, Spin, Alert, Card } from 'antd';
+import { Segmented, Button, Tabs, Spin, Card } from 'antd';
+import { PageErrorState } from '@/components';
 import {
     TrophyFilled,
     FireFilled,
@@ -203,18 +204,14 @@ export const AdminLeaderboardPage: React.FC = () => {
                     </div>
                 </div>
             ) : isError ? (
-                <Alert
-                    type="error"
-                    showIcon
-                    message="Không thể tải dữ liệu bảng xếp hạng"
-                    description="Đã có lỗi xảy ra khi truy vấn dữ liệu từ máy chủ. Vui lòng kiểm tra lại kết nối mạng hoặc thử lại sau."
-                    action={
-                        <Button type="primary" danger onClick={() => refetch()}>
-                            Thử lại
-                        </Button>
-                    }
-                    style={{ borderRadius: '12px', marginBottom: '24px' }}
-                />
+                <div style={{ marginBottom: '24px' }}>
+                    <PageErrorState
+                        title="Không thể tải dữ liệu bảng xếp hạng"
+                        subTitle="Đã có lỗi xảy ra khi truy vấn dữ liệu từ máy chủ. Vui lòng kiểm tra lại kết nối mạng hoặc thử lại sau."
+                        status="warning"
+                        onRetry={() => refetch()}
+                    />
+                </div>
             ) : data ? (
                 <div>
                     {/* KPI Stat Cards */}

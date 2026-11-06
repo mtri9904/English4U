@@ -26,6 +26,7 @@ import { ExamPdfUploadModal } from '../components/management/ExamPdfUploadModal'
 import { createExamColumns } from '../configs/exam.columns';
 import { createTablePagination } from '@/components/AppPagination';
 import { APP_EMPTY_IMAGE } from '@/components/AppEmpty';
+import { PageErrorState } from '@/components';
 
 const containerVariants = {
     hidden: { opacity: 0 },
@@ -84,7 +85,7 @@ export const ExamManagement = () => {
     const isPublishedParam =
         filters.publish === 'PUBLISHED' ? true : filters.publish === 'DRAFT' ? false : undefined;
 
-    const { data: pagedData, isLoading } = useExamsQuery({
+    const { data: pagedData, isLoading, isError, refetch } = useExamsQuery({
         search: filters.search.trim() || undefined,
         searchTerm: filters.search.trim() || undefined,
         skill: filters.skill !== 'ALL' ? filters.skill : undefined,
@@ -368,32 +369,42 @@ export const ExamManagement = () => {
                             onResetFilters={resetFilters}
                         />
 
-                        <Table
-                            rowKey="id"
-                            columns={columns}
-                            dataSource={exams}
-                            loading={isLoading}
-                            scroll={{ x: 'max-content' }}
-                            pagination={createTablePagination({
-                                current: filters.page,
-                                pageSize: filters.pageSize,
-                                total: totalCount,
-                                onChange: (page, size) => {
-                                    setFilters({ page, pageSize: size });
-                                },
-                                entityLabel: 'đề thi',
-                                pageSizeOptions: ['10', '20', '50'],
-                            })}
-                            locale={{
-                                emptyText: (
-                                    <Empty
-                                        image={APP_EMPTY_IMAGE}
-                                        imageStyle={{ height: 96 }}
-                                        description={<span style={{ color: '#94a3b8' }}>Chưa có đề thi phù hợp bộ lọc.</span>}
-                                    />
-                                ),
-                            }}
-                        />
+                        {isError ? (
+                            <PageErrorState
+                                title="Không thể tải danh sách đề thi"
+                                subTitle="Đã có sự cố khi kết nối đến máy chủ. Vui lòng bấm thử lại."
+                                status="warning"
+                                onRetry={() => refetch()}
+                                bordered={false}
+                            />
+                        ) : (
+                            <Table
+                                rowKey="id"
+                                columns={columns}
+                                dataSource={exams}
+                                loading={isLoading}
+                                scroll={{ x: 'max-content' }}
+                                pagination={createTablePagination({
+                                    current: filters.page,
+                                    pageSize: filters.pageSize,
+                                    total: totalCount,
+                                    onChange: (page, size) => {
+                                        setFilters({ page, pageSize: size });
+                                    },
+                                    entityLabel: 'đề thi',
+                                    pageSizeOptions: ['10', '20', '50'],
+                                })}
+                                locale={{
+                                    emptyText: (
+                                        <Empty
+                                            image={APP_EMPTY_IMAGE}
+                                            imageStyle={{ height: 96 }}
+                                            description={<span style={{ color: '#94a3b8' }}>Chưa có đề thi phù hợp bộ lọc.</span>}
+                                        />
+                                    ),
+                                }}
+                            />
+                        )}
                     </Card>
                 </motion.div>
             </motion.div>

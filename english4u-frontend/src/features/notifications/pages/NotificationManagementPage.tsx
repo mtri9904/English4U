@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { AppPagination } from '@/components/AppPagination';
 import { APP_EMPTY_IMAGE } from '@/components/AppEmpty';
+import { PageErrorState } from '@/components';
 import {
     useAdminNotificationStatsQuery,
     useAdminNotificationsQuery,
@@ -141,6 +142,7 @@ export const NotificationManagementPage = () => {
     const {
         data: paged,
         isLoading,
+        isError,
         isFetching,
         refetch,
     } = useAdminNotificationsQuery(queryParams, {
@@ -352,6 +354,13 @@ export const NotificationManagementPage = () => {
                             </div>
                         ))}
                     </div>
+                ) : isError ? (
+                    <PageErrorState
+                        title="Không thể tải danh sách thông báo"
+                        subTitle="Đã có sự cố khi kết nối đến máy chủ. Vui lòng bấm thử lại."
+                        status="warning"
+                        onRetry={() => refetch()}
+                    />
                 ) : notifications.length === 0 ? (
                     <div style={{ background: '#fff', borderRadius: 20, border: '1px solid #f1f5f9', padding: '48px 0' }}>
                         <Empty

@@ -213,7 +213,7 @@ export const ClientWritingSessionPage: FC = () => {
 
     if (isError || !session) {
         return (
-            <div style={{ maxWidth: 640, margin: '60px auto' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 'calc(75vh)', width: '100%' }}>
                 <PageErrorState
                     title="Không tìm thấy phiên thi Writing"
                     onRetry={() => refetch()}

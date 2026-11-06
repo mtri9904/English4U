@@ -13,6 +13,7 @@ import { fetchNewsFromBackend, NEWS_CATEGORIES } from '../services/news.service'
 import { NewsCard } from '../components/NewsCard';
 import { NewsHeroBanner } from '../components/NewsHeroBanner';
 import { NewsDetailModal } from '../components/NewsDetailModal';
+import { PageErrorState } from '@/components';
 
 export const NewsPage: React.FC = () => {
     const [selectedCategory, setSelectedCategory] = useState<NewsCategory>('all');
@@ -23,6 +24,7 @@ export const NewsPage: React.FC = () => {
     const [hasMore, setHasMore] = useState<boolean>(true);
     const [isLoading, setIsLoading] = useState<boolean>(true);
     const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
+    const [isError, setIsError] = useState<boolean>(false);
     const [selectedArticle, setSelectedArticle] = useState<NewsItem | null>(null);
     const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
 
@@ -38,6 +40,7 @@ export const NewsPage: React.FC = () => {
 
     const loadInitialNews = useCallback(async (category: NewsCategory, search: string) => {
         setIsLoading(true);
+        setIsError(false);
         setCurrentPage(1);
         try {
             // First page: 10 articles (1 Hero featured article + 9 grid articles)
@@ -48,6 +51,7 @@ export const NewsPage: React.FC = () => {
         } catch {
             setArticles([]);
             setHasMore(false);
+            setIsError(true);
         } finally {
             setIsLoading(false);
         }
@@ -258,6 +262,15 @@ export const NewsPage: React.FC = () => {
                     <div style={{ color: '#64748b', fontSize: '14px', fontWeight: 600 }}>
                         Đang lấy toàn văn bài viết từ The Guardian Content API...
                     </div>
+                </div>
+            ) : isError && articles.length === 0 ? (
+                <div style={{ padding: '30px 0' }}>
+                    <PageErrorState
+                        title="Không thể tải tin tức"
+                        subTitle="Đã có lỗi khi kết nối tới dịch vụ tin tức The Guardian. Vui lòng bấm thử lại."
+                        status="warning"
+                        onRetry={() => loadInitialNews(selectedCategory, debouncedKeyword)}
+                    />
                 </div>
             ) : articles.length === 0 ? (
                 <div style={{ padding: '60px 0', background: '#fff', borderRadius: '16px', border: '1px solid #e2e8f0' }}>

@@ -77,7 +77,7 @@ export const ClientProfilePage = () => {
 
     if (isError || !profile) {
         return (
-            <div style={{ maxWidth: 600, margin: '60px auto' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 'calc(75vh)', width: '100%' }}>
                 <PageErrorState
                     title="Không thể tải thông tin hồ sơ"
                     onRetry={() => refetch()}
