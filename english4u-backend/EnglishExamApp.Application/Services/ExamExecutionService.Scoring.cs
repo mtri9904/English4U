@@ -607,21 +607,35 @@ public sealed partial class ExamExecutionService
                     && (item.Status == "Completed" || item.Status == "Scored"),
                 cancellationToken);
 
+        // Calculate and accumulate XP silently in the background
+        var xpAwarded = UserGamificationCalculator.CalculateExperienceReward(result.TotalBandScore, result.AccuracyPercent);
+        var prevXp = user.ExperiencePoints;
+        var prevLevel = Math.Max(1, (prevXp / 150) + 1);
+
+        user.ExperiencePoints += xpAwarded;
         UpdateDailyStreak(user, DateTime.UtcNow);
         user.UpdatedAt = DateTime.UtcNow;
 
         await context.SaveChangesAsync(cancellationToken);
 
+        var currentXp = user.ExperiencePoints;
+        var currentLevel = Math.Max(1, (currentXp / 150) + 1);
+        var levelUpOccurred = currentLevel > prevLevel;
+        var xpInLevel = currentXp % 150;
+        var nextLevelXp = currentLevel * 150;
+        var xpToNext = Math.Max(0, nextLevelXp - currentXp);
+        var progressPercent = Math.Round((double)xpInLevel * 100 / 150, 1);
+
         return new PracticeSessionRewardDto(
-            0,
+            xpAwarded,
             !hasPriorCompletedAttempt,
-            false,
-            0,
-            1,
-            0,
-            0,
-            0,
-            0,
+            levelUpOccurred,
+            currentXp,
+            currentLevel,
+            (currentLevel - 1) * 150,
+            nextLevelXp,
+            xpToNext,
+            progressPercent,
             user.DailyStreakCount,
             user.LongestStreakCount);
     }

@@ -34,7 +34,6 @@ import { formatDateTimeToMinute } from '@/shared/lib/dateTime';
 import {
     WRITING_SUBMIT_MIN_WORDS,
     countWords,
-    formatRewardSummary,
     formatSeconds,
     getInvalidWritingTaskNumbers,
     getSessionStatusLabel,
@@ -53,7 +52,6 @@ import { WritingScoringLoadingCard } from '../components/submit/WritingScoringLo
 import { WritingSummaryCard } from '../components/submit/WritingSummaryCard';
 import { ObjectiveSummaryCard } from '../components/submit/ObjectiveSummaryCard';
 import { SubmitHeaderToolbar } from '../components/submit/SubmitHeaderToolbar';
-import { SubmitRewardAlert } from '../components/submit/SubmitRewardAlert';
 import { SessionOverviewCard } from '../components/submit/SessionOverviewCard';
 import { WritingCriteriaCard } from '../components/submit/WritingCriteriaCard';
 import { useWritingReviewCopilot } from '../hooks/useWritingReviewCopilot';
@@ -95,7 +93,6 @@ export const ClientSessionSubmitPage = () => {
         : isSpeakingSession
             ? submitSpeakingMutation.data
             : submitMutation.data;
-    const latestReward = latestMutationResult?.reward ?? null;
     const result = session?.result ?? latestMutationResult ?? null;
     const canRetryWritingScore = isWritingSession && session?.status === 'Submitted' && result?.writingScore == null;
     const canSubmitNow = !!session && (session.status === 'InProgress' || canRetryWritingScore) && isSupportedRunnerSkill(session.skillType);
@@ -158,15 +155,14 @@ export const ClientSessionSubmitPage = () => {
                 ? submitSpeakingMutation
                 : submitMutation;
         mutation.mutate(sessionId, {
-            onSuccess: (submitResult) => {
+            onSuccess: () => {
                 refetch();
-                const rewardSummary = formatRewardSummary(submitResult.reward);
                 message.success(
                     isWritingSkill(session.skillType)
-                        ? (rewardSummary ? `Writing đã chấm xong. ${rewardSummary}` : 'Writing đã chấm xong.')
+                        ? 'Writing đã chấm xong.'
                         : isSpeakingSkill(session.skillType)
-                            ? (rewardSummary ? `Speaking đã chấm xong. ${rewardSummary}` : 'Speaking đã chấm xong.')
-                            : (rewardSummary ? `Đã tự động nộp bài. ${rewardSummary}` : 'Đã tự động nộp bài.'),
+                            ? 'Speaking đã chấm xong.'
+                            : 'Đã tự động nộp bài.',
                 );
             },
             onError: (error: any) => {
@@ -253,14 +249,9 @@ export const ClientSessionSubmitPage = () => {
                 onSubmit={() => {
                     const mutation = canRescoreSpeaking ? rescoreSpeakingMutation : submitSpeakingMutation;
                     mutation.mutate(sessionId, {
-                        onSuccess: (submitResult) => {
+                        onSuccess: () => {
                             refetch();
-                            const rewardSummary = formatRewardSummary(submitResult.reward);
-                            message.success(
-                                canRescoreSpeaking
-                                    ? (rewardSummary ? `Đã chấm lại Speaking. ${rewardSummary}` : 'Đã chấm lại Speaking.')
-                                    : (rewardSummary ? `Đã nộp bài Speaking. ${rewardSummary}` : 'Đã nộp bài Speaking.'),
-                            );
+                            message.success(canRescoreSpeaking ? 'Đã chấm lại Speaking.' : 'Đã nộp bài Speaking.');
                         },
                         onError: (error: any) => {
                             refetch();
@@ -358,10 +349,9 @@ export const ClientSessionSubmitPage = () => {
             }
 
             submitWritingMutation.mutate(sessionId, {
-                onSuccess: (submitResult) => {
+                onSuccess: () => {
                     refetch();
-                    const rewardSummary = formatRewardSummary(submitResult.reward);
-                    message.success(rewardSummary ? `Đã chấm xong Writing. ${rewardSummary}` : 'Đã chấm xong Writing.');
+                    message.success('Đã chấm xong Writing.');
                 },
                 onError: (error: any) => {
                     refetch();
@@ -379,10 +369,9 @@ export const ClientSessionSubmitPage = () => {
 
         if (isObjectiveSkill(session.skillType)) {
             submitMutation.mutate(sessionId, {
-                onSuccess: (submitResult) => {
+                onSuccess: () => {
                     refetch();
-                    const rewardSummary = formatRewardSummary(submitResult.reward);
-                    message.success(rewardSummary ? `Đã nộp bài. ${rewardSummary}` : 'Đã nộp bài thành công.');
+                    message.success('Đã nộp bài thành công.');
                 },
             });
         }
@@ -423,8 +412,6 @@ export const ClientSessionSubmitPage = () => {
                 }}
             >
                 <Space direction="vertical" size={20} style={{ width: '100%' }}>
-                    <SubmitRewardAlert reward={latestReward} />
-
                     {showWritingScoringView ? (
                         <WritingScoringLoadingCard
                             activeSubmitLoading={activeSubmitLoading}

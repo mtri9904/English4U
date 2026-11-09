@@ -1,12 +1,12 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Input, Button, Spin, Empty, Tag } from 'antd';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Input, Button, Empty, Tabs, Skeleton, Tag } from 'antd';
 import {
     SearchOutlined,
-    GlobalOutlined,
-    BookOutlined,
-    ThunderboltOutlined,
-    ReadOutlined,
     DownOutlined,
+    BookOutlined,
+    GlobalOutlined,
+    ReadOutlined,
+    ThunderboltOutlined,
 } from '@ant-design/icons';
 import type { NewsCategory, NewsItem } from '../types/news.types';
 import { fetchNewsFromBackend, NEWS_CATEGORIES } from '../services/news.service';
@@ -14,6 +14,65 @@ import { NewsCard } from '../components/NewsCard';
 import { NewsHeroBanner } from '../components/NewsHeroBanner';
 import { NewsDetailModal } from '../components/NewsDetailModal';
 import { PageErrorState } from '@/components';
+
+interface CategoryCacheEntry {
+    items: NewsItem[];
+    hasMore: boolean;
+    page: number;
+}
+
+const NewsSkeletonGrid: React.FC = () => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
+        {/* Hero Banner Skeleton */}
+        <div
+            style={{
+                background: '#ffffff',
+                borderRadius: '20px',
+                padding: '24px',
+                border: '1px solid #e2e8f0',
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+                gap: '24px',
+                minHeight: '260px',
+            }}
+        >
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <Skeleton.Button active style={{ width: '120px', height: '24px', borderRadius: '8px' }} />
+                <Skeleton active title={{ width: '85%' }} paragraph={{ rows: 3 }} />
+                <Skeleton.Button active style={{ width: '140px', height: '36px', borderRadius: '8px' }} />
+            </div>
+            <div style={{ background: '#f8fafc', borderRadius: '16px', minHeight: '180px' }} />
+        </div>
+
+        {/* Grid Skeletons */}
+        <div
+            style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+                gap: '20px',
+            }}
+        >
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+                <div
+                    key={i}
+                    style={{
+                        background: '#ffffff',
+                        borderRadius: '16px',
+                        border: '1px solid #e2e8f0',
+                        padding: '16px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '12px',
+                        minHeight: '280px',
+                    }}
+                >
+                    <div style={{ height: '160px', background: '#f8fafc', borderRadius: '12px' }} />
+                    <Skeleton active title={{ width: '75%' }} paragraph={{ rows: 2 }} />
+                </div>
+            ))}
+        </div>
+    </div>
+);
 
 export const NewsPage: React.FC = () => {
     const [selectedCategory, setSelectedCategory] = useState<NewsCategory>('all');
@@ -28,6 +87,9 @@ export const NewsPage: React.FC = () => {
     const [selectedArticle, setSelectedArticle] = useState<NewsItem | null>(null);
     const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
 
+    // In-memory cache per category/keyword to ensure instant 0ms tab switching and prevent UI layout jumps
+    const categoryCacheRef = useRef<Map<string, CategoryCacheEntry>>(new Map());
+
     // Debounce search input to avoid redundant API queries while typing
     useEffect(() => {
         const timer = setTimeout(() => {
@@ -39,6 +101,19 @@ export const NewsPage: React.FC = () => {
     const PAGE_SIZE = 10;
 
     const loadInitialNews = useCallback(async (category: NewsCategory, search: string) => {
+        const cacheKey = `${category}:${search.trim().toLowerCase()}`;
+
+        // If category is already in memory, switch immediately with zero network delay and zero jank
+        if (categoryCacheRef.current.has(cacheKey)) {
+            const cached = categoryCacheRef.current.get(cacheKey)!;
+            setArticles(cached.items);
+            setHasMore(cached.hasMore);
+            setCurrentPage(cached.page);
+            setIsLoading(false);
+            setIsError(false);
+            return;
+        }
+
         setIsLoading(true);
         setIsError(false);
         setCurrentPage(1);
@@ -46,8 +121,15 @@ export const NewsPage: React.FC = () => {
             // First page: 10 articles (1 Hero featured article + 9 grid articles)
             const newsData = await fetchNewsFromBackend(category, 1, PAGE_SIZE, search);
             const items = newsData.items || [];
+            const hasMoreItems = items.length >= PAGE_SIZE;
+
             setArticles(items);
-            setHasMore(items.length >= PAGE_SIZE);
+            setHasMore(hasMoreItems);
+            categoryCacheRef.current.set(cacheKey, {
+                items,
+                hasMore: hasMoreItems,
+                page: 1,
+            });
         } catch {
             setArticles([]);
             setHasMore(false);
@@ -79,7 +161,16 @@ export const NewsPage: React.FC = () => {
                 setArticles((prev) => {
                     const existingIds = new Set(prev.map((a) => a.id));
                     const uniqueNewItems = newItems.filter((a) => !existingIds.has(a.id));
-                    return [...prev, ...uniqueNewItems];
+                    const combined = [...prev, ...uniqueNewItems];
+
+                    const cacheKey = `${selectedCategory}:${debouncedKeyword.trim().toLowerCase()}`;
+                    categoryCacheRef.current.set(cacheKey, {
+                        items: combined,
+                        hasMore: newItems.length >= PAGE_SIZE,
+                        page: nextPage,
+                    });
+
+                    return combined;
                 });
                 setCurrentPage(nextPage);
             }
@@ -204,66 +295,49 @@ export const NewsPage: React.FC = () => {
                 />
             </div>
 
-            {/* Category Pills Navigation */}
+            {/* Category Tabs Navigation */}
             <div
                 style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    overflowX: 'auto',
-                    paddingBottom: '12px',
+                    background: '#ffffff',
+                    padding: '8px 16px 0',
+                    borderRadius: '16px',
+                    border: '1px solid #e2e8f0',
+                    boxShadow: '0 2px 6px rgba(15, 23, 42, 0.04)',
                     marginBottom: '24px',
                 }}
             >
-                {NEWS_CATEGORIES.map((cat) => {
-                    const isSelected = selectedCategory === cat.key;
-                    return (
-                        <button
-                            key={cat.key}
-                            type="button"
-                            onClick={() => setSelectedCategory(cat.key)}
-                            style={{
-                                border: isSelected ? `2px solid ${cat.badgeColor}` : '1px solid #e2e8f0',
-                                background: isSelected ? '#f8fafc' : '#ffffff',
-                                color: isSelected ? cat.badgeColor : '#475569',
-                                fontWeight: isSelected ? 700 : 500,
-                                fontSize: '13px',
-                                padding: '8px 16px',
-                                borderRadius: '999px',
-                                cursor: 'pointer',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                                whiteSpace: 'nowrap',
-                                transition: 'all 0.2s ease',
-                                boxShadow: isSelected ? '0 2px 8px rgba(0,0,0,0.08)' : 'none',
-                            }}
-                        >
-                            <span>{cat.icon}</span>
-                            <span>{cat.label}</span>
-                        </button>
-                    );
-                })}
+                <Tabs
+                    activeKey={selectedCategory}
+                    onChange={(key) => setSelectedCategory(key as NewsCategory)}
+                    size="large"
+                    tabBarStyle={{ marginBottom: 0 }}
+                    items={NEWS_CATEGORIES.map((cat) => ({
+                        key: cat.key,
+                        label: (
+                            <span
+                                style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    fontSize: '14px',
+                                    fontWeight: 500,
+                                }}
+                            >
+                                <span role="img" aria-label={cat.label} style={{ fontSize: '16px' }}>
+                                    {cat.icon}
+                                </span>
+                                <span>{cat.label}</span>
+                            </span>
+                        ),
+                    }))}
+                />
             </div>
 
-            {/* Content Section */}
-            {isLoading ? (
-                <div
-                    style={{
-                        padding: '80px 0',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '16px',
-                    }}
-                >
-                    <Spin size="large" />
-                    <div style={{ color: '#64748b', fontSize: '14px', fontWeight: 600 }}>
-                        Đang lấy toàn văn bài viết từ The Guardian Content API...
-                    </div>
-                </div>
-            ) : isError && articles.length === 0 ? (
+            {/* Content Section with stable height to prevent layout jumps */}
+            <div style={{ minHeight: '600px' }}>
+                {isLoading ? (
+                    <NewsSkeletonGrid />
+                ) : isError && articles.length === 0 ? (
                 <div style={{ padding: '30px 0' }}>
                     <PageErrorState
                         title="Không thể tải tin tức"
@@ -360,6 +434,7 @@ export const NewsPage: React.FC = () => {
                     </div>
                 </div>
             )}
+            </div>
 
             {/* Bottom Learning Tips Box */}
             <div
