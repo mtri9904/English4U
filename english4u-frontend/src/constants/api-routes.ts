@@ -101,6 +101,8 @@ export const ApiRouters = {
 
     ADMIN: {
         DASHBOARD: '/admin/dashboard',
+        GEMINI_MODELS: '/admin/ai/gemini-models',
+        AI_FEATURES_CONFIG: '/admin/ai/features-config',
     },
 
     COPILOT: {

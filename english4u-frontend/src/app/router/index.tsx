@@ -13,6 +13,7 @@ import {
     AdminLoginPage,
     AdminDashboard,
     AdminNotFoundPage,
+    AiSettingsPage,
 } from '@/features/admin';
 import { StudentManagementPage, ProfilePage, ClientProfilePage } from '@/features/students';
 import { AttemptManagementPage } from '@/features/attempts';
@@ -182,6 +183,10 @@ export const appRouter = createBrowserRouter([
             {
                 path: 'feedbacks',
                 element: <FeedbackManagementPage />,
+            },
+            {
+                path: 'ai-settings',
+                element: <AiSettingsPage />,
             },
             {
                 path: '*',

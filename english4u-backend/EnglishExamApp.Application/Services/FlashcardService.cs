@@ -16,7 +16,8 @@ public class FlashcardService(
     IApplicationDbContext context,
     IConfiguration configuration,
     HttpClient httpClient,
-    ILogger<FlashcardService> logger) : IFlashcardService
+    ILogger<FlashcardService> logger,
+    IAiModelConfigService? aiModelConfigService = null) : IFlashcardService
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -1143,6 +1144,22 @@ Evaluate thoroughly and return a strict JSON object with:
 
     private string[] GetCandidateModels(string? preferredModel = null)
     {
+        if (aiModelConfigService != null)
+        {
+            var configuredCandidates = aiModelConfigService.GetModelCandidates("flashcard_ai_enrichment");
+            if (configuredCandidates.Count > 0)
+            {
+                if (!string.IsNullOrWhiteSpace(preferredModel))
+                {
+                    return new[] { preferredModel.Trim() }
+                        .Concat(configuredCandidates)
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToArray();
+                }
+                return configuredCandidates.ToArray();
+            }
+        }
+
         var configuredModel = configuration["GeminiScoring:Model"]
             ?? configuration["GemmaExamGeneration:Model"]
             ?? AiModelDefaults.DefaultPrimaryModel;
@@ -1152,10 +1169,7 @@ Evaluate thoroughly and return a strict JSON object with:
             .GetChildren()
             .Select(child => child.Value);
 
-        string[] fastModels = ["gemini-2.5-flash", "gemini-2.5-flash-lite"];
-
         return new[] { preferredModel }
-            .Concat(fastModels)
             .Concat(new[] { configuredModel })
             .Concat(configuredFallbackModels)
             .Concat(AiModelDefaults.GlobalFallbackModels)

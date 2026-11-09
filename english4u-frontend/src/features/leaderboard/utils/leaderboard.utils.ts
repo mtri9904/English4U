@@ -29,7 +29,7 @@ export const getRankVisualMeta = (rank: number): RankVisualMeta => {
 };
 
 /**
- * Formats study duration in hours to 1 decimal place string with unit (e.g. "2.5 giờ")
+ * Formats study duration in hours to 1 decimal place string with unit (e.g. "2.5 hours")
  */
 export const formatStudyTime = (hours: number): string => {
     if (isNaN(hours) || hours <= 0) return '0.0 giờ';
@@ -37,7 +37,7 @@ export const formatStudyTime = (hours: number): string => {
 };
 
 /**
- * Formats continuous learning daily streak count (e.g. "5 ngày")
+ * Formats continuous learning daily streak count (e.g. "5 days")
  */
 export const formatStreak = (streak: number): string => {
     const days = Math.max(0, Math.floor(streak || 0));

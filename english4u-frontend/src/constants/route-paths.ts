@@ -36,6 +36,7 @@ export const ROUTE_PATHS = {
     ADMIN_PROFILE: '/admin/profile',
     ADMIN_NOTIFICATIONS: '/admin/notifications',
     ADMIN_FEEDBACKS: '/admin/feedbacks',
+    ADMIN_AI_SETTINGS: '/admin/ai-settings',
 
     // Client Learning Application Portal
     APP_ROOT: '/app',

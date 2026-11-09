@@ -11,7 +11,8 @@ namespace EnglishExamApp.Application.Services;
 public sealed class DictationService(
     IConfiguration configuration,
     HttpClient httpClient,
-    ILogger<DictationService> logger) : IDictationService
+    ILogger<DictationService> logger,
+    IAiModelConfigService? aiModelConfigService = null) : IDictationService
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -56,15 +57,14 @@ public sealed class DictationService(
         string apiKey,
         CancellationToken cancellationToken)
     {
-        string[] candidateModels =
-        [
-            "gemini-2.5-flash",
-            "gemini-2.5-flash-lite",
-            "gemini-1.5-flash",
-            "gemini-3.1-flash-lite",
-            "gemini-1.5-pro",
-            "gemini-2.0-flash"
-        ];
+        var candidateModels = aiModelConfigService != null
+            ? aiModelConfigService.GetModelCandidates("dictation_generation").ToArray()
+            : new[] { "gemini-3.1-flash-lite", "gemini-3.5-flash-lite", "gemini-2.5-flash" };
+
+        if (candidateModels.Length == 0)
+        {
+            candidateModels = new[] { "gemini-3.1-flash-lite", "gemini-3.5-flash-lite", "gemini-2.5-flash" };
+        }
 
         var randomSession = Random.Shared.Next(100000, 999999);
         var subThemes = new[]

@@ -17,6 +17,12 @@ appsettings.Development.json
 appsettings.Local.json
 **/appsettings.Development.json
 **/appsettings.Local.json
+*service-account*.json
+*service-account*.b64
+credentials*.json
+google-service-account.json
+google-service-account.b64
+gemini-features-config.json
 
 # Speaking evaluation local media and generated outputs
 AiScoringService/evaluation/audio/*

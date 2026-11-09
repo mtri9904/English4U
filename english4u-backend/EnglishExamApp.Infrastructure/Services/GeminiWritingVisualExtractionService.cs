@@ -12,7 +12,8 @@ namespace EnglishExamApp.Infrastructure.Services;
 public sealed class GeminiWritingVisualExtractionService(
     HttpClient httpClient,
     IConfiguration configuration,
-    ILogger<GeminiWritingVisualExtractionService> logger) : IWritingVisualExtractionService
+    ILogger<GeminiWritingVisualExtractionService> logger,
+    IAiModelConfigService? aiModelConfigService = null) : IWritingVisualExtractionService
 {
     private const string DefaultModel = "gemini-3.1-flash-lite";
     private const string DefaultFallbackModel = "gemini-3.5-flash-lite";
@@ -37,6 +38,16 @@ public sealed class GeminiWritingVisualExtractionService(
     private readonly double _temperature = configuration.GetValue<double?>("GeminiVisualExtraction:Temperature") ?? 0.1d;
     private readonly int _maxImageBytes = configuration.GetValue<int?>("GeminiVisualExtraction:MaxImageBytes") ?? DefaultMaxImageBytes;
 
+    private IReadOnlyList<string> ResolveModelCandidates()
+    {
+        if (aiModelConfigService != null)
+        {
+            var candidates = aiModelConfigService.GetModelCandidates("writing_visual_extraction", DefaultModel, new[] { DefaultFallbackModel });
+            if (candidates.Count > 0) return candidates;
+        }
+        return _modelCandidates;
+    }
+
     public async Task<ExtractWritingVisualDataResponseDto> ExtractAsync(
         ExtractWritingVisualDataRequestDto request,
         CancellationToken cancellationToken = default)
@@ -60,7 +71,7 @@ public sealed class GeminiWritingVisualExtractionService(
 
         string? lastError = null;
 
-        foreach (var model in _modelCandidates)
+        foreach (var model in ResolveModelCandidates())
         {
             var requestData = new
             {

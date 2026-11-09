@@ -23,6 +23,7 @@ public class TheGuardianNewsService : INewsService
     private readonly IConfiguration _configuration;
     private readonly ILogger<TheGuardianNewsService> _logger;
     private readonly IGemmaCompletionClient _gemmaClient;
+    private readonly IAiModelConfigService? _aiModelConfigService;
 
     // Daily Request Budget Tracker (Thread-safe)
     private static int _dailyRequestCount = 0;
@@ -50,13 +51,15 @@ public class TheGuardianNewsService : INewsService
         IMemoryCache cache,
         IConfiguration configuration,
         ILogger<TheGuardianNewsService> logger,
-        IGemmaCompletionClient gemmaClient)
+        IGemmaCompletionClient gemmaClient,
+        IAiModelConfigService? aiModelConfigService = null)
     {
         _httpClient = httpClient;
         _cache = cache;
         _configuration = configuration;
         _logger = logger;
         _gemmaClient = gemmaClient;
+        _aiModelConfigService = aiModelConfigService;
     }
 
     public async Task<NewsListResponseDto> GetNewsListAsync(
@@ -782,14 +785,22 @@ Respond with ONLY a JSON object:
 
 CRITICAL: Return ONLY raw JSON. No explanations, no markdown fences, no extra text.";
 
-            using var aiCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            aiCts.CancelAfter(TimeSpan.FromSeconds(3));
+            var modelsToTry = _aiModelConfigService != null
+                ? _aiModelConfigService.GetModelCandidates("news_translation").ToArray()
+                : new[] { "gemini-3.1-flash-lite", "gemini-3.5-flash-lite", "gemini-2.5-flash" };
 
-            var modelsToTry = new[] { "gemini-3.1-flash-lite", "gemma-4-26b-a4b-it", "gemma-4-31b-it" };
+            if (modelsToTry.Length == 0)
+            {
+                modelsToTry = new[] { "gemini-3.1-flash-lite", "gemini-3.5-flash-lite", "gemini-2.5-flash" };
+            }
+
             foreach (var model in modelsToTry)
             {
                 try
                 {
+                    using var aiCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                    aiCts.CancelAfter(TimeSpan.FromSeconds(5));
+
                     var aiRes = await _gemmaClient.CompleteWithModelAsync(prompt, model, aiCts.Token);
                     if (!string.IsNullOrWhiteSpace(aiRes))
                     {

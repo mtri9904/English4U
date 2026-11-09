@@ -11,7 +11,8 @@ namespace EnglishExamApp.Infrastructure.Services;
 public sealed partial class GeminiReadingCopilotService(
     HttpClient httpClient,
     IConfiguration configuration,
-    ILogger<GeminiReadingCopilotService> logger) : IReadingCopilotService
+    ILogger<GeminiReadingCopilotService> logger,
+    IAiModelConfigService? aiModelConfigService = null) : IReadingCopilotService
 {
     private const string DefaultModel = "gemini-3.1-flash-lite";
     private const string DefaultFallbackModel = "gemini-3.5-flash-lite";

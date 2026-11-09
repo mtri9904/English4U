@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
+using EnglishExamApp.Application.Interfaces;
 using Microsoft.Extensions.Configuration;
 
 namespace EnglishExamApp.Infrastructure.Services;
@@ -15,7 +16,8 @@ public interface IGemmaCompletionClient
 
 public sealed class GemmaCompletionClient(
     HttpClient httpClient,
-    IConfiguration configuration) : IGemmaCompletionClient
+    IConfiguration configuration,
+    IAiModelConfigService? aiModelConfigService = null) : IGemmaCompletionClient
 {
     private const string DefaultBaseUrl = "https://generativelanguage.googleapis.com/v1beta/openai/";
     private const string DefaultModel = "gemini-3.1-flash-lite";
@@ -33,7 +35,9 @@ public sealed class GemmaCompletionClient(
 
     private readonly string _baseUrl = configuration["GemmaExamGeneration:BaseUrl"] ?? DefaultBaseUrl;
 
-    private readonly string _model = configuration["GemmaExamGeneration:Model"] ?? DefaultModel;
+    private string Model => aiModelConfigService?.GetModel("exam_ai_generation", DefaultModel)
+        ?? configuration["GemmaExamGeneration:Model"]
+        ?? DefaultModel;
 
     private readonly double _temperature =
         configuration.GetValue<double?>("GemmaExamGeneration:Temperature") ?? 0.0d;
@@ -47,7 +51,7 @@ public sealed class GemmaCompletionClient(
 
     public Task<string> CompleteAsync(string prompt, CancellationToken cancellationToken)
     {
-        return CompleteWithModelAsync(prompt, _model, cancellationToken);
+        return CompleteWithModelAsync(prompt, Model, cancellationToken);
     }
 
     public async Task<string> CompleteWithModelAsync(string prompt, string model, CancellationToken cancellationToken)

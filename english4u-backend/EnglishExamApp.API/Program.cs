@@ -161,6 +161,13 @@ builder.Services.AddHttpClient<IWritingVisualExtractionService, GeminiWritingVis
     client.Timeout = TimeSpan.FromMinutes(2);
 });
 
+builder.Services.AddSingleton<IAiModelConfigService, AiModelConfigService>();
+
+builder.Services.AddHttpClient<IGeminiCatalogService, GeminiCatalogService>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
+
 var app = builder.Build();
 var uploadRoot = Path.Combine(app.Environment.ContentRootPath, "uploads");
 Directory.CreateDirectory(uploadRoot);

@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using EnglishExamApp.Application.Interfaces;
 using Microsoft.Extensions.Configuration;
 
 namespace EnglishExamApp.Infrastructure.Services;
@@ -12,7 +13,8 @@ public interface IGeminiPdfNativeExtractionClient
 
 public sealed class GeminiPdfNativeExtractionClient(
     HttpClient httpClient,
-    IConfiguration configuration) : IGeminiPdfNativeExtractionClient
+    IConfiguration configuration,
+    IAiModelConfigService? aiModelConfigService = null) : IGeminiPdfNativeExtractionClient
 {
     private const string DefaultModel = "gemini-3.1-flash-lite";
 
@@ -28,7 +30,9 @@ public sealed class GeminiPdfNativeExtractionClient(
         "GeminiPdfNativeExtraction:ApiKey",
         "GemmaExamGeneration:ApiKey");
 
-    private readonly string _model = configuration["GeminiPdfNativeExtraction:Model"] ?? DefaultModel;
+    private string Model => aiModelConfigService?.GetModel("pdf_native_extraction", DefaultModel)
+        ?? configuration["GeminiPdfNativeExtraction:Model"]
+        ?? DefaultModel;
 
     private readonly double _temperature =
         configuration.GetValue<double?>("GeminiPdfNativeExtraction:Temperature") ??
@@ -105,7 +109,7 @@ public sealed class GeminiPdfNativeExtractionClient(
                 MaxOutputTokens: _maxOutputTokens,
                 ResponseMimeType: "application/json"));
 
-        var requestUri = $"v1beta/models/{Uri.EscapeDataString(_model)}:generateContent?key={Uri.EscapeDataString(_apiKey)}";
+        var requestUri = $"v1beta/models/{Uri.EscapeDataString(Model)}:generateContent?key={Uri.EscapeDataString(_apiKey)}";
         using var response = await httpClient.PostAsJsonAsync(requestUri, requestPayload, JsonOptions, cancellationToken);
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
         if (!response.IsSuccessStatusCode)

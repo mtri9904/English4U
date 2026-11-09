@@ -17,7 +17,8 @@ public sealed partial class AiScoringHttpService(
     HttpClient httpClient,
     IApplicationDbContext context,
     IConfiguration configuration,
-    ILogger<AiScoringHttpService> logger) : IAiIntegrationService
+    ILogger<AiScoringHttpService> logger,
+    IAiModelConfigService? aiModelConfigService = null) : IAiIntegrationService
 {
     private const int MaxWritingTaskImages = 2;
     private const int DefaultMaxImageBytes = 1_500_000;
@@ -75,6 +76,26 @@ public sealed partial class AiScoringHttpService(
         DefaultFeedbackTranslationModel,
         StableFeedbackTranslationFallbackModel,
         StableGeminiScoringFallbackModel);
+
+    private IReadOnlyList<string> GetScoringModelCandidates()
+    {
+        if (aiModelConfigService != null)
+        {
+            var candidates = aiModelConfigService.GetModelCandidates("ai_scoring", DefaultGeminiScoringModel, new[] { StableGeminiScoringFallbackModel });
+            if (candidates.Count > 0) return candidates;
+        }
+        return _geminiScoringModelCandidates;
+    }
+
+    private IReadOnlyList<string> GetFeedbackTranslationModelCandidates()
+    {
+        if (aiModelConfigService != null)
+        {
+            var candidates = aiModelConfigService.GetModelCandidates("scoring_feedback_translation", DefaultFeedbackTranslationModel, new[] { StableFeedbackTranslationFallbackModel });
+            if (candidates.Count > 0) return candidates;
+        }
+        return _feedbackTranslationModelCandidates;
+    }
 
     public async Task ScoreWritingAsync(Guid sessionId, CancellationToken cancellationToken = default)
     {

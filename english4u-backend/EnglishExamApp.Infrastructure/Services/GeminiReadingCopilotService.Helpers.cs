@@ -125,23 +125,84 @@ public sealed partial class GeminiReadingCopilotService
                         response.StatusCode,
                         errorBody);
 
+                    var isNotFound = response.StatusCode == System.Net.HttpStatusCode.NotFound;
+                    var isQuotaExhausted = (int)response.StatusCode == 429;
                     var isTransient = response.StatusCode == System.Net.HttpStatusCode.InternalServerError
-                        || (int)response.StatusCode == 429
-                        || response.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable;
+                        || response.StatusCode == System.Net.HttpStatusCode.BadGateway
+                        || response.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable
+                        || response.StatusCode == System.Net.HttpStatusCode.GatewayTimeout;
 
-                    var canFallback = response.StatusCode == System.Net.HttpStatusCode.NotFound && index < modelCandidates.Length - 1;
-                    if (canFallback)
+                    var hasMoreCandidates = index < modelCandidates.Length - 1;
+
+                    // 1. NotFound (404): Model does not exist or has been discontinued -> Fallback immediately
+                    if (isNotFound)
                     {
-                        break;
+                        if (hasMoreCandidates)
+                        {
+                            var nextModel = modelCandidates[index + 1];
+                            logger.LogWarning(
+                                "Model {Model} not found (404). Falling back to candidate [{NextIndex}/{Total}]: {NextModel}",
+                                model,
+                                index + 2,
+                                modelCandidates.Length,
+                                nextModel);
+                            break;
+                        }
+                        throw new InvalidOperationException(lastError);
                     }
 
+                    // 2. TooManyRequests (429 - Quota exhausted / Rate limit):
+                    // If fallback candidates are available, switch immediately to avoid user wait time
+                    if (isQuotaExhausted)
+                    {
+                        if (hasMoreCandidates)
+                        {
+                            var nextModel = modelCandidates[index + 1];
+                            logger.LogWarning(
+                                "Model {Model} hit quota/rate limit (429). Falling back to candidate [{NextIndex}/{Total}]: {NextModel}",
+                                model,
+                                index + 2,
+                                modelCandidates.Length,
+                                nextModel);
+                            break;
+                        }
+
+                        // If this is the final candidate, retry with exponential backoff before failing
+                        if (retryCount < maxRetries)
+                        {
+                            retryCount++;
+                            var delayMs = (int)Math.Pow(2, retryCount - 1) * 1000;
+                            logger.LogInformation("Rate limited on last candidate {Model}. Retrying ({RetryCount}/{MaxRetries}) after {DelayMs}ms...", model, retryCount, maxRetries, delayMs);
+                            await Task.Delay(delayMs, cancellationToken);
+                            continue;
+                        }
+
+                        throw new InvalidOperationException(lastError);
+                    }
+
+                    // 3. Transient server errors (500, 502, 503, 504):
                     if (isTransient && retryCount < maxRetries)
                     {
                         retryCount++;
                         var delayMs = (int)Math.Pow(2, retryCount - 1) * 1000;
-                        logger.LogInformation("Transient error from Gemini. Retrying model {Model} ({RetryCount}/{MaxRetries}) after {DelayMs}ms...", model, retryCount, maxRetries, delayMs);
+                        logger.LogInformation("Transient error ({StatusCode}) from Gemini. Retrying model {Model} ({RetryCount}/{MaxRetries}) after {DelayMs}ms...", response.StatusCode, model, retryCount, maxRetries, delayMs);
                         await Task.Delay(delayMs, cancellationToken);
                         continue;
+                    }
+
+                    // If retries are exhausted and server error persists, fall back to the next candidate model
+                    if (hasMoreCandidates)
+                    {
+                        var nextModel = modelCandidates[index + 1];
+                        logger.LogWarning(
+                            "Model {Model} failed with status {StatusCode} after {RetryCount} retries. Falling back to candidate [{NextIndex}/{Total}]: {NextModel}",
+                            model,
+                            response.StatusCode,
+                            retryCount,
+                            index + 2,
+                            modelCandidates.Length,
+                            nextModel);
+                        break;
                     }
 
                     throw new InvalidOperationException(lastError);
@@ -158,6 +219,21 @@ public sealed partial class GeminiReadingCopilotService
                         logger.LogInformation("Retrying model {Model} ({RetryCount}/{MaxRetries}) after {DelayMs}ms due to network error...", model, retryCount, maxRetries, delayMs);
                         await Task.Delay(delayMs, cancellationToken);
                         continue;
+                    }
+
+                    // If connection error persists after max retries, fall back to the next candidate model
+                    if (index < modelCandidates.Length - 1)
+                    {
+                        var nextModel = modelCandidates[index + 1];
+                        logger.LogWarning(
+                            ex,
+                            "Model {Model} failed due to network error after {RetryCount} retries. Falling back to candidate [{NextIndex}/{Total}]: {NextModel}",
+                            model,
+                            retryCount,
+                            index + 2,
+                            modelCandidates.Length,
+                            nextModel);
+                        break;
                     }
 
                     throw new InvalidOperationException(lastError, ex);
@@ -636,7 +712,18 @@ public sealed partial class GeminiReadingCopilotService
         var skillType = context.SkillType?.Trim();
         if (string.Equals(skillType, "WRITING", StringComparison.OrdinalIgnoreCase))
         {
+            if (aiModelConfigService != null)
+            {
+                var candidates = aiModelConfigService.GetModelCandidates("writing_copilot", DefaultWritingModel, new[] { DefaultWritingFallbackModel, DefaultFallbackModel });
+                if (candidates.Count > 0) return candidates.ToArray();
+            }
             return _writingModelCandidates;
+        }
+
+        if (aiModelConfigService != null)
+        {
+            var candidates = aiModelConfigService.GetModelCandidates("reading_copilot", DefaultModel, new[] { DefaultFallbackModel });
+            if (candidates.Count > 0) return candidates.ToArray();
         }
 
         return _defaultModelCandidates;

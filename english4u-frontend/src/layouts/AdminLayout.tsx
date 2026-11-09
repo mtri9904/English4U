@@ -13,6 +13,7 @@ import {
     ReloadOutlined,
     BugOutlined,
     TrophyOutlined,
+    RobotOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useUserProfileQuery, studentService as userApi } from '@/features/students';
@@ -316,6 +317,11 @@ export const AdminLayout: React.FC = () => {
             key: '/admin/feedbacks',
             icon: <BugOutlined />,
             label: 'Phản hồi & Báo lỗi',
+        },
+        {
+            key: '/admin/ai-settings',
+            icon: <RobotOutlined />,
+            label: 'Cấu hình AI & Quota',
         }
     ];
 

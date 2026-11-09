@@ -287,7 +287,7 @@ public sealed partial class AiScoringHttpService
             sessionId,
             answer.Id,
             requestData,
-            _geminiScoringModelCandidates,
+            GetScoringModelCandidates(),
             "writing scoring",
             cancellationToken);
         return GeminiGenerateContentResponseParser.DeserializeScoreResponse(responseBody, JsonOptions);
@@ -415,7 +415,7 @@ public sealed partial class AiScoringHttpService
                 sessionId,
                 answerId,
                 requestData,
-                _feedbackTranslationModelCandidates,
+                GetFeedbackTranslationModelCandidates(),
                 "feedback translation",
                 cancellationToken);
 
