@@ -1,5 +1,6 @@
 import React from 'react';
 import { Drawer, Avatar } from 'antd';
+import { CheckCircleFilled, ExclamationCircleFilled } from '@ant-design/icons';
 import { motion } from 'framer-motion';
 import { Bell, Pencil } from 'lucide-react';
 import type { NotificationListItemDto } from '../types/notification.types';
@@ -96,7 +97,18 @@ export const NotificationDetailDrawer: React.FC<NotificationDetailDrawerProps> =
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 16px' }}>
                             {[
                                 { label: 'Vai trò', value: roleStyle(selected.userRole).label },
-                                { label: 'Trạng thái', value: selected.isRead ? '✅ Đã đọc' : '🔴 Chưa đọc' },
+                                {
+                                    label: 'Trạng thái',
+                                    value: selected.isRead ? (
+                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: '#16a34a' }}>
+                                            <CheckCircleFilled /> Đã đọc
+                                        </span>
+                                    ) : (
+                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: '#ef4444' }}>
+                                            <ExclamationCircleFilled /> Chưa đọc
+                                        </span>
+                                    ),
+                                },
                                 { label: 'Thời gian', value: formatDateTimeToMinute(selected.createdAt) || '—' },
                                 { label: 'ID thông báo', value: selected.id.slice(0, 12) + '…' },
                             ].map(({ label, value }) => (

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Button, Tooltip, Divider } from 'antd';
-import { CopyOutlined, ExportOutlined } from '@ant-design/icons';
+import { CopyOutlined, ExportOutlined, BulbOutlined } from '@ant-design/icons';
 
 interface NewsDetailFooterProps {
     sourceLink?: string;
@@ -28,11 +28,13 @@ export const NewsDetailFooter: React.FC<NewsDetailFooterProps> = ({
                     gap: '12px',
                 }}
             >
-                <div style={{ fontSize: '22px' }}>💡</div>
+                <div style={{ fontSize: '22px' }}>
+                    <BulbOutlined style={{ color: '#eab308' }} />
+                </div>
                 <div style={{ fontSize: '13px', color: '#475569', lineHeight: 1.6 }}>
                     <strong style={{ color: '#0f172a' }}>Phương pháp học từ vựng hiệu quả:</strong> Bạn có thể{' '}
                     <strong>bấm vào bất kỳ từ tiếng Anh nào</strong> trong bài để tra từ điển học thuật và lưu vào bộ thẻ Flashcard. Bấm nút{' '}
-                    <strong>"🌐 Dịch đoạn"</strong> để xem bản dịch đối chiếu song ngữ!
+                    <strong>"Dịch đoạn"</strong> để xem bản dịch đối chiếu song ngữ!
                 </div>
             </div>
 

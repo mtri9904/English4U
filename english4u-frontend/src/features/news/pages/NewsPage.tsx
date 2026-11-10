@@ -346,9 +346,7 @@ export const NewsPage: React.FC = () => {
                                     fontWeight: 500,
                                 }}
                             >
-                                <span role="img" aria-label={cat.label} style={{ fontSize: '16px' }}>
-                                    {cat.icon}
-                                </span>
+                                <span style={{ fontSize: '15px' }}>{cat.icon}</span>
                                 <span>{cat.label}</span>
                             </span>
                         ),

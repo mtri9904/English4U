@@ -1,5 +1,6 @@
 import React from 'react';
 import { Row, Col, Card, Progress, Tag } from 'antd';
+import { AimOutlined } from '@ant-design/icons';
 import type { AdminQuestStat } from '../types/leaderboard.types';
 
 interface AdminQuestOverviewCardProps {
@@ -23,8 +24,9 @@ export const AdminQuestOverviewCard: React.FC<AdminQuestOverviewCardProps> = ({
             bodyStyle={{ padding: '24px' }}
         >
             <div style={{ marginBottom: '20px' }}>
-                <h3 style={{ margin: 0, fontWeight: 700, fontSize: '18px', color: '#0f172a' }}>
-                    🎯 Thống Kê Thử Thách Tuần (Weekly Quests Engagement)
+                <h3 style={{ margin: 0, fontWeight: 700, fontSize: '18px', color: '#0f172a', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <AimOutlined style={{ color: '#3b82f6' }} />
+                    <span>Thống Kê Thử Thách Tuần (Weekly Quests Engagement)</span>
                 </h3>
                 <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '13px' }}>
                     Đo lường mức độ tích cực tham gia các mục tiêu rèn luyện hàng tuần của học viên.

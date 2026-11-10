@@ -1,3 +1,5 @@
+import type React from 'react';
+
 export type NewsCategory = 'all' | 'travel' | 'culture' | 'lifestyle' | 'business' | 'science' | 'technology';
 
 export type NewsSource = 'theguardian';
@@ -42,7 +44,7 @@ export interface NewsQuotaStatus {
 export interface CategoryOption {
     key: NewsCategory;
     label: string;
-    icon: string;
+    icon: React.ReactNode;
     description: string;
     badgeColor: string;
 }

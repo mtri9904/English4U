@@ -11,6 +11,7 @@ import {
     PlayCircleOutlined,
     RightOutlined,
     TrophyOutlined,
+    FireFilled,
 } from '@ant-design/icons';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
@@ -157,7 +158,7 @@ export const ClientDashboard: React.FC = () => {
             label: 'Daily Streak',
             value: `${streak} ngày`,
             detail: streakMeta.description,
-            icon: <span style={{ fontSize: 16 }}>🔥</span>,
+            icon: <FireFilled style={{ fontSize: 16, color: palette.orange }} />,
             color: palette.orange,
         },
         {

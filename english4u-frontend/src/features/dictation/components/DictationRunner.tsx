@@ -8,6 +8,7 @@ import {
     LoadingOutlined,
     PlayCircleOutlined,
     SoundOutlined,
+    BulbOutlined,
 } from '@ant-design/icons';
 import { motion } from 'framer-motion';
 import type {
@@ -387,9 +388,12 @@ export const DictationRunner: React.FC<DictationRunnerProps> = ({
                     </Button>
 
                     {currentItem?.focusWord && (
-                        <Tag color="indigo" style={{ borderRadius: 8, padding: '4px 10px' }}>
-                            💡 Từ khóa: <strong>{currentItem.focusWord}</strong>
-                            {currentItem.focusWordDefinition && ` – ${currentItem.focusWordDefinition}`}
+                        <Tag color="indigo" style={{ borderRadius: 8, padding: '4px 10px', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                            <BulbOutlined style={{ color: '#eab308' }} />
+                            <span>
+                                Từ khóa: <strong>{currentItem.focusWord}</strong>
+                                {currentItem.focusWordDefinition && ` – ${currentItem.focusWordDefinition}`}
+                            </span>
                         </Tag>
                     )}
                 </div>

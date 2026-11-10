@@ -1,5 +1,6 @@
 import React from 'react';
 import { Spin } from 'antd';
+import { TranslationOutlined, CloseOutlined } from '@ant-design/icons';
 import { cleanTranslationText } from '../../services/news.service';
 
 interface NewsParagraphItemProps {
@@ -94,7 +95,10 @@ export const NewsParagraphItem: React.FC<NewsParagraphItemProps> = ({
                     ) : isOpen ? (
                         <span>Ẩn bản dịch</span>
                     ) : (
-                        <span>🌐 Dịch đoạn</span>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                            <TranslationOutlined />
+                            <span>Dịch đoạn</span>
+                        </span>
                     )}
                 </button>
             </div>
@@ -130,7 +134,7 @@ export const NewsParagraphItem: React.FC<NewsParagraphItemProps> = ({
                                 gap: '5px',
                             }}
                         >
-                            <span>🇻🇳</span> BẢN DỊCH SONG NGỮ
+                            <TranslationOutlined /> BẢN DỊCH SONG NGỮ
                         </div>
                         <button
                             type="button"
@@ -144,7 +148,7 @@ export const NewsParagraphItem: React.FC<NewsParagraphItemProps> = ({
                             }}
                             title="Đóng bản dịch"
                         >
-                            ✕
+                            <CloseOutlined />
                         </button>
                     </div>
                     <div style={{ fontSize: '15px', lineHeight: 1.7, color: '#166534', fontWeight: 500 }}>

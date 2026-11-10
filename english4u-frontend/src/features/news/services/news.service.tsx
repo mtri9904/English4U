@@ -1,3 +1,13 @@
+import React from 'react';
+import {
+    GlobalOutlined,
+    CompassOutlined,
+    ReadOutlined,
+    HeartOutlined,
+    BankOutlined,
+    ExperimentOutlined,
+    DesktopOutlined,
+} from '@ant-design/icons';
 import { axiosInstance } from '@/apis/axios.instance';
 import { ApiRouters } from '@/constants/api-routes';
 import type {
@@ -12,49 +22,49 @@ export const NEWS_CATEGORIES: CategoryOption[] = [
     {
         key: 'all',
         label: 'Tất cả tin tức',
-        icon: '🌍',
+        icon: <GlobalOutlined />,
         description: 'Tin tức tổng hợp từ The Guardian thế giới',
         badgeColor: '#2563eb',
     },
     {
         key: 'travel',
         label: 'Du lịch & Khám phá',
-        icon: '✈️',
+        icon: <CompassOutlined />,
         description: 'Văn hóa du lịch, điểm đến hấp dẫn và cẩm nang khám phá',
         badgeColor: '#059669',
     },
     {
         key: 'culture',
         label: 'Văn hóa & Nghệ thuật',
-        icon: '🎭',
+        icon: <ReadOutlined />,
         description: 'Điện ảnh, sách báo, phong cách sống và nghệ thuật thế giới',
         badgeColor: '#9333ea',
     },
     {
         key: 'lifestyle',
         label: 'Đời sống & Sức khỏe',
-        icon: '🌿',
+        icon: <HeartOutlined />,
         description: 'Sức khỏe, tinh thần, thói quen sống và phát triển bản thân',
         badgeColor: '#e11d48',
     },
     {
         key: 'business',
         label: 'Kinh tế & Thị trường',
-        icon: '💼',
+        icon: <BankOutlined />,
         description: 'Kinh tế toàn cầu, tài chính, thị trường và khởi nghiệp',
         badgeColor: '#d97706',
     },
     {
         key: 'science',
         label: 'Khoa học & Tự nhiên',
-        icon: '🔬',
+        icon: <ExperimentOutlined />,
         description: 'Khám phá vũ trụ, môi trường, khí hậu và tự nhiên',
         badgeColor: '#0284c7',
     },
     {
         key: 'technology',
         label: 'Công nghệ & Tương lai',
-        icon: '💻',
+        icon: <DesktopOutlined />,
         description: 'Trí tuệ nhân tạo, thiết bị thông minh và xu hướng tương lai',
         badgeColor: '#4f46e5',
     },

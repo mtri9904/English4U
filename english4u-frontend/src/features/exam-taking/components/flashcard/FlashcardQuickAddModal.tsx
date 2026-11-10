@@ -14,6 +14,7 @@ import {
     BulbOutlined,
     LoadingOutlined,
     PlusOutlined,
+    PushpinOutlined,
 } from '@ant-design/icons';
 import type { AiEnrichWordResponse, FlashcardDeckDto } from '@/features/flashcard/types/flashcard.types';
 import { FlashcardAiEnrichedPreview } from './FlashcardAiEnrichedPreview';
@@ -144,7 +145,10 @@ export const FlashcardQuickAddModal: React.FC<FlashcardQuickAddModalProps> = ({
                                 border: '1px solid #e2e8f0',
                             }}
                         >
-                            <span style={{ fontWeight: 600, color: '#1e293b' }}>📌 Ngữ cảnh bài thi:</span>{' '}
+                            <span style={{ fontWeight: 600, color: '#1e293b', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                <PushpinOutlined style={{ color: '#f59e0b' }} />
+                                <span>Ngữ cảnh bài thi:</span>
+                            </span>{' '}
                             <em>"{activeContext}"</em>
                         </div>
                     )}

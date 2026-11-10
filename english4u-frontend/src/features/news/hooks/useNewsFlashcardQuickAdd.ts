@@ -48,12 +48,12 @@ export function useNewsFlashcardQuickAdd() {
         const list: { label: string; value: string }[] = [];
         if (newsDeck) {
             list.push({
-                label: `📰 ${newsDeck.title} (${newsDeck.totalCards} từ) — Mặc định`,
+                label: `${newsDeck.title} (${newsDeck.totalCards} từ) — Mặc định`,
                 value: newsDeck.id,
             });
         } else {
             list.push({
-                label: `📰 ${NEWS_DECK_TITLE} (Mặc định - Tự động tạo)`,
+                label: `${NEWS_DECK_TITLE} (Mặc định - Tự động tạo)`,
                 value: CREATE_NEWS_DECK_KEY,
             });
         }
@@ -61,7 +61,7 @@ export function useNewsFlashcardQuickAdd() {
         decks.forEach((deck) => {
             if (!newsDeck || deck.id !== newsDeck.id) {
                 list.push({
-                    label: `📘 ${deck.title} (${deck.totalCards} từ)`,
+                    label: `${deck.title} (${deck.totalCards} từ)`,
                     value: deck.id,
                 });
             }

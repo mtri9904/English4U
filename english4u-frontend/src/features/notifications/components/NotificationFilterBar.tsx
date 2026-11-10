@@ -1,6 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { Search, X, Filter, RefreshCw } from 'lucide-react';
+import { CheckCircleFilled, ExclamationCircleFilled } from '@ant-design/icons';
 import { ROLE_OPTIONS, type ReadFilter, type RoleFilter } from '../constants/notification.constants';
 
 const cardAnim = {
@@ -139,7 +140,19 @@ export const NotificationFilterBar: React.FC<NotificationFilterBarProps> = ({
                             transition: 'all 0.15s',
                         }}
                     >
-                        {v === 'ALL' ? 'Tất cả' : v === 'unread' ? '🔴 Chưa đọc' : '✅ Đã đọc'}
+                        {v === 'ALL' ? (
+                            'Tất cả'
+                        ) : v === 'unread' ? (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                <ExclamationCircleFilled style={{ color: '#ef4444', fontSize: '11px' }} />
+                                <span>Chưa đọc</span>
+                            </span>
+                        ) : (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                <CheckCircleFilled style={{ color: '#10b981', fontSize: '11px' }} />
+                                <span>Đã đọc</span>
+                            </span>
+                        )}
                     </button>
                 ))}
             </div>

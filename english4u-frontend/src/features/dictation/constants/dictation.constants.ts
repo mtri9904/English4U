@@ -28,11 +28,11 @@ export const ACCENT_BADGE_STYLES: Record<string, AccentBadgeStyle> = {
 };
 
 export const TOPIC_PRESETS = [
-    { key: 'daily', label: '☕ Đời sống hàng ngày' },
-    { key: 'business', label: '💼 Công việc & Phỏng vấn' },
-    { key: 'travel', label: '✈️ Du lịch & Khám phá' },
-    { key: 'academic', label: '🎓 Học thuật & Khoa học' },
-    { key: 'custom', label: '✏️ Chủ đề tự nhập...' },
+    { key: 'daily', label: 'Đời sống hàng ngày' },
+    { key: 'business', label: 'Công việc & Phỏng vấn' },
+    { key: 'travel', label: 'Du lịch & Khám phá' },
+    { key: 'academic', label: 'Học thuật & Khoa học' },
+    { key: 'custom', label: 'Chủ đề tự nhập...' },
 ] as const;
 
 export const CURATED_VOICES: VoicePersona[] = [

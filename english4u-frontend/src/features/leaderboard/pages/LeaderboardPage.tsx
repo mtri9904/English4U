@@ -9,6 +9,7 @@ import {
     ClockCircleOutlined,
     CalendarOutlined,
     GlobalOutlined,
+    SafetyCertificateFilled,
 } from '@ant-design/icons';
 import { useUserProfileQuery } from '@/features/students';
 import { useLeaderboardOverviewQuery } from '../hooks/useLeaderboardQueries';
@@ -228,7 +229,7 @@ export const LeaderboardPage: React.FC = () => {
                         key: 'badges',
                         label: (
                             <span style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '15px' }}>
-                                <span>🎖️</span>
+                                <SafetyCertificateFilled style={{ color: '#8b5cf6' }} />
                                 Huy Hiệu Đạt Được ({overview?.badges?.filter((b) => b.unlocked)?.length ?? 0}/{overview?.badges?.length ?? 0})
                             </span>
                         ),
@@ -240,7 +241,7 @@ export const LeaderboardPage: React.FC = () => {
                         key: 'quests',
                         label: (
                             <span style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '15px' }}>
-                                <span>🎯</span>
+                                <AimOutlined style={{ color: '#10b981' }} />
                                 Thử Thách Tuần ({overview?.weeklyQuests?.filter((q) => q.isCompleted)?.length ?? 0}/{overview?.weeklyQuests?.length ?? 0})
                             </span>
                         ),

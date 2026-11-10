@@ -19,6 +19,8 @@ import {
     SoundOutlined,
     TrophyOutlined,
     WarningOutlined,
+    FormOutlined,
+    TranslationOutlined,
 } from '@ant-design/icons';
 import { motion } from 'framer-motion';
 import type {
@@ -294,7 +296,7 @@ export const DictationSummaryCard: React.FC<DictationSummaryCardProps> = ({
                 <Card
                     title={
                         <Space>
-                            <span style={{ fontSize: 16 }}>📝</span>
+                            <FormOutlined style={{ fontSize: 16, color: '#4f46e5' }} />
                             <Text strong style={{ fontSize: 15 }}>
                                 Từ vựng sai / bỏ sót ({missedWords.length} từ)
                             </Text>
@@ -451,11 +453,13 @@ export const DictationSummaryCard: React.FC<DictationSummaryCardProps> = ({
                                 )}
                             </div>
 
-                            <Text type="secondary" style={{ fontSize: 13, display: 'block' }}>
-                                🎯 Chuẩn: {item.sentence}
+                            <Text type="secondary" style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <CheckCircleOutlined style={{ color: '#16a34a' }} />
+                                <span>Chuẩn: {item.sentence}</span>
                             </Text>
-                            <Text type="secondary" style={{ fontSize: 12, display: 'block', color: '#64748b' }}>
-                                🇻🇳 {item.translation}
+                            <Text type="secondary" style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, color: '#64748b' }}>
+                                <TranslationOutlined />
+                                <span>{item.translation}</span>
                             </Text>
                         </Card>
                     );

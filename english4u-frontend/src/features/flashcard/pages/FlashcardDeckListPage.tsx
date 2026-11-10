@@ -25,6 +25,8 @@ import {
     PlayCircleOutlined,
     BulbOutlined,
     SoundOutlined,
+    RightCircleOutlined,
+    AimOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { PageLoadingState, PageErrorState } from '@/components';
@@ -489,8 +491,9 @@ export const FlashcardDeckListPage: React.FC = () => {
                                         {enrichedResult.phonetic}
                                     </div>
                                     <div style={{ margin: '6px 0 10px' }}>
-                                        <Text strong style={{ color: '#16a34a', display: 'block', fontSize: '0.85rem', marginBottom: 2 }}>
-                                            👉 Nghĩa tiếng Việt:
+                                        <Text strong style={{ color: '#16a34a', display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.85rem', marginBottom: 2 }}>
+                                            <RightCircleOutlined />
+                                            <span>Nghĩa tiếng Việt:</span>
                                         </Text>
                                         <Input
                                             value={enrichedResult.meaningVi}
@@ -509,7 +512,10 @@ export const FlashcardDeckListPage: React.FC = () => {
                                     )}
                                     {enrichedResult.quizDistractors && (
                                         <div style={{ fontSize: '0.8rem', color: '#d97706', marginTop: 4 }}>
-                                            <strong>🎯 Đáp án trắc nghiệm nhiễu (Quiz):</strong>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 2 }}>
+                                                <AimOutlined />
+                                                <strong>Đáp án trắc nghiệm nhiễu (Quiz):</strong>
+                                            </div>
                                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
                                                 {enrichedResult.quizDistractors.split('|').map((d, idx) => (
                                                     <Tag key={idx} color="orange" style={{ borderRadius: 6, fontSize: '0.75rem' }}>

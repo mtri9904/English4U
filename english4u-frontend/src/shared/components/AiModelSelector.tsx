@@ -1,5 +1,6 @@
 import React from 'react';
 import { Select, Tag, Space, Typography } from 'antd';
+import { RobotOutlined } from '@ant-design/icons';
 import { AI_MODELS, DEFAULT_AI_MODEL, type AiModelConfig } from '../constants/aiModels';
 
 export { AI_MODELS, DEFAULT_AI_MODEL, type AiModelConfig };
@@ -71,8 +72,9 @@ export const AiModelSelector: React.FC<AiModelSelectorProps> = ({
         >
             {showLabel && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                    <Text style={{ fontSize: '0.78rem', fontWeight: 600, color: '#334155' }}>
-                        🤖 Mô hình AI phục vụ (Tự động chuyển khi hết limit):
+                    <Text style={{ fontSize: '0.78rem', fontWeight: 600, color: '#334155', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                        <RobotOutlined style={{ color: '#3b82f6' }} />
+                        <span>Mô hình AI phục vụ (Tự động chuyển khi hết limit):</span>
                     </Text>
                     <Space size={4}>
                         {selectedModel.tag && (

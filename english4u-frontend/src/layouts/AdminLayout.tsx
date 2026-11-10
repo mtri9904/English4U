@@ -14,6 +14,8 @@ import {
     BugOutlined,
     TrophyOutlined,
     RobotOutlined,
+    LockOutlined,
+    WarningOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useUserProfileQuery, studentService as userApi } from '@/features/students';
@@ -165,7 +167,7 @@ export const AdminLayout: React.FC = () => {
                     }}
                 >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', color: '#1e40af' }}>
-                        <span>🔔</span>
+                        <BellOutlined />
                         <span style={{ fontWeight: 600 }}>Bật thông báo trên máy tính</span>
                     </div>
                     <Button
@@ -192,7 +194,8 @@ export const AdminLayout: React.FC = () => {
                         marginBottom: 2,
                     }}
                 >
-                    <span>✅ Đã bật thông báo trên trình duyệt</span>
+                    <CheckCircleOutlined style={{ color: '#059669' }} />
+                    <span>Đã bật thông báo trên trình duyệt</span>
                 </div>
             )}
 
@@ -210,7 +213,8 @@ export const AdminLayout: React.FC = () => {
                         lineHeight: 1.35,
                     }}
                 >
-                    ⚠️ Thông báo trên trình duyệt đang bị chặn. Bấm vào icon ổ khóa 🔒 trên thanh địa chỉ để cho phép lại.
+                    <WarningOutlined style={{ color: '#f59e0b', marginRight: 4 }} />
+                    Thông báo trên trình duyệt đang bị chặn. Bấm vào icon ổ khóa <LockOutlined /> trên thanh địa chỉ để cho phép lại.
                 </div>
             )}
 

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Modal, Form, Empty, Skeleton, message, Avatar } from 'antd';
+import { NotificationOutlined } from '@ant-design/icons';
 import { useUrlFilters } from '@/shared/hooks';
 import {
     Bell, Megaphone,
@@ -283,7 +284,7 @@ export const NotificationManagementPage = () => {
                     />
                 ))}
                 <div style={{ position: 'absolute', right: 50, top: '50%', transform: 'translateY(-50%)', fontSize: '5rem', opacity: 0.06, userSelect: 'none' }}>
-                    📣
+                    <NotificationOutlined />
                 </div>
 
                 <div style={{ position: 'relative', zIndex: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>

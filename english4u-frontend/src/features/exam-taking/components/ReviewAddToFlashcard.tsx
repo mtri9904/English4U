@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { message } from 'antd';
+import { ThunderboltOutlined } from '@ant-design/icons';
 import { useQueryClient } from '@tanstack/react-query';
 import {
     flashcardApi,
@@ -63,12 +64,12 @@ export const ReviewAddToFlashcard: React.FC = () => {
 
         if (examDeck) {
             list.push({
-                label: `📚 ${examDeck.title} (${examDeck.totalCards} từ) — Mặc định`,
+                label: `${examDeck.title} (${examDeck.totalCards} từ) — Mặc định`,
                 value: examDeck.id,
             });
         } else {
             list.push({
-                label: `📚 ${EXAM_DECK_TITLE} (Mặc định - Sẽ tự động tạo)`,
+                label: `${EXAM_DECK_TITLE} (Mặc định - Sẽ tự động tạo)`,
                 value: CREATE_EXAM_DECK_KEY,
             });
         }
@@ -76,7 +77,7 @@ export const ReviewAddToFlashcard: React.FC = () => {
         decks.forEach((deck) => {
             if (!examDeck || deck.id !== examDeck.id) {
                 list.push({
-                    label: `📘 ${deck.title} (${deck.totalCards} từ)`,
+                    label: `${deck.title} (${deck.totalCards} từ)`,
                     value: deck.id,
                 });
             }
@@ -348,7 +349,7 @@ export const ReviewAddToFlashcard: React.FC = () => {
                     }}
                     className="review-flashcard-floating-btn"
                 >
-                    <span style={{ fontSize: '15px' }}>✨</span>
+                    <ThunderboltOutlined style={{ fontSize: '15px' }} />
                     <span>Thêm vào Flashcard</span>
                 </div>
             )}

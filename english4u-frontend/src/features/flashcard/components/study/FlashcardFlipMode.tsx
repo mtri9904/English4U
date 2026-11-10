@@ -1,6 +1,13 @@
 import React from 'react';
 import { Button, Tag, Typography } from 'antd';
-import { SoundOutlined } from '@ant-design/icons';
+import {
+    SoundOutlined,
+    BulbOutlined,
+    RightCircleOutlined,
+    CloseCircleOutlined,
+    ThunderboltOutlined,
+    CheckCircleOutlined,
+} from '@ant-design/icons';
 import type { FlashcardItemDto } from '../../types/flashcard.types';
 
 const { Title, Text, Paragraph } = Typography;
@@ -164,12 +171,14 @@ export const FlashcardFlipMode: React.FC<FlashcardFlipModeProps> = ({
                                         borderLeft: '4px solid #2563eb',
                                     }}
                                 >
-                                    <div style={{ fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>
-                                        💡 {currentCard.exampleSentence}
+                                    <div style={{ fontWeight: 600, color: '#0f172a', marginBottom: 4, display: 'flex', alignItems: 'center' }}>
+                                        <BulbOutlined style={{ marginRight: 6, color: '#eab308' }} />
+                                        <span>{currentCard.exampleSentence}</span>
                                     </div>
                                     {currentCard.exampleSentenceVi && (
-                                        <div style={{ color: '#64748b', fontSize: '0.9rem' }}>
-                                            👉 {currentCard.exampleSentenceVi}
+                                        <div style={{ color: '#64748b', fontSize: '0.9rem', display: 'flex', alignItems: 'center' }}>
+                                            <RightCircleOutlined style={{ marginRight: 6, color: '#64748b' }} />
+                                            <span>{currentCard.exampleSentenceVi}</span>
                                         </div>
                                     )}
                                 </div>
@@ -212,7 +221,10 @@ export const FlashcardFlipMode: React.FC<FlashcardFlipModeProps> = ({
                             fontWeight: 700,
                         }}
                     >
-                        ❌ Khó (1)<br />
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                            <CloseCircleOutlined />
+                            <span>Khó (1)</span>
+                        </span><br />
                         <span style={{ fontSize: '0.75rem', fontWeight: 400 }}>Lặp lại sau 1 ngày</span>
                     </Button>
                     <Button
@@ -227,7 +239,10 @@ export const FlashcardFlipMode: React.FC<FlashcardFlipModeProps> = ({
                             fontWeight: 700,
                         }}
                     >
-                        ⚡ Trung bình (2)<br />
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                            <ThunderboltOutlined />
+                            <span>Trung bình (2)</span>
+                        </span><br />
                         <span style={{ fontSize: '0.75rem', fontWeight: 400 }}>Lặp lại sau 3 ngày</span>
                     </Button>
                     <Button
@@ -242,7 +257,10 @@ export const FlashcardFlipMode: React.FC<FlashcardFlipModeProps> = ({
                             fontWeight: 700,
                         }}
                     >
-                        🌟 Dễ (3)<br />
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                            <CheckCircleOutlined />
+                            <span>Dễ (3)</span>
+                        </span><br />
                         <span style={{ fontSize: '0.75rem', fontWeight: 400 }}>Lặp lại sau 7 ngày</span>
                     </Button>
                 </div>

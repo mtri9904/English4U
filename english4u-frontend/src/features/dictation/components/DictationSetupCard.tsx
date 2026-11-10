@@ -10,6 +10,8 @@ import {
     LaptopOutlined,
     RocketOutlined,
     ThunderboltOutlined,
+    AimOutlined,
+    FireOutlined,
 } from '@ant-design/icons';
 import { motion } from 'framer-motion';
 import type {
@@ -163,9 +165,33 @@ export const DictationSetupCard: React.FC<DictationSetupCardProps> = ({
                                 onChange={(val: string | number) => setCount(Number(val))}
                                 size="large"
                                 options={[
-                                    { label: '⚡ 3 câu (Nhanh - 2 phút)', value: 3 },
-                                    { label: '🎯 5 câu (Chuẩn - 5 phút)', value: 5 },
-                                    { label: '🔥 10 câu (Chuyên sâu)', value: 10 },
+                                    {
+                                        label: (
+                                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                                <ThunderboltOutlined style={{ color: '#eab308' }} />
+                                                <span>3 câu (Nhanh - 2 phút)</span>
+                                            </span>
+                                        ),
+                                        value: 3,
+                                    },
+                                    {
+                                        label: (
+                                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                                <AimOutlined style={{ color: '#3b82f6' }} />
+                                                <span>5 câu (Chuẩn - 5 phút)</span>
+                                            </span>
+                                        ),
+                                        value: 5,
+                                    },
+                                    {
+                                        label: (
+                                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                                <FireOutlined style={{ color: '#ef4444' }} />
+                                                <span>10 câu (Chuyên sâu)</span>
+                                            </span>
+                                        ),
+                                        value: 10,
+                                    },
                                 ]}
                                 block
                             />
@@ -179,11 +205,11 @@ export const DictationSetupCard: React.FC<DictationSetupCardProps> = ({
                         </Text>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
                             {[
-                                { key: 'daily', label: '☕ Đời sống hàng ngày', icon: <CoffeeOutlined /> },
-                                { key: 'business', label: '💼 Công việc & Phỏng vấn', icon: <LaptopOutlined /> },
-                                { key: 'travel', label: '✈️ Du lịch & Khám phá', icon: <GlobalOutlined /> },
-                                { key: 'academic', label: '🎓 Học thuật & Khoa học', icon: <BookOutlined /> },
-                                { key: 'custom', label: '✏️ Chủ đề tự nhập...', icon: <EditOutlined /> },
+                                { key: 'daily', label: 'Đời sống hàng ngày', icon: <CoffeeOutlined /> },
+                                { key: 'business', label: 'Công việc & Phỏng vấn', icon: <LaptopOutlined /> },
+                                { key: 'travel', label: 'Du lịch & Khám phá', icon: <GlobalOutlined /> },
+                                { key: 'academic', label: 'Học thuật & Khoa học', icon: <BookOutlined /> },
+                                { key: 'custom', label: 'Chủ đề tự nhập...', icon: <EditOutlined /> },
                             ].map((t) => {
                                 const isSel = topicPreset === t.key;
                                 return (
@@ -202,7 +228,10 @@ export const DictationSetupCard: React.FC<DictationSetupCardProps> = ({
                                             cursor: 'pointer',
                                         }}
                                     >
-                                        {t.label}
+                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                            {t.icon}
+                                            <span>{t.label}</span>
+                                        </span>
                                     </Tag.CheckableTag>
                                 );
                             })}

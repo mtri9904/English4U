@@ -1,6 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import { Modal, Input, Select, Button, message, Tabs, Divider } from 'antd';
-import { PlusOutlined, ExclamationCircleFilled } from '@ant-design/icons';
+import {
+    PlusOutlined,
+    ExclamationCircleFilled,
+    ReadOutlined,
+    CustomerServiceOutlined,
+    EditOutlined,
+    AudioOutlined,
+} from '@ant-design/icons';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     useCreateExamMutation,
@@ -342,18 +349,23 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
                     activeKey={String(form.sections[0]?.skillType || 'Reading')}
                     items={form.sections.map((section, sIdx) => {
                         const skill = (normalizeSkillType(section.skillType) || 'Reading') as SkillType;
+                        const skillIcon =
+                            skill === 'Reading' ? (
+                                <ReadOutlined />
+                            ) : skill === 'Listening' ? (
+                                <CustomerServiceOutlined />
+                            ) : skill === 'Writing' ? (
+                                <EditOutlined />
+                            ) : (
+                                <AudioOutlined />
+                            );
+
                         return {
                             key: String(section.skillType),
                             label: (
-                                <span>
-                                    {skill === 'Reading'
-                                        ? '📖'
-                                        : skill === 'Listening'
-                                          ? '🎧'
-                                          : skill === 'Writing'
-                                            ? '✍️'
-                                            : '🎤'}{' '}
-                                    {section.skillType}
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                    {skillIcon}
+                                    <span>{section.skillType}</span>
                                 </span>
                             ),
                             children: (
@@ -421,19 +433,27 @@ export const CreateExamModal = ({ open, onClose, initialData }: Props) => {
                                                             (sec, i) => sec.skillType === 'Speaking' && i !== sIdx,
                                                         ),
                                                     },
-                                                ].map((o) => ({
-                                                    ...o,
-                                                    label:
-                                                        (o.value === 'Reading'
-                                                            ? '📖 '
-                                                            : o.value === 'Listening'
-                                                              ? '🎧 '
-                                                              : o.value === 'Writing'
-                                                                ? '✍️ '
-                                                                : '🎤 ') +
-                                                        o.label +
-                                                        (o.disabled ? ' (Đã có)' : ''),
-                                                }))}
+                                                ].map((o) => {
+                                                    const icon =
+                                                        o.value === 'Reading' ? (
+                                                            <ReadOutlined />
+                                                        ) : o.value === 'Listening' ? (
+                                                            <CustomerServiceOutlined />
+                                                        ) : o.value === 'Writing' ? (
+                                                            <EditOutlined />
+                                                        ) : (
+                                                            <AudioOutlined />
+                                                        );
+                                                    return {
+                                                        ...o,
+                                                        label: (
+                                                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                                                {icon}
+                                                                <span>{o.label}{o.disabled ? ' (Đã có)' : ''}</span>
+                                                            </span>
+                                                        ),
+                                                    };
+                                                })}
                                             />
                                         </div>
                                         {renderSectionContent(section, sIdx)}

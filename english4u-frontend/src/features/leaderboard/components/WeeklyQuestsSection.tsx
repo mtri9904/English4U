@@ -6,6 +6,10 @@ import {
     GiftFilled,
     ArrowRightOutlined,
     ThunderboltFilled,
+    ReadOutlined,
+    FireFilled,
+    CustomerServiceOutlined,
+    TrophyFilled,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import type { WeeklyQuest } from '../types/leaderboard.types';
@@ -14,6 +18,28 @@ import { useClaimQuestRewardMutation } from '../hooks/useLeaderboardQueries';
 interface WeeklyQuestsSectionProps {
     quests: WeeklyQuest[];
 }
+
+const renderQuestIcon = (icon: string) => {
+    switch (icon) {
+        case '📖':
+        case 'reading':
+            return <ReadOutlined style={{ color: '#2563eb' }} />;
+        case '🔥':
+        case 'streak':
+            return <FireFilled style={{ color: '#f97316' }} />;
+        case '🎧':
+        case 'dictation':
+            return <CustomerServiceOutlined style={{ color: '#8b5cf6' }} />;
+        case '⚡':
+        case 'flashcard':
+            return <ThunderboltFilled style={{ color: '#eab308' }} />;
+        case '🏆':
+        case 'exam':
+            return <TrophyFilled style={{ color: '#10b981' }} />;
+        default:
+            return <TrophyFilled style={{ color: '#2563eb' }} />;
+    }
+};
 
 export const WeeklyQuestsSection: React.FC<WeeklyQuestsSectionProps> = ({ quests }) => {
     const navigate = useNavigate();
@@ -111,11 +137,11 @@ export const WeeklyQuestsSection: React.FC<WeeklyQuestsSectionProps> = ({ quests
                                             display: 'flex',
                                             alignItems: 'center',
                                             justifyContent: 'center',
-                                            fontSize: '26px',
+                                            fontSize: '24px',
                                             flexShrink: 0,
                                         }}
                                     >
-                                        {quest.icon}
+                                        {renderQuestIcon(quest.icon)}
                                     </div>
 
                                     <div style={{ flex: 1 }}>

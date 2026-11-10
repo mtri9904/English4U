@@ -1,6 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { Avatar } from 'antd';
+import { CheckOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { Users, CalendarClock, Eye, Pencil, Trash2 } from 'lucide-react';
 import type { NotificationListItemDto } from '../types/notification.types';
 import { avatarChar, roleStyle } from '../utils/notification.utils';
@@ -156,9 +157,22 @@ export const NotificationListItemCard: React.FC<NotificationListItemCardProps> =
                                 fontWeight: 600,
                                 background: item.isRead ? '#f0fdf4' : '#eff6ff',
                                 color: item.isRead ? '#15803d' : '#1d4ed8',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 4,
                             }}
                         >
-                            {item.isRead ? '✓ Đã đọc' : '● Chưa đọc'}
+                            {item.isRead ? (
+                                <>
+                                    <CheckOutlined style={{ fontSize: '10px' }} />
+                                    <span>Đã đọc</span>
+                                </>
+                            ) : (
+                                <>
+                                    <InfoCircleOutlined style={{ fontSize: '10px' }} />
+                                    <span>Chưa đọc</span>
+                                </>
+                            )}
                         </span>
                     </div>
                 </div>

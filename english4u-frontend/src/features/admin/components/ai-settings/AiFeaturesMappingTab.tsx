@@ -21,6 +21,10 @@ import {
     WarningOutlined,
     ThunderboltOutlined,
     AppstoreOutlined,
+    RobotOutlined,
+    FileSearchOutlined,
+    CustomerServiceOutlined,
+    BookOutlined,
 } from '@ant-design/icons';
 import { AiFeatureCard, type ModelSelectOption } from './AiFeatureCard';
 import {
@@ -348,24 +352,29 @@ export const AiFeaturesMappingTab: React.FC<AiFeaturesMappingTabProps> = ({
                                 icon: <AppstoreOutlined />,
                             },
                             {
-                                label: '🎯 Chấm thi',
+                                label: 'Chấm thi',
                                 value: 'assessment',
+                                icon: <CheckCircleOutlined />,
                             },
                             {
-                                label: '🤖 Trợ lý AI',
+                                label: 'Trợ lý AI',
                                 value: 'copilot',
+                                icon: <RobotOutlined />,
                             },
                             {
-                                label: '👁️ OCR & PDF',
+                                label: 'OCR & PDF',
                                 value: 'extraction',
+                                icon: <FileSearchOutlined />,
                             },
                             {
-                                label: '🎧 Nghe - Nói',
+                                label: 'Nghe - Nói',
                                 value: 'audio',
+                                icon: <CustomerServiceOutlined />,
                             },
                             {
-                                label: '📚 Học liệu',
+                                label: 'Học liệu',
                                 value: 'content',
+                                icon: <BookOutlined />,
                             },
                         ]}
                     />

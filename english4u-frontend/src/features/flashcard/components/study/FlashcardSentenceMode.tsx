@@ -5,6 +5,10 @@ import {
     CheckCircleOutlined,
     CloseCircleOutlined,
     SoundOutlined,
+    RightCircleOutlined,
+    EditOutlined,
+    BookOutlined,
+    StarFilled,
 } from '@ant-design/icons';
 import type { AiCheckSentenceResponse, FlashcardItemDto } from '../../types/flashcard.types';
 
@@ -48,15 +52,17 @@ export const FlashcardSentenceMode: React.FC<FlashcardSentenceModeProps> = ({
                         </Title>
                         <Tag color="blue">{currentCard.partOfSpeech}</Tag>
                     </div>
-                    <div style={{ color: '#15803d', fontWeight: 600, fontSize: '1rem', marginTop: 4 }}>
-                        👉 {currentCard.meaningVi}
+                    <div style={{ color: '#15803d', fontWeight: 600, fontSize: '1rem', marginTop: 4, display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <RightCircleOutlined />
+                        <span>{currentCard.meaningVi}</span>
                     </div>
                 </div>
             </div>
 
             <div style={{ marginBottom: 16 }}>
-                <Text strong style={{ fontSize: '1rem', color: '#1e293b' }}>
-                    ✍️ Hãy viết một câu tiếng Anh hoàn chỉnh có chứa từ <strong>"{currentCard.word}"</strong>:
+                <Text strong style={{ fontSize: '1rem', color: '#1e293b', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <EditOutlined style={{ color: '#4f46e5' }} />
+                    <span>Hãy viết một câu tiếng Anh hoàn chỉnh có chứa từ <strong>"{currentCard.word}"</strong>:</span>
                 </Text>
                 <Input.TextArea
                     rows={3}
@@ -143,8 +149,9 @@ export const FlashcardSentenceMode: React.FC<FlashcardSentenceModeProps> = ({
                             }}
                         >
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                                <Text style={{ fontSize: '0.85rem', color: '#0369a1', fontWeight: 700 }}>
-                                    ✍️ {sentenceFeedback.isCorrect ? 'Câu của bạn (Đã chuẩn ngữ pháp):' : 'Câu sửa đúng chuẩn (từ câu của bạn):'}
+                                <Text style={{ fontSize: '0.85rem', color: '#0369a1', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5 }}>
+                                    <EditOutlined />
+                                    <span>{sentenceFeedback.isCorrect ? 'Câu của bạn (Đã chuẩn ngữ pháp):' : 'Câu sửa đúng chuẩn (từ câu của bạn):'}</span>
                                 </Text>
                                 <Button
                                     type="text"
@@ -162,8 +169,9 @@ export const FlashcardSentenceMode: React.FC<FlashcardSentenceModeProps> = ({
 
                     {sentenceFeedback.examplesByLevel && sentenceFeedback.examplesByLevel.length > 0 && (
                         <div style={{ marginBottom: 16 }}>
-                            <Text strong style={{ fontSize: '0.9rem', color: '#334155', display: 'block', marginBottom: 10 }}>
-                                📚 Các câu ví dụ theo cấp độ (Dễ → Trung bình → Khó):
+                            <Text strong style={{ fontSize: '0.9rem', color: '#334155', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+                                <BookOutlined style={{ color: '#2563eb' }} />
+                                <span>Các câu ví dụ theo cấp độ (Dễ → Trung bình → Khó):</span>
                             </Text>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                                 {sentenceFeedback.examplesByLevel.map((ex, idx) => {
@@ -217,8 +225,9 @@ export const FlashcardSentenceMode: React.FC<FlashcardSentenceModeProps> = ({
                                                 {ex.sentence}
                                             </div>
                                             {ex.meaningVi && (
-                                                <div style={{ color: '#64748b', fontSize: '0.825rem', fontStyle: 'italic' }}>
-                                                    👉 {ex.meaningVi}
+                                                <div style={{ color: '#64748b', fontSize: '0.825rem', fontStyle: 'italic', display: 'flex', alignItems: 'center', gap: 5 }}>
+                                                    <RightCircleOutlined style={{ fontSize: '11px' }} />
+                                                    <span>{ex.meaningVi}</span>
                                                 </div>
                                             )}
                                         </div>
@@ -230,8 +239,9 @@ export const FlashcardSentenceMode: React.FC<FlashcardSentenceModeProps> = ({
 
                     {sentenceFeedback.improvedSentenceBand8 && (
                         <div style={{ background: '#ffffff', borderRadius: 10, padding: '12px 16px', border: '1px solid #cbd5e1' }}>
-                            <Text style={{ fontSize: '0.825rem', color: '#2563eb', fontWeight: 700, display: 'block', marginBottom: 4 }}>
-                                💎 Gợi ý viết lại tự nhiên hơn (IELTS Band 8.5+):
+                            <Text style={{ fontSize: '0.825rem', color: '#2563eb', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5, marginBottom: 4 }}>
+                                <StarFilled style={{ color: '#f59e0b' }} />
+                                <span>Gợi ý viết lại tự nhiên hơn (IELTS Band 8.5+):</span>
                             </Text>
                             <Text strong style={{ color: '#0f172a' }}>
                                 {sentenceFeedback.improvedSentenceBand8}

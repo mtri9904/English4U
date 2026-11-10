@@ -1,6 +1,6 @@
 import React from 'react';
 import { Space, Tag, Tooltip, Typography } from 'antd';
-import { WarningOutlined } from '@ant-design/icons';
+import { WarningOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { SentenceEvaluation } from '../types/dictation.types';
 
@@ -171,8 +171,9 @@ export const DictationDiffView: React.FC<DictationDiffViewProps> = ({
                                 marginTop: 10,
                             }}
                         >
-                            <Text type="secondary" style={{ fontSize: 13, display: 'block' }}>
-                                🎯 Câu gốc chuẩn: <strong>{targetSentence}</strong>
+                            <Text type="secondary" style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 5 }}>
+                                <CheckCircleOutlined style={{ color: '#16a34a' }} />
+                                <span>Câu gốc chuẩn: <strong>{targetSentence}</strong></span>
                             </Text>
                         </div>
                     )}

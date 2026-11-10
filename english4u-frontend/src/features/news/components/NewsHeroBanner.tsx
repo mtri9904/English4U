@@ -96,6 +96,7 @@ export const NewsHeroBanner: React.FC<NewsHeroBannerProps> = ({ item, onSelect }
                     </span>
                     <Tag
                         color={categoryMeta.badgeColor}
+                        icon={categoryMeta.icon}
                         style={{
                             margin: 0,
                             borderRadius: '8px',
@@ -103,9 +104,12 @@ export const NewsHeroBanner: React.FC<NewsHeroBannerProps> = ({ item, onSelect }
                             fontSize: '12px',
                             border: 'none',
                             padding: '3px 10px',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
                         }}
                     >
-                        {categoryMeta.icon} {categoryMeta.label}
+                        {categoryMeta.label}
                     </Tag>
                     <span
                         style={{

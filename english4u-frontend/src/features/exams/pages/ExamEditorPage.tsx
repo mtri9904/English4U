@@ -1,6 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Card, FloatButton, Input, InputNumber, Modal, Select, Tag, message } from 'antd';
-import { ArrowLeftOutlined, SaveOutlined, VerticalAlignTopOutlined } from '@ant-design/icons';
+import {
+    ArrowLeftOutlined,
+    SaveOutlined,
+    VerticalAlignTopOutlined,
+    ReadOutlined,
+    CustomerServiceOutlined,
+    EditOutlined,
+    AudioOutlined,
+} from '@ant-design/icons';
 import { motion } from 'framer-motion';
 import { useNavigate, useParams } from 'react-router-dom';
 import { PageLoadingState, PageErrorState } from '@/components';
@@ -508,10 +516,42 @@ export const ExamEditorPage = () => {
                                 style={{ width: '100%' }}
                                 onChange={handleChangeSkill}
                                 options={[
-                                    { label: '📖 Reading', value: 'Reading' },
-                                    { label: '🎧 Listening', value: 'Listening' },
-                                    { label: '✍️ Writing', value: 'Writing' },
-                                    { label: '🎤 Speaking', value: 'Speaking' },
+                                    {
+                                        label: (
+                                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                                <ReadOutlined />
+                                                <span>Reading</span>
+                                            </span>
+                                        ),
+                                        value: 'Reading',
+                                    },
+                                    {
+                                        label: (
+                                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                                <CustomerServiceOutlined />
+                                                <span>Listening</span>
+                                            </span>
+                                        ),
+                                        value: 'Listening',
+                                    },
+                                    {
+                                        label: (
+                                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                                <EditOutlined />
+                                                <span>Writing</span>
+                                            </span>
+                                        ),
+                                        value: 'Writing',
+                                    },
+                                    {
+                                        label: (
+                                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                                <AudioOutlined />
+                                                <span>Speaking</span>
+                                            </span>
+                                        ),
+                                        value: 'Speaking',
+                                    },
                                 ]}
                             />
                         </div>

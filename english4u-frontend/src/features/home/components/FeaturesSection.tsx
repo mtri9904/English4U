@@ -1,4 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
+import {
+    CustomerServiceOutlined,
+    AudioOutlined,
+    ReadOutlined,
+    EditOutlined,
+    CheckOutlined,
+} from '@ant-design/icons'
 import { Badge } from '@/shared/ui/Badge'
 import { ProgressBar } from '@/shared/ui/ProgressBar'
 import { HOME_SKILLS, type HomeSkill } from '../constants/home.constants'
@@ -29,6 +36,13 @@ export function FeaturesSection() {
     )
 }
 
+const skillIconMap: Record<string, React.ReactNode> = {
+    listening: <CustomerServiceOutlined />,
+    speaking: <AudioOutlined />,
+    reading: <ReadOutlined />,
+    writing: <EditOutlined />,
+};
+
 function SkillCard({ skill }: { skill: HomeSkill }) {
     const [hovered, setHovered] = useState(false)
     return (
@@ -52,7 +66,9 @@ function SkillCard({ skill }: { skill: HomeSkill }) {
             <div style={{ position: 'absolute', top: 0, right: 0, width: 120, height: 120, background: `radial-gradient(ellipse at 80% 20%, ${skill.color}14 0%, transparent 70%)`, borderRadius: '0 20px 0 0', opacity: hovered ? 1 : 0.5, transition: 'opacity 0.3s' }} />
             <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', height: '100%', flex: 1 }}>
                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20 }}>
-                    <div style={{ width: 52, height: 52, borderRadius: 14, background: skill.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, transition: 'transform 0.2s', transform: hovered ? 'scale(1.1) rotate(-5deg)' : 'scale(1)' }}>{skill.icon}</div>
+                    <div style={{ width: 52, height: 52, borderRadius: 14, background: skill.bg, color: skill.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, transition: 'transform 0.2s', transform: hovered ? 'scale(1.1) rotate(-5deg)' : 'scale(1)' }}>
+                        {skillIconMap[skill.id] || skill.icon}
+                    </div>
                     <Badge variant="neutral">{skill.tag}</Badge>
                 </div>
                 <h3 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.375rem', fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: 10 }}>{skill.title}</h3>
@@ -68,7 +84,9 @@ function SkillCard({ skill }: { skill: HomeSkill }) {
                 <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6, marginTop: 'auto', padding: 0 }}>
                     {skill.features.map((f) => (
                         <li key={f} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8125rem', color: 'var(--color-text-secondary)', fontWeight: 500 }}>
-                            <span style={{ width: 16, height: 16, borderRadius: '50%', background: skill.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: skill.color, fontSize: 9, fontWeight: 800, flexShrink: 0 }}>✓</span>
+                            <span style={{ width: 16, height: 16, borderRadius: '50%', background: skill.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: skill.color, fontSize: 10, fontWeight: 800, flexShrink: 0 }}>
+                                <CheckOutlined />
+                            </span>
                             {f}
                         </li>
                     ))}

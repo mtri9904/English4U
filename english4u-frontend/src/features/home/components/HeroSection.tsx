@@ -1,5 +1,15 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import {
+    TeamOutlined,
+    AimOutlined,
+    StarFilled,
+    FireFilled,
+    BulbOutlined,
+    CustomerServiceOutlined,
+    AudioOutlined,
+    EditOutlined,
+} from '@ant-design/icons'
 import { isTokenExpired } from '@/apis/axios.instance'
 
 export function HeroSection() {
@@ -55,9 +65,13 @@ export function HeroSection() {
                     </div>
 
                     <div style={{ display: 'flex', gap: 24, paddingTop: 32, borderTop: '1px solid var(--color-border)' }}>
-                        {[{ value: '50K+', label: 'Học viên', icon: '👥' }, { value: '95%', label: 'Tỷ lệ đỗ', icon: '🎯' }, { value: '4.9★', label: 'Đánh giá', icon: '⭐' }].map((s) => (
+                        {[
+                            { value: '50K+', label: 'Học viên', icon: <TeamOutlined style={{ color: 'var(--color-primary)' }} /> },
+                            { value: '95%', label: 'Tỷ lệ đỗ', icon: <AimOutlined style={{ color: '#10b981' }} /> },
+                            { value: '4.9★', label: 'Đánh giá', icon: <StarFilled style={{ color: '#eab308' }} /> },
+                        ].map((s) => (
                             <div key={s.label}>
-                                <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, fontSize: '1.625rem', fontWeight: 800, color: 'var(--color-text-primary)', lineHeight: 1 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '1.625rem', fontWeight: 800, color: 'var(--color-text-primary)', lineHeight: 1 }}>
                                     <span style={{ fontSize: '1.1rem' }}>{s.icon}</span>{s.value}
                                 </div>
                                 <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-secondary)', marginTop: 4 }}>{s.label}</div>
@@ -90,13 +104,13 @@ function AITutorIllustration() {
                 </svg>
             </div>
             <AudioWaveRings />
-            <FloatingCard style={{ top: '8%', right: '2%' }} icon="🎯" title="Điểm AI" value="Band 7.5" color="var(--color-primary)" />
-            <FloatingCard style={{ bottom: '10%', left: '2%' }} icon="🔥" title="Chuỗi" value="14 Ngày" color="var(--color-accent-dark)" accent />
+            <FloatingCard style={{ top: '8%', right: '2%' }} icon={<AimOutlined />} title="Điểm AI" value="Band 7.5" color="var(--color-primary)" />
+            <FloatingCard style={{ bottom: '10%', left: '2%' }} icon={<FireFilled />} title="Chuỗi" value="14 Ngày" color="var(--color-accent-dark)" accent />
 
-            <FloatingCard style={{ top: '45%', right: '-5%' }} icon="💡" title="Bài học" value="Reading" color="#7c3aed" small />
-            <FloatingCard style={{ top: '35%', left: '-5%' }} icon="🎧" title="Bài học" value="Listening" color="#0ea5e9" small />
-            <FloatingCard style={{ bottom: '20%', right: '8%' }} icon="🎤" title="Bài học" value="Speaking" color="#10b981" small />
-            <FloatingCard style={{ top: '-2%', left: '25%' }} icon="✍️" title="Bài học" value="Writing" color="#f59e0b" small />
+            <FloatingCard style={{ top: '45%', right: '-5%' }} icon={<BulbOutlined />} title="Bài học" value="Reading" color="#7c3aed" small />
+            <FloatingCard style={{ top: '35%', left: '-5%' }} icon={<CustomerServiceOutlined />} title="Bài học" value="Listening" color="#0ea5e9" small />
+            <FloatingCard style={{ bottom: '20%', right: '8%' }} icon={<AudioOutlined />} title="Bài học" value="Speaking" color="#10b981" small />
+            <FloatingCard style={{ top: '-2%', left: '25%' }} icon={<EditOutlined />} title="Bài học" value="Writing" color="#f59e0b" small />
         </div>
     )
 }
@@ -115,7 +129,7 @@ function AudioWaveRings() {
 
 interface FloatingCardProps {
     style: React.CSSProperties
-    icon: string
+    icon: React.ReactNode
     title: string
     value: string
     color: string

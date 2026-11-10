@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Modal, Spin, message } from 'antd';
+import { ClockCircleOutlined } from '@ant-design/icons';
 import type { NewsItem } from '../types/news.types';
 import {
     NEWS_CATEGORIES,
@@ -483,7 +484,7 @@ export const NewsDetailModal: React.FC<NewsDetailModalProps> = ({ item, open, on
                                             letterSpacing: '0.02em',
                                         }}
                                     >
-                                        <span>🕒</span>
+                                        <ClockCircleOutlined style={{ marginRight: 4 }} />
                                         <span>{block.text}</span>
                                     </div>
                                 );

@@ -83,6 +83,7 @@ export const NewsCard: React.FC<NewsCardProps> = ({ item, onSelect }) => {
                     >
                         <Tag
                             color={categoryMeta.badgeColor}
+                            icon={categoryMeta.icon}
                             style={{
                                 margin: 0,
                                 borderRadius: '8px',
@@ -91,9 +92,12 @@ export const NewsCard: React.FC<NewsCardProps> = ({ item, onSelect }) => {
                                 border: 'none',
                                 padding: '2px 8px',
                                 boxShadow: '0 2px 6px rgba(0,0,0,0.2)',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
                             }}
                         >
-                            {categoryMeta.icon} {categoryMeta.label.split('&')[0].trim()}
+                            {categoryMeta.label.split('&')[0].trim()}
                         </Tag>
                     </div>
                     <div

@@ -1,6 +1,12 @@
 import React from 'react';
 import { Tag, Button, Spin } from 'antd';
-import { SoundOutlined, ThunderboltOutlined } from '@ant-design/icons';
+import {
+    SoundOutlined,
+    ThunderboltOutlined,
+    CloseOutlined,
+    ReadOutlined,
+    BulbOutlined,
+} from '@ant-design/icons';
 import type { ActiveWordLookup } from '../../hooks/useNewsWordLookup';
 
 interface NewsWordLookupPopoverProps {
@@ -72,9 +78,10 @@ export const NewsWordLookupPopover: React.FC<NewsWordLookupPopoverProps> = ({
                 <button
                     type="button"
                     onClick={onClose}
-                    style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#94a3b8', fontSize: '14px' }}
+                    style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#94a3b8', fontSize: '13px' }}
+                    title="Đóng"
                 >
-                    ✕
+                    <CloseOutlined />
                 </button>
             </div>
 
@@ -88,13 +95,15 @@ export const NewsWordLookupPopover: React.FC<NewsWordLookupPopoverProps> = ({
                 ) : (
                     <div>
                         {lookup.meaningVi && (
-                            <div style={{ fontWeight: 700, color: '#0369a1', marginBottom: '4px' }}>
-                                📖 {lookup.meaningVi}
+                            <div style={{ fontWeight: 700, color: '#0369a1', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <ReadOutlined style={{ color: '#0284c7' }} />
+                                <span>{lookup.meaningVi}</span>
                             </div>
                         )}
                         {lookup.definitionEn && (
-                            <div style={{ fontSize: '12px', color: '#475569', lineHeight: 1.45, fontStyle: 'italic', marginBottom: lookup.example ? '6px' : '0' }}>
-                                💡 {lookup.definitionEn}
+                            <div style={{ fontSize: '12px', color: '#475569', lineHeight: 1.45, fontStyle: 'italic', marginBottom: lookup.example ? '6px' : '0', display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                                <BulbOutlined style={{ color: '#eab308' }} />
+                                <span>{lookup.definitionEn}</span>
                             </div>
                         )}
                         {lookup.example && (
@@ -137,7 +146,7 @@ export const NewsWordLookupPopover: React.FC<NewsWordLookupPopoverProps> = ({
                     height: '36px',
                 }}
             >
-                ⚡ Thêm nhanh vào Flashcard
+                Thêm nhanh vào Flashcard
             </Button>
         </div>
     );
