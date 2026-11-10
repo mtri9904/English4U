@@ -87,8 +87,9 @@ export const NewsPage: React.FC = () => {
     const [selectedArticle, setSelectedArticle] = useState<NewsItem | null>(null);
     const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
 
-    // In-memory cache per category/keyword to ensure instant 0ms tab switching and prevent UI layout jumps
+    // In-memory cache per category/keyword to keep UI smooth while revalidating from API
     const categoryCacheRef = useRef<Map<string, CategoryCacheEntry>>(new Map());
+    const requestSeqRef = useRef<number>(0);
 
     // Debounce search input to avoid redundant API queries while typing
     useEffect(() => {
@@ -102,40 +103,56 @@ export const NewsPage: React.FC = () => {
 
     const loadInitialNews = useCallback(async (category: NewsCategory, search: string) => {
         const cacheKey = `${category}:${search.trim().toLowerCase()}`;
+        const cached = categoryCacheRef.current.get(cacheKey);
+        const currentSeq = ++requestSeqRef.current;
 
-        // If category is already in memory, switch immediately with zero network delay and zero jank
-        if (categoryCacheRef.current.has(cacheKey)) {
-            const cached = categoryCacheRef.current.get(cacheKey)!;
+        // If category is already in memory, show it first to avoid empty screen / layout shifts
+        if (cached) {
             setArticles(cached.items);
             setHasMore(cached.hasMore);
             setCurrentPage(cached.page);
             setIsLoading(false);
-            setIsError(false);
-            return;
+        } else {
+            setIsLoading(true);
+            setArticles([]);
         }
 
-        setIsLoading(true);
         setIsError(false);
-        setCurrentPage(1);
+
         try {
-            // First page: 10 articles (1 Hero featured article + 9 grid articles)
+            // ALWAYS call backend API for fresh data on every tab switch
             const newsData = await fetchNewsFromBackend(category, 1, PAGE_SIZE, search);
+
+            // Ignore response if user has already switched to another tab
+            if (currentSeq !== requestSeqRef.current) {
+                return;
+            }
+
             const items = newsData.items || [];
             const hasMoreItems = items.length >= PAGE_SIZE;
 
             setArticles(items);
             setHasMore(hasMoreItems);
+            setCurrentPage(1);
+
             categoryCacheRef.current.set(cacheKey, {
                 items,
                 hasMore: hasMoreItems,
                 page: 1,
             });
         } catch {
-            setArticles([]);
-            setHasMore(false);
-            setIsError(true);
+            if (currentSeq !== requestSeqRef.current) {
+                return;
+            }
+            if (!cached) {
+                setArticles([]);
+                setHasMore(false);
+                setIsError(true);
+            }
         } finally {
-            setIsLoading(false);
+            if (currentSeq === requestSeqRef.current) {
+                setIsLoading(false);
+            }
         }
     }, []);
 
@@ -304,11 +321,17 @@ export const NewsPage: React.FC = () => {
                     border: '1px solid #e2e8f0',
                     boxShadow: '0 2px 6px rgba(15, 23, 42, 0.04)',
                     marginBottom: '24px',
+                    overflow: 'hidden',
                 }}
             >
                 <Tabs
                     activeKey={selectedCategory}
                     onChange={(key) => setSelectedCategory(key as NewsCategory)}
+                    onTabClick={(key) => {
+                        if (key === selectedCategory) {
+                            loadInitialNews(selectedCategory, debouncedKeyword);
+                        }
+                    }}
                     size="large"
                     tabBarStyle={{ marginBottom: 0 }}
                     items={NEWS_CATEGORIES.map((cat) => ({

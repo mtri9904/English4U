@@ -20,7 +20,8 @@ export const useLeaderboardOverviewQuery = (
     return useQuery({
         queryKey: LEADERBOARD_QUERY_KEYS.overview(category, period),
         queryFn: ({ signal }) => leaderboardService.getOverview(category, period, signal),
-        staleTime: 60 * 1000, // 1 minute
+        staleTime: 0,
+        refetchOnMount: 'always',
         refetchOnWindowFocus: false,
     });
 };
@@ -32,7 +33,8 @@ export const useAdminLeaderboardOverviewQuery = (
     return useQuery({
         queryKey: LEADERBOARD_QUERY_KEYS.adminSummary(category, period),
         queryFn: ({ signal }) => leaderboardService.getAdminSummary(category, period, signal),
-        staleTime: 30 * 1000,
+        staleTime: 0,
+        refetchOnMount: 'always',
         refetchOnWindowFocus: false,
     });
 };
@@ -41,7 +43,8 @@ export const useUserBadgesQuery = () => {
     return useQuery({
         queryKey: LEADERBOARD_QUERY_KEYS.badges,
         queryFn: ({ signal }) => leaderboardService.getBadges(signal),
-        staleTime: 2 * 60 * 1000,
+        staleTime: 0,
+        refetchOnMount: 'always',
     });
 };
 
@@ -49,7 +52,8 @@ export const useWeeklyQuestsQuery = () => {
     return useQuery({
         queryKey: LEADERBOARD_QUERY_KEYS.quests,
         queryFn: ({ signal }) => leaderboardService.getWeeklyQuests(signal),
-        staleTime: 60 * 1000,
+        staleTime: 0,
+        refetchOnMount: 'always',
     });
 };
 

@@ -445,7 +445,13 @@ export const ClientLayout: React.FC = () => {
                         mode="inline"
                         selectedKeys={[location.pathname.startsWith('/app/flashcards') ? '/app/flashcards' : location.pathname]}
                         items={sidebarItems}
-                        onClick={({ key }) => navigate(key)}
+                        onClick={({ key }) => {
+                            if (location.pathname === key) {
+                                void queryClient.invalidateQueries();
+                            } else {
+                                navigate(key);
+                            }
+                        }}
                         style={{
                             borderRight: 0,
                             marginTop: 8,
